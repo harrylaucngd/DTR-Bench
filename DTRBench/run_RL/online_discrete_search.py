@@ -4,9 +4,9 @@ import torch
 import os
 from pathlib import Path
 
-from DTRBench.core.helper_fn import get_best_hparams, get_policy_class, get_hparam_class, get_obj_class, get_policy_type
+from DTRBench.src.helper_fn import get_best_hparams, get_policy_class, get_hparam_class, get_obj_class, get_policy_type
 from DTRBench.utils.misc import to_bool, early_stopping_callback
-from DTRBench.core.helper_fn import create_study_with_filter
+from DTRBench.src.helper_fn import create_study_with_filter
 import DTRGym
 
 
