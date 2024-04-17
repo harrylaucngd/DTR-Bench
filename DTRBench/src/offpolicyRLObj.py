@@ -2,13 +2,11 @@ import os
 import numpy as np
 import torch
 from tianshou.data import Collector, VectorReplayBuffer, ReplayBuffer
-from DTRBench.src.base.buffer import CustumizedReplayBuffer
 from tianshou.exploration import GaussianNoise
 from tianshou.policy import DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, C51Policy, DiscreteSACPolicy
 from tianshou.policy.modelbased.icm import ICMPolicy
-# from tianshou.policy.modelfree.dqn import DQNPolicy
-from DTRBench.src.DQN.dqn import DQNPolicy
+from tianshou.policy.modelfree.dqn import DQNPolicy
 from tianshou.trainer import offpolicy_trainer
 from tianshou.utils.net.common import EnsembleLinear
 from tianshou.utils.net.continuous import Actor, Critic, ActorProb
@@ -167,10 +165,11 @@ class DQNObjective(RLObjective):
                       icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
                       icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
                       icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
+                      forecast_length=10,
                       **kwargs
                       ):
         # define model
-        net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
+        net = define_single_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Adding forecast length to the model
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
@@ -245,7 +244,7 @@ class DQNObjective(RLObjective):
                 stack_num=stack_num
             )
         else:
-            buffer = CustumizedReplayBuffer(self.meta_param["buffer_size"],
+            buffer = ReplayBuffer(self.meta_param["buffer_size"],
                                   ignore_obs_next=False,
                                   save_only_last_obs=False,
                                   stack_num=stack_num

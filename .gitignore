@@ -9,6 +9,11 @@ __pycache__
 .vscode
 .idea/*
 
+# datasets and models
+GlucoseLLM/dataset
+GlucoseLLM/model_hub
+GlucoseLLM/checkpoints
+
 # others
 _*/
 *log/

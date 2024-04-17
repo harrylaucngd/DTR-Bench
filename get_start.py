@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 
 import DTRGym
-from DTRBench.core.helper_fn import get_best_hparams,  get_hparam_class, get_obj_class
+from DTRBench.src.helper_fn import get_best_hparams,  get_hparam_class, get_obj_class
 from DTRBench.visual_fn.env_vis_fn import visualise_env_policy_fn
 from DTRBench.utils.get_policy import get_DQN
 

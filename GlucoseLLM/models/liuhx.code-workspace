@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "DTR-Bench",
+			"path": "../../DTR-Bench"
+		}
+	],
+	"settings": {}
+}

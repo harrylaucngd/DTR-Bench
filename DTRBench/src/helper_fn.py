@@ -8,10 +8,10 @@ from typing import Union
 from tianshou.policy import BasePolicy
 from DTRBench.src.baseline_policy import RandomPolicy, MaxPolicy, MinPolicy
 
-from tianshou.policy import C51Policy, DDPGPolicy, \
+from DTRBench.src.discrete_policy import LLM_DQN_Policy, LLM_discrete_SAC_Policy, LLM_C51_Policy
+from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, DiscreteSACPolicy, DiscreteBCQPolicy, DiscreteCQLPolicy, BCQPolicy, CQLPolicy, \
     ImitationPolicy
-from DTRBench.src.DQN.dqn import DQNPolicy
 from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
 from DTRBench.src.offpolicyRLObj import DQNObjective, C51Objective, DDPGObjective, SACObjective, TD3Objective, \
@@ -131,6 +131,9 @@ def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
 
 
 offpolicyLOOKUP = {
+    "llm-dqn": {"hparam": DQNHyperParams, "policy": LLM_DQN_Policy, "obj": DQNObjective, "type": "discrete"},
+    "llm-c51": {"hparam": C51HyperParams, "policy": LLM_C51_Policy, "obj": C51Objective, "type": "discrete"},
+    "llm-discrete-sac": {"hparam": SACHyperParams, "policy": LLM_discrete_SAC_Policy, "obj": DiscreteSACObjective, "type": "discrete"},
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
     "ddqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
     "c51": {"hparam": C51HyperParams, "policy": C51Policy, "obj": C51Objective, "type": "discrete"},
@@ -153,24 +156,25 @@ BASELINE_LOOKUP = {"random": {"policy": RandomPolicy},
 
 def get_policy_class(algo_name) -> BasePolicy:
     algo_name = algo_name.lower()
-    if "dqn" in algo_name:
-        algo_name = "dqn"
-    elif "ddqn" in algo_name:
-        algo_name = "ddqn"
-    elif "discrete-imitation" in algo_name:
-        algo_name = "discrete-imitation"
+    if "llm" not in algo_name:
+        if "dqn" in algo_name:
+            algo_name = "dqn"
+        elif "ddqn" in algo_name:
+            algo_name = "ddqn"
+        elif "discrete-imitation" in algo_name:
+            algo_name = "discrete-imitation"
     return offpolicyLOOKUP[algo_name]["policy"]
 
 
 def get_hparam_class(algo_name: str, offline) -> OffPolicyRLHyperParameterSpace.__class__:
     algo_name = algo_name.lower()
-    if "dqn" in algo_name:
-        algo_name = "dqn"
-    elif "ddqn" in algo_name:
-        algo_name = "ddqn"
-    elif "discrete-imitation" in algo_name:
-        algo_name = "discrete-imitation"
-
+    if "llm" not in algo_name:
+        if "dqn" in algo_name:
+            algo_name = "dqn"
+        elif "ddqn" in algo_name:
+            algo_name = "ddqn"
+        elif "discrete-imitation" in algo_name:
+            algo_name = "discrete-imitation"
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
@@ -179,12 +183,13 @@ def get_hparam_class(algo_name: str, offline) -> OffPolicyRLHyperParameterSpace.
 
 def get_obj_class(algo_name: str, offline) -> RLObjective.__class__:
     algo_name = algo_name.lower()
-    if "dqn" in algo_name:
-        algo_name = "dqn"
-    elif "ddqn" in algo_name:
-        algo_name = "ddqn"
-    elif "discrete-imitation" in algo_name:
-        algo_name = "discrete-imitation"
+    if "llm" not in algo_name:
+        if "dqn" in algo_name:
+            algo_name = "dqn"
+        elif "ddqn" in algo_name:
+            algo_name = "ddqn"
+        elif "discrete-imitation" in algo_name:
+            algo_name = "discrete-imitation"
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
@@ -193,12 +198,13 @@ def get_obj_class(algo_name: str, offline) -> RLObjective.__class__:
 
 def get_policy_type(algo_name: str, offline: bool) -> str:
     algo_name = algo_name.lower()
-    if "dqn" in algo_name:
-        algo_name = "dqn"
-    elif "ddqn" in algo_name:
-        algo_name = "ddqn"
-    elif "discrete-imitation" in algo_name:
-        algo_name = "discrete-imitation"
+    if "llm" not in algo_name:
+        if "dqn" in algo_name:
+            algo_name = "dqn"
+        elif "ddqn" in algo_name:
+            algo_name = "ddqn"
+        elif "discrete-imitation" in algo_name:
+            algo_name = "discrete-imitation"
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:

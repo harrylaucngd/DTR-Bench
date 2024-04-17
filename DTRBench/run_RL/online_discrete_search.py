@@ -16,23 +16,24 @@ def parse_args():
     # training-aid hyperparameters
     parser.add_argument("--sampler", type=str, default="TPESampler", choices=["TPESampler", "BruteForceSampler"])
     parser.add_argument("--n_trials", type=int, default=1)
-    parser.add_argument("--task", type=str, default="AhnChemoEnv")
+    parser.add_argument("--task", type=str, default="SimGlucose")
     parser.add_argument("--setting", type=int, default=1)
     parser.add_argument("--logdir", type=str, default="settings_db")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--test_num", type=int, default=100)
     parser.add_argument("--epoch", type=int, default=100)
-    parser.add_argument("--num_actions", type=int, default=11)
+    parser.add_argument("--num_actions", type=int, default=1)
     parser.add_argument("--step_per_epoch", type=int, default=1000)
     parser.add_argument("--multi_obj", type=to_bool, default=False)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--cat_num", type=int, default=1)
     parser.add_argument("--policy_name", type=str, default="DQN",
-                        choices=["DQN", "DDQN", "DQN-rnn",
-                                 "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
-                                 "C51", "C51-rnn", "discrete-SAC", "discrete-SAC-rnn"])
+                        choices=["LLM-DQN", "LLM_C51", "LLM_discrete_SAC",
+                                 "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
+                                 "C51", "C51-rnn", 
+                                 "discrete-SAC", "discrete-SAC-rnn"])
     parser.add_argument("--scale_obs", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_known_args()[0]
