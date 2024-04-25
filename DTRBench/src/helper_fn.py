@@ -14,7 +14,7 @@ from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     ImitationPolicy
 from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
-from DTRBench.src.offpolicyRLObj import DQNObjective, C51Objective, DDPGObjective, SACObjective, TD3Objective, \
+from DTRBench.src.offpolicyRLObj import LLM_DQN_Objective, DQNObjective, C51Objective, DDPGObjective, SACObjective, TD3Objective, \
     REDQObjective, DiscreteSACObjective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams, C51HyperParams, DDPGHyperParams, SACHyperParams, \
@@ -131,7 +131,7 @@ def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
 
 
 offpolicyLOOKUP = {
-    "llm-dqn": {"hparam": DQNHyperParams, "policy": LLM_DQN_Policy, "obj": DQNObjective, "type": "discrete"},
+    "llm-dqn": {"hparam": DQNHyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
     "llm-c51": {"hparam": C51HyperParams, "policy": LLM_C51_Policy, "obj": C51Objective, "type": "discrete"},
     "llm-discrete-sac": {"hparam": SACHyperParams, "policy": LLM_discrete_SAC_Policy, "obj": DiscreteSACObjective, "type": "discrete"},
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},

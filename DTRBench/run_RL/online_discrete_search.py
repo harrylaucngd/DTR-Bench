@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--cat_num", type=int, default=1)
     parser.add_argument("--policy_name", type=str, default="DQN",
-                        choices=["LLM-DQN", "LLM_C51", "LLM_discrete_SAC",
+                        choices=["LLM-DQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 
                                  "discrete-SAC", "discrete-SAC-rnn"])

@@ -25,6 +25,61 @@ ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
 
 
+class GlucoseLLM(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Initialize the actual neural network components here
+        pass
+
+    def llm_infer(self, prompt, temp, top_p):
+        # This should be the method that interacts with the neural network to generate text.
+        # Example response generation, replace with actual model inference
+        return "Simulated response based on prompt: " + prompt
+
+    def explain_obs(self, prompt):
+        prompt = prompt + ("\nPlease analyze the current state within 100 words.")
+        temp, top_p = 0.2, 0.3
+        response = self.llm_infer(prompt, temp, top_p)
+        return "\nAnalysis of the current state: \n" + response
+
+    def explain_action(self, prompt):
+        prompt = prompt + "\nPlease explain why the doctor chose the last action within 50 words:"
+        temp, top_p = 0.2, 0.3
+        response = self.llm_infer(prompt, temp, top_p)
+        return "\nExplanation of the last action: \n" + response
+
+
+def define_llm_network(input_shape: int, output_shape: int,
+                          use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
+                          device="cuda" if torch.cuda.is_available() else "cpu",
+                          ):
+    if use_dueling and use_rnn:
+        raise NotImplementedError("rnn and dueling are not implemented together")
+
+    if use_dueling:
+        if linear:
+            dueling_params = ({"hidden_sizes": (), "activation": None},
+                              {"hidden_sizes": (), "activation": None})
+        else:
+            dueling_params = ({"hidden_sizes": (256, 256), "activation": nn.ReLU},
+                              {"hidden_sizes": (256, 256), "activation": nn.ReLU})
+    else:
+        dueling_params = None
+    if not use_rnn:
+        net = Net(state_shape=input_shape, action_shape=output_shape,
+                  hidden_sizes=(256, 256, 256, 256) if not linear else (), activation=nn.ReLU if not linear else None,
+                  device=device, dueling_param=dueling_params, cat_num=cat_num).to(device)
+    else:
+        net = Recurrent(layer_num=3,
+                        state_shape=input_shape,
+                        action_shape=output_shape,
+                        device=device,
+                        hidden_layer_size=256,
+                        ).to(device)
+
+    return net
+    
+
 class Net(nn.Module):
     def __init__(
             self,

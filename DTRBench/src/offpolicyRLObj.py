@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from tianshou.data import Collector, VectorReplayBuffer, ReplayBuffer
 from tianshou.exploration import GaussianNoise
+from DTRBench.src.discrete_policy import LLM_DQN_Policy, LLM_discrete_SAC_Policy, LLM_C51_Policy
 from tianshou.policy import DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, C51Policy, DiscreteSACPolicy
 from tianshou.policy.modelbased.icm import ICMPolicy
@@ -17,8 +18,144 @@ import gymnasium as gym
 
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.utils.network import define_single_network, Net, QRDQN, RecurrentPreprocess, Recurrent
+from DTRBench.utils.network import define_llm_network, define_single_network, Net, QRDQN, RecurrentPreprocess, Recurrent
 
+
+class LLM_DQN_Objective(RLObjective):
+    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+        super().__init__(env_name, hparam_space, device, **kwargs)
+
+    def define_policy(self,
+                      # general hp
+                      gamma,
+                      lr,
+                      stack_num,
+                      linear,
+                      cat_num,
+
+                      # dqn hp
+                      n_step,
+                      target_update_freq,
+                      is_double,
+                      use_dueling,
+                      icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
+                      icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
+                      icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
+                      forecast_length=10,
+                      **kwargs
+                      ):
+        # define model
+        net = define_single_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Adding forecast length to the model
+                                    use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
+        net = define_llm_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Changing to GlucoseLLM
+                                    use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
+        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        # define policy
+        policy = LLM_DQN_Policy(
+            net,
+            optim,
+            gamma,
+            n_step,
+            target_update_freq=target_update_freq,
+            is_double=is_double,  # we will have a separate runner for double dqn
+        )
+        if icm_lr_scale > 0:    # Not considering here?
+            feature_net = define_single_network(self.state_shape, 256, use_rnn=False, device=self.device)
+            action_dim = int(np.prod(self.action_shape))
+            feature_dim = feature_net.output_dim
+            icm_net = IntrinsicCuriosityModule(
+                feature_net.net,
+                feature_dim,
+                action_dim,
+                hidden_sizes=[512],
+                device=self.device
+            )
+            icm_optim = torch.optim.Adam(icm_net.parameters(), lr=lr)
+            policy = ICMPolicy(
+                policy, icm_net, icm_optim, icm_lr_scale, icm_reward_scale,
+                icm_forward_loss_weight
+            ).to(self.device)
+        return policy
+
+    def run(self, policy,
+            eps_test,
+            eps_train,
+            eps_train_final,
+            stack_num,
+            cat_num,
+            step_per_collect,
+            update_per_step,
+            batch_size,
+            **kwargs
+            ):
+        def save_best_fn(policy):
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
+
+        def train_fn(epoch, env_step):
+            # nature DQN setting, linear decay in the first 10k steps
+            if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
+                eps = eps_train - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
+                      (eps_train - eps_train_final)
+            else:
+                eps = eps_train_final
+            policy.set_eps(eps)
+            if env_step % 1000 == 0:
+                self.logger.write("train/env_step", env_step, {"train/eps": eps})
+
+        def test_fn(epoch, env_step):
+            policy.set_eps(eps_test)
+
+        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
+        stack_num = max(stack_num, cat_num)
+        # seed
+        np.random.seed(self.meta_param["seed"])
+        torch.manual_seed(self.meta_param["seed"])
+
+        # replay buffer: `save_last_obs` and `stack_num` can be removed together
+        # when you have enough RAM
+        if self.meta_param["training_num"] > 1: # Not considering here?
+            buffer = VectorReplayBuffer(
+                self.meta_param["buffer_size"],
+                buffer_num=len(self.train_envs),
+                ignore_obs_next=False,
+                save_only_last_obs=False,
+                stack_num=stack_num
+            )
+        else:
+            buffer = ReplayBuffer(self.meta_param["buffer_size"],   # Seems like no need for changing when s:=s+obs_explain+action_explain?
+                                  ignore_obs_next=False,
+                                  save_only_last_obs=False,
+                                  stack_num=stack_num
+                                  )
+
+        # collector
+        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
+
+        # test train_collector and start filling replay buffer
+        print("warm start replay buffer, this may take a while...")
+        train_collector.collect(n_step=batch_size * self.meta_param["training_num"])
+        # trainer
+
+        result = offpolicy_trainer(
+            policy,
+            train_collector,
+            test_collector,
+            self.meta_param["epoch"],
+            self.meta_param["step_per_epoch"],
+            step_per_collect,
+            self.meta_param["test_num"],
+            batch_size,
+            train_fn=train_fn,
+            test_fn=test_fn,
+            stop_fn=self.early_stop_fn,
+            save_best_fn=save_best_fn,
+            logger=self.logger,
+            update_per_step=update_per_step,
+            save_checkpoint_fn=self.save_checkpoint_fn,
+        )
+        return result
+    
 
 class C51Objective(RLObjective):
     def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device,
@@ -181,7 +318,7 @@ class DQNObjective(RLObjective):
             target_update_freq=target_update_freq,
             is_double=is_double,  # we will have a separate runner for double dqn
         )
-        if icm_lr_scale > 0:    # Not considering?
+        if icm_lr_scale > 0:
             feature_net = define_single_network(self.state_shape, 256, use_rnn=False, device=self.device)
             action_dim = int(np.prod(self.action_shape))
             feature_dim = feature_net.output_dim
@@ -235,7 +372,7 @@ class DQNObjective(RLObjective):
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
-        if self.meta_param["training_num"] > 1: # Not considering?
+        if self.meta_param["training_num"] > 1:
             buffer = VectorReplayBuffer(
                 self.meta_param["buffer_size"],
                 buffer_num=len(self.train_envs),
