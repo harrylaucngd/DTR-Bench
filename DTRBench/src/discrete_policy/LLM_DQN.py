@@ -154,15 +154,28 @@ class LLM_DQN_Policy(BasePolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
+        obs_prompt = ""   # TODO: Can we store history and extract here?
+        action_prompt = ""  # TODO: Can we store history and extract here?
         model = getattr(self, model)
         obs = batch[input]
         obs_next = obs.obs if hasattr(obs, "obs") else obs
-        logits, hidden = model(obs_next, state=state, info=batch.info)
+        # Generate observation explanation
+        obs_explain = model.explain_obs(obs_prompt, obs_next)
+        # Compute logits and gain action
+        logits, state = model(obs_next, state=state, info=batch.info)
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
-        return Batch(logits=logits, act=act, state=hidden)
+        # Generate action explanation
+        action_explain = model.explain_action(action_prompt, act)
+        # Construct new s dict
+        if isinstance(obs, Batch):
+            s = Batch(obs=obs, obs_explain=obs_explain, action_explain=action_explain)
+        else:
+            s = {'obs': obs, 'obs_explain': obs_explain, 'action_explain': action_explain}
+
+        return Batch(logits=logits, act=act, state=s)
 
     def learn(self, batch: Batch, **kwargs: Any) -> Dict[str, float]:
         if self._target and self._iter % self._freq == 0:

@@ -172,7 +172,7 @@ class printer:
         return self.func(*args, **kwargs)
 
 
-class LLM_discrete_SAC_Policy(BasePolicy):
+class LLM_C51_Policy(BasePolicy):
     def __init__(self, speaker, config):
         super().__init__()
         self.config = config

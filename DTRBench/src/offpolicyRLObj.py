@@ -47,8 +47,8 @@ class LLM_DQN_Objective(RLObjective):
         # define model
         net = define_single_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Adding forecast length to the model
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
-        net = define_llm_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Changing to GlucoseLLM
-                                    use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
+        net = define_llm_network(self.state_shape+forecast_length, self.action_shape,   # Changing to GlucoseLLM
+                                    device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
@@ -129,7 +129,7 @@ class LLM_DQN_Objective(RLObjective):
                                   )
 
         # collector
-        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
+        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)    # TODO:历史被封装了！
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
 
         # test train_collector and start filling replay buffer
