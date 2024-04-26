@@ -1,6 +1,6 @@
 import numpy as np
-from DTRGym.DTRGym.OberstSepsisEnv.state import State
-from DTRGym.DTRGym.OberstSepsisEnv.action import Action
+from DTRGym.OberstSepsisEnv.state import State
+from DTRGym.OberstSepsisEnv.action import Action
 
 '''
 https://github.com/GilesLuo/NurSpecialist/blob/main/sepsisSimDiabetes/MDP.py

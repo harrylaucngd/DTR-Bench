@@ -10,7 +10,7 @@ import logging
 from numba import njit
 
 from .base import BaseSimulator, BaseReward
-from DTRGym.DTRGym.utils import DiscreteDoubleActionWrapper
+from DTRGym.utils import DiscreteDoubleActionWrapper
 from .base import uniform_random
 
 ObsType = TypeVar("ObsType")

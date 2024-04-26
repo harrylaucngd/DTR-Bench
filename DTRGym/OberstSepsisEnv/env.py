@@ -1,11 +1,11 @@
 import warnings
-from DTRGym.DTRGym.OberstSepsisEnv.state import State
-from DTRGym.DTRGym.OberstSepsisEnv.action import Action
-from DTRGym.DTRGym.OberstSepsisEnv.MDP import MDP
+from DTRGym.OberstSepsisEnv.state import State
+from DTRGym.OberstSepsisEnv.action import Action
+from DTRGym.OberstSepsisEnv.MDP import MDP
 import gymnasium as gym
 from typing import Union, Tuple, Dict, Any, Optional, List, Type, Callable, Sequence, cast
 import numpy as np
-from DTRGym.DTRGym.base import uniform_random
+from DTRGym.base import uniform_random
 from gymnasium import spaces
 
 """

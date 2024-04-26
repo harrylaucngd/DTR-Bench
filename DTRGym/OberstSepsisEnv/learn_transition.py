@@ -2,9 +2,9 @@ import itertools as it
 import os
 
 import numpy as np
-from DTRGym.DTRGym.OberstSepsisEnv.state import State
-from DTRGym.DTRGym.OberstSepsisEnv.action import Action
-from DTRGym.DTRGym.OberstSepsisEnv.MDP import MDP
+from DTRGym.OberstSepsisEnv.state import State
+from DTRGym.OberstSepsisEnv.action import Action
+from DTRGym.OberstSepsisEnv.MDP import MDP
 import cf.counterfactual as cf
 import pickle as pkl
 import ray

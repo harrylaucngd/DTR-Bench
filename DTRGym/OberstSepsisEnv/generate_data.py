@@ -7,15 +7,15 @@ import numpy as np
 import pandas as pd
 import holoviews as hv
 from holoviews import opts, dim
-import DTRGym.DTRGym.OberstSepsisEnv.cf.counterfactual as cf
+import DTRGym.OberstSepsisEnv.cf.counterfactual as cf
 import cf.utils as utils
 from tqdm.auto import tqdm
 
-from DTRGym.DTRGym.OberstSepsisEnv.state import State
-from DTRGym.DTRGym.OberstSepsisEnv.action import Action
-from DTRGym.DTRGym.OberstSepsisEnv.DataGenerator import DataGenerator
-from DTRGym.DTRGym.OberstSepsisEnv.env import SimSepsisEnv
-from DTRGym.DTRGym.OberstSepsisEnv.learn_transition import main as get_full_policy
+from DTRGym.OberstSepsisEnv.state import State
+from DTRGym.OberstSepsisEnv.action import Action
+from DTRGym.OberstSepsisEnv.DataGenerator import DataGenerator
+from DTRGym.OberstSepsisEnv.env import SimSepsisEnv
+from DTRGym.OberstSepsisEnv.learn_transition import main as get_full_policy
 import warnings
 from bokeh.io import export_png
 import h5py

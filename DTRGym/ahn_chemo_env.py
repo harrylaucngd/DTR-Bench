@@ -7,8 +7,8 @@ from typing import Any, SupportsFloat, TypeVar
 from collections import OrderedDict
 from scipy.integrate import solve_ivp
 
-from DTRGym.DTRGym.base import BaseSimulator, BaseReward, uniform_random
-from DTRGym.DTRGym.utils import DiscreteActionWrapper
+from DTRGym.base import BaseSimulator, BaseReward, uniform_random
+from DTRGym.utils import DiscreteActionWrapper
 
 ObsType = TypeVar("ObsType")
 

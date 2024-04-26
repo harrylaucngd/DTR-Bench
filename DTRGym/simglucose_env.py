@@ -15,7 +15,7 @@ from functools import partial
 import gymnasium as gym
 from gymnasium import spaces
 from datetime import datetime
-from DTRGym.DTRGym.utils import DiscreteActionWrapper
+from DTRGym.utils import DiscreteActionWrapper
 
 
 def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):

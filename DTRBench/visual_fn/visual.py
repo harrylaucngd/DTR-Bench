@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 
 from DTRBench.visual_fn.env_vis_fn import visualise_env_policy_fn
-from DTRBench.core.baseline_policy import AllMinPolicy
+from DTRBench.src.baseline_policy import AllMinPolicy
 from DTRBench.utils.get_policy import get_DQN, get_DDQN, get_DDQN_dueling, get_C51,\
     get_discrete_SAC, get_DQN_rnn, get_DDQN_rnn, get_C51_rnn, get_discrete_SAC_rnn,\
     get_DDPG, get_TD3, get_SAC
