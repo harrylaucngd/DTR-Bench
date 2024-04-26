@@ -1,4 +1,5 @@
 import numpy as np
+import yaml
 import torch
 import torch.nn as nn
 from GlucoseLLM.models import TimeLLM
@@ -20,6 +21,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from tianshou.data.batch import Batch
+from DTRBench.utils import prompt_extract
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
@@ -27,7 +29,9 @@ Sequence[Dict[Any, Any]]]
 
 
 class GlucoseLLM(TimeLLM.Model):
-    def __init__(self, configs):
+    def __init__(self, input_shape, output_shape, configs):
+        configs.seq_len = input_shape
+        configs.pred_len = output_shape
         super(GlucoseLLM, self).__init__(configs)
 
     def llm_infer(self, prompt, temp, max_length, top_p):
@@ -41,24 +45,27 @@ class GlucoseLLM(TimeLLM.Model):
         return response[0]
 
     def explain_obs(self, prompt):
+        prompt = prompt_extract(prompt)
         prompt = prompt + ("\nPlease analyze the current state within 100 words.")
-        temp, max_length, top_p = 0.2, 100, 0.3
+        temp, max_length, top_p = 0.2, 300, 0.3
         response = self.llm_infer(prompt, temp, max_length, top_p)
         return "\nAnalysis of the current state: \n" + response
 
     def explain_action(self, prompt):
+        prompt = prompt_extract(prompt)
         prompt = prompt + "\nPlease explain why the doctor chose the last action within 50 words:"
-        temp, max_length, top_p = 0.2, 50, 0.3
+        temp, max_length, top_p = 0.2, 150, 0.3
         response = self.llm_infer(prompt, temp, max_length, top_p)
         return "\nExplanation of the last action: \n" + response
 
 
 def define_llm_network(input_shape: int, output_shape: int,
-                          cat_num: int = 1, linear=False,
-                          device="cuda" if torch.cuda.is_available() else "cpu",
+                          cat_num: int = 1, device="cuda" if torch.cuda.is_available() else "cpu"
                           ):
-    net = GlucoseLLM(state_shape=input_shape, action_shape=output_shape,    # TODO: Input and output adaptation for TimeLLM Module
-                     device=device, cat_num=cat_num).to(device)
+    with open('./DTRBench/configs/dqn_configs.yaml', 'r') as file:
+        configs = yaml.safe_load(file)
+    net = GlucoseLLM(state_shape=input_shape, action_shape=output_shape,
+                     device=device, cat_num=cat_num, configs = configs).to(device)
 
     return net
     

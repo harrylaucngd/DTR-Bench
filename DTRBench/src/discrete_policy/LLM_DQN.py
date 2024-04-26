@@ -7,6 +7,8 @@ import torch
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import BasePolicy
 
+from DTRBench.utils.prompt_info import min_values, max_values, median, lags
+
 
 class LLM_DQN_Policy(BasePolicy):
     """Implementation of Deep Q Network. arXiv:1312.5602.
@@ -154,21 +156,66 @@ class LLM_DQN_Policy(BasePolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
-        obs_prompt = ""   # TODO: Can we store history and extract here?
-        action_prompt = ""  # TODO: Can we store history and extract here?
+        obs_prompt, action_prompt = [], []  # TODO:Where to get/store history? (Using Collector? Like NStepReturn? Or storing it locally with unique identifier?)
         model = getattr(self, model)
         obs = batch[input]
         obs_next = obs.obs if hasattr(obs, "obs") else obs
+
         # Generate observation explanation
+        min_values_str = str(min_values(obs_prompt))
+        max_values_str = str(max_values(obs_prompt))
+        median_values_str = str(median(obs_prompt))
+        lags_values_str = str(lags(obs_prompt))
+        prompt_ = (
+            f"<|start_prompt|>Data description: {self.state_description}"
+            f"Task description: forecast the next {str(self.output_size)} states given the previous {str(self.input_size)} steps information; "
+            "Input statistics: "
+            f"min value {min_values_str}, "
+            f"max value {max_values_str}, "
+            f"median value {median_values_str}, "
+            f"the trend of input is {'upward' if obs - obs_prompt[-1].obs > 0 else 'downward'}, "
+            f"top 5 lags are : {lags_values_str}<|<end_prompt>|>"
+        )
+        obs_prompt.append(
+            {"prompt": prompt_,
+             "min_values": min(obs_next),
+             "max_values": max(obs_next),
+             "median_values": median(obs_next),
+             "lags_values": lags(obs_next)}
+        )
         obs_explain = model.explain_obs(obs_prompt, obs_next)
+
         # Compute logits and gain action
         logits, state = model(obs_next, state=state, info=batch.info)
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
+
         # Generate action explanation
+        min_values_str = str(min_values(obs_prompt))
+        max_values_str = str(max_values(obs_prompt))
+        median_values_str = str(median(obs_prompt))
+        lags_values_str = str(lags(obs_prompt))
+        prompt_ = (
+            f"<|start_prompt|>Data description: {self.action_description}"
+            f"Task description: forecast the next {str(self.output_size)} action given the previous {str(self.input_size)} steps information; "
+            "Input statistics: "
+            f"min value {min_values_str}, "
+            f"max value {max_values_str}, "
+            f"median value {median_values_str}, "
+            f"the trend of input is {'upward' if act - action_prompt[-1].act > 0 else 'downward'}, "
+            f"top 5 lags are : {lags_values_str}<|<end_prompt>|>"
+        )
+        action_prompt.append(
+            {"prompt": prompt_,
+             "min_values": min(act),
+             "max_values": max(act),
+             "median_values": median(act),
+             "lags_values": lags(act)}
+        )
         action_explain = model.explain_action(action_prompt, act)
+
         # Construct new s dict
         if isinstance(obs, Batch):
             s = Batch(obs=obs, obs_explain=obs_explain, action_explain=action_explain)

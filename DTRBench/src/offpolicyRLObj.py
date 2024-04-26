@@ -36,18 +36,16 @@ class LLM_DQN_Objective(RLObjective):
                       # dqn hp
                       n_step,
                       target_update_freq,
-                      is_double,
-                      use_dueling,
                       icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
                       icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
                       icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
-                      forecast_length=10,
+                      forecast_length=10,   # TODO:What is this?
                       **kwargs
                       ):
         # define model
-        net = define_single_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Adding forecast length to the model
-                                    use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
-        net = define_llm_network(self.state_shape+forecast_length, self.action_shape,   # Changing to GlucoseLLM
+        # net = define_single_network(self.state_shape+forecast_length, self.action_shape, use_dueling=use_dueling,   # Adding forecast length to the model
+        #                             use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
+        net = define_llm_network(self.state_shape, self.action_shape,   # Changing to GlucoseLLM
                                     device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
@@ -57,7 +55,10 @@ class LLM_DQN_Objective(RLObjective):
             gamma,
             n_step,
             target_update_freq=target_update_freq,
-            is_double=is_double,  # we will have a separate runner for double dqn
+            state_shape = self.state_shape, 
+            action_shape = self.action_shape,
+            state_description = "", # TODO:fill it in
+            action_description = "" # TODO:fill it in
         )
         if icm_lr_scale > 0:    # Not considering here?
             feature_net = define_single_network(self.state_shape, 256, use_rnn=False, device=self.device)
