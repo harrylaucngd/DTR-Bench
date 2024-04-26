@@ -161,6 +161,10 @@ class OffPolicyRLHyperParameterSpace:
         all_attrs = {**self, **class_attrs}
         return str(all_attrs)
 
+class LLM_DQNHyperParams(OffPolicyRLHyperParameterSpace):
+    # todo: remove linear, use_RNN and other unused hyperparameters
+    pass
+
 class DQNHyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("dqn", "ddqn",
                         "dqn-rnn", "ddqn-rnn",

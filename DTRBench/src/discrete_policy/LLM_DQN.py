@@ -5,12 +5,12 @@ import numpy as np
 import torch
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
-from tianshou.policy import BasePolicy
+from tianshou.policy import DQNPolicy
 
 from DTRBench.utils.prompt_info import min_values, max_values, median, lags
 
 
-class LLM_DQN_Policy(BasePolicy):
+class LLM_DQN_Policy(DQNPolicy):
     """Implementation of Deep Q Network. arXiv:1312.5602.
 
     Implementation of Double Q-Learning. arXiv:1509.06461.
@@ -129,33 +129,47 @@ class LLM_DQN_Policy(BasePolicy):
         input: str = "obs",
         **kwargs: Any,
     ) -> Batch:
-        """Compute action over the given batch data.
-
-        If you need to mask the action, please add a "mask" into batch.obs, for
-        example, if we have an environment that has "0/1/2" three actions:
-        ::
-
-            batch == Batch(
-                obs=Batch(
-                    obs="original obs, with batch_size=1 for demonstration",
-                    mask=np.array([[False, True, False]]),
-                    # action 1 is available
-                    # action 0 and 2 are unavailable
-                ),
-                ...
-            )
-
-        :return: A :class:`~tianshou.data.Batch` which has 3 keys:
-
-            * ``act`` the action.
-            * ``logits`` the network's raw output.
-            * ``state`` the hidden state.
-
-        .. seealso::
-
-            Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
-            more detailed explanation.
         """
+        todo: 1. modify forward
+        todo: 2. modify sync_weight
+        todo: 3. modify is_double
+        todo: 4. change network definition
+        todo: 5. in network, add functions to control which mode to use
+        todo: 6. transformers.pipeline   [{"role": "system", "content": "blablabla"},
+                                          {"role": "user", "content": "blabla"},
+                                          {"role": "assistent", "content": "blabla"}]
+                                                https://huggingface.co/docs/transformers/main/en/chat_templating
+        todo: 7.https://tianshou.org/en/v0.4.7/tutorials/batch.html
+
+        Define Q generation as self(prompt, obs, mode=Q), define string generation as self(prompt, obs, mode=str)
+        1. build prompt
+        system_prompt = blablabla
+        history_prompt = state
+
+        1. observation explanation
+        if need_obs_explain:
+            obs_explain = model.explain_obs(system_prompt, obs, mode=str)
+        else:
+            obs_explain = []
+        new_prompt = system_prompt + history_prompt + obs_explain    #add obs_explain to prompt
+
+        2. action explanation
+        if need_act_explain:
+            act_exp_prompt = new_prompt + self.take_action_from_info(state) + question_prompt
+            act_explain = model.explain_act(system_prompt, act, mode=str)
+        else:
+            act_explain = []
+
+        3. Q inference
+        logits, state = model(new_prompt, obs, mode=Q)
+
+
+        4. save obs_explain, act_explain, to state
+
+        """
+        # todo: state stores all previous histories, so use state
+        # todo: all prompts go to a prompt bank
+
         obs_prompt, action_prompt = [], []  # TODO:Where to get/store history? (Using Collector? Like NStepReturn? Or storing it locally with unique identifier?)
         model = getattr(self, model)
         obs = batch[input]
@@ -221,12 +235,11 @@ class LLM_DQN_Policy(BasePolicy):
             s = Batch(obs=obs, obs_explain=obs_explain, action_explain=action_explain)
         else:
             s = {'obs': obs, 'obs_explain': obs_explain, 'action_explain': action_explain}
-
         return Batch(logits=logits, act=act, state=s)
 
     def learn(self, batch: Batch, **kwargs: Any) -> Dict[str, float]:
         if self._target and self._iter % self._freq == 0:
-            self.sync_weight()
+            self.sync_weight() # todo: only sync the Q module
         self.optim.zero_grad()
         weight = batch.pop("weight", 1.0)
         q = self(batch).logits

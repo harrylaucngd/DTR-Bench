@@ -39,7 +39,7 @@ class LLM_DQN_Objective(RLObjective):
                       icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
                       icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
                       icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
-                      forecast_length=10,   # TODO:What is this?
+                      forecast_length=10,  # todo: remove? this should be from timeLLM
                       **kwargs
                       ):
         # define model
