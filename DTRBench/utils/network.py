@@ -21,7 +21,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from tianshou.data.batch import Batch
-from DTRBench.utils import prompt_extract
+from transformers import pipelines
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
@@ -29,34 +29,59 @@ Sequence[Dict[Any, Any]]]
 
 
 class GlucoseLLM(TimeLLM.Model):
-    def __init__(self, input_shape, output_shape, configs):
-        configs.seq_len = input_shape
-        configs.pred_len = output_shape
-        super(GlucoseLLM, self).__init__(configs)
+    def __init__(self, configs, mode='Q'):
+        super().__init__(configs)
+        self.mode = mode  # Set the default mode or accept it from instantiation
 
-    def llm_infer(self, prompt, temp, max_length, top_p):
-        response = self.llm_model.generate(
-            prompt=prompt,
-            max_length=max_length,
-            temperature=temp,
-            top_p=top_p,
-            num_return_sequences=1
-        )
-        return response[0]
+    def forward(self, x_enc, x_mark_enc, x_dec=None, x_mark_dec=None, mask=None):
+        if self.mode == 'Q':
+            # Inference the whole network
+            if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
+                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+                return dec_out[:, -self.pred_len:, :]
+        elif self.mode == 'str':
+            # Only inference the llm_model part
+            # Assume x_enc has been appropriately preprocessed to serve as input for llm_model
+            # Generate prompt embeddings
+            prompt = self.generate_prompt(x_enc)  # You would need to implement this method or modify accordingly
+            prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(x_enc.device))
+            # Process with llm_model
+            llm_output = self.llm_model(inputs_embeds=prompt_embeddings).last_hidden_state
+            return llm_output
+        else:
+            raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
 
-    def explain_obs(self, prompt):
-        prompt = prompt_extract(prompt)
-        prompt = prompt + ("\nPlease analyze the current state within 100 words.")
+    def set_mode(self, mode):
+        if mode not in ['Q', 'str']:
+            raise ValueError("Invalid mode specified. Choose 'Q' for full inference or 'str' for partial inference.")
+        self.mode = mode
+
+    def freeze_llm_model(self):
+        """Ensure all llm_model parameters are frozen."""
+        for param in self.llm_model.parameters():
+            param.requires_grad = False
+
+    def unfreeze_llm_model(self):
+        """Unfreeze all llm_model parameters, allowing them to be updated during training."""
+        for param in self.llm_model.parameters():
+            param.requires_grad = True
+
+    def explain_action(self, prompt, mode='str'):
+        prompt = prompt + "\nPlease explain why the agent chose the last action within 100 words:"
+        temp, max_length, top_p = 0.2, 300, 0.3
+        response = self.llm_infer(prompt, temp, max_length, top_p)
+        return "\nExplanation of the last action: \n" + response
+
+    def explain_obs(self, prompt, mode='str'):
+        prompt = prompt + ("\nPlease analyze the current state within 100 words:")
         temp, max_length, top_p = 0.2, 300, 0.3
         response = self.llm_infer(prompt, temp, max_length, top_p)
         return "\nAnalysis of the current state: \n" + response
-
-    def explain_action(self, prompt):
-        prompt = prompt_extract(prompt)
-        prompt = prompt + "\nPlease explain why the doctor chose the last action within 50 words:"
-        temp, max_length, top_p = 0.2, 150, 0.3
-        response = self.llm_infer(prompt, temp, max_length, top_p)
-        return "\nExplanation of the last action: \n" + response
+    
+    def q_pred(self, prompt, obs, act, mode='Q'):
+        prompt = prompt + "\nPlease predict the q value for the 5 possible actions in the next timestep:"
+        response = self.forward(prompt, obs, act, mode='Q')
+        return response
 
 
 def define_llm_network(input_shape: int, output_shape: int,
@@ -65,7 +90,7 @@ def define_llm_network(input_shape: int, output_shape: int,
     with open('./DTRBench/configs/dqn_configs.yaml', 'r') as file:
         configs = yaml.safe_load(file)
     net = GlucoseLLM(state_shape=input_shape, action_shape=output_shape,
-                     device=device, cat_num=cat_num, configs = configs).to(device)
+                     device=device, configs = configs).to(device)
 
     return net
     

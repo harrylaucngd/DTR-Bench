@@ -12,7 +12,7 @@ from tianshou.policy.base import BasePolicy
 from tianshou.utils import TensorboardLogger, WandbLogger
 from torch.utils.tensorboard import SummaryWriter
 
-#from DTRGym import buffer_registry
+from DTRGym import buffer_registry
 from DTRGym.base import make_env
 from DTRBench.utils.misc import set_global_seed
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace

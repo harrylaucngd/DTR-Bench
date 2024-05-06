@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
-from utils.timefeatures import time_features
+from GlucoseLLM.utils.timefeatures import time_features
 import warnings
 
 warnings.filterwarnings('ignore')

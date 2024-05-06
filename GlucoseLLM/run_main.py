@@ -6,9 +6,9 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
-from models import TimeLLM
+from GlucoseLLM.models import TimeLLM
 
-from data_provider.data_factory import data_provider
+from GlucoseLLM.data_provider.data_factory import data_provider
 import time
 import random
 import numpy as np
@@ -34,11 +34,11 @@ parser.add_argument('--model_id', type=str, required=True, default='test', help=
 parser.add_argument('--model_comment', type=str, required=True, default='none', help='prefix when saving test results')
 parser.add_argument('--model', type=str, required=True, default='Autoformer',
                     help='model name, options: [Autoformer, DLinear]')
-parser.add_argument('--seed', type=int, default=2021, help='random seed')
+parser.add_argument('--seed', type=int, default=2024, help='random seed')
 
 # data loader
 parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
-parser.add_argument('--root_path', type=str, default='./dataset', help='root path of the data file')
+parser.add_argument('--root_path', type=str, default='./GlucoseLLM/dataset', help='root path of the data file')
 parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
 parser.add_argument('--features', type=str, default='M',
                     help='forecasting task, options:[M, S, MS]; '
@@ -50,7 +50,7 @@ parser.add_argument('--freq', type=str, default='h',
                     help='freq for time features encoding, '
                          'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
                          'you can also use more detailed freq like 15min or 3h')
-parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+parser.add_argument('--checkpoints', type=str, default='./GlucoseLLM/checkpoints/', help='location of model checkpoints')
 
 # forecasting task
 parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -99,7 +99,7 @@ parser.add_argument('--percent', type=int, default=100)
 
 args = parser.parse_args()
 ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
+deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./GlucoseLLM/ds_config_zero2.json')
 accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
 
 # setting record of experiment

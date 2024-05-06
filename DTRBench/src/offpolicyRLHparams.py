@@ -161,9 +161,53 @@ class OffPolicyRLHyperParameterSpace:
         all_attrs = {**self, **class_attrs}
         return str(all_attrs)
 
-class LLM_DQNHyperParams(OffPolicyRLHyperParameterSpace):
-    # todo: remove linear, use_RNN and other unused hyperparameters
-    pass
+class LLM_DQN_HyperParams(OffPolicyRLHyperParameterSpace):
+    _supported_algos = ("llm-dqn", "llm-ddqn")
+    _policy_hparams = (
+        "lr",  # learning rate
+        "eps_test",
+        "eps_train",
+        "eps_train_final",
+        "n_step",
+        "target_update_freq",
+        "is_double",)
+
+    def define_policy_hparams(self, trial: optuna.trial.Trial):
+        # dqn hp
+        self.n_step = get_common_hparams(trial, "n_step")
+        self.target_update_freq = get_common_hparams(trial, "target_update_freq")
+        self.lr = get_common_hparams(trial, "lr")
+
+        eps_test = 0.005
+        eps_train = 1
+        eps_train_final = 0.005
+
+        self.eps_test = eps_test
+        self.eps_train = eps_train
+        self.eps_train_final = eps_train_final
+
+        self.is_double = True if "ddqn" in self.algo_name.lower() else False
+
+        trial.set_user_attr("is_double", self.is_double)
+        trial.set_user_attr("eps_test", eps_test)
+        trial.set_user_attr("eps_train", eps_train)
+        trial.set_user_attr("eps_train_final", eps_train_final)
+
+        trial.set_user_attr("icm_lr_scale", 0.)
+        trial.set_user_attr("icm_reward_scale", 0.)
+        trial.set_user_attr("icm_forward_loss_weight", 0.)
+        return {
+            "lr": self.lr,
+            "n_step": self.n_step,
+            "target_update_freq": self.target_update_freq,
+            "is_double": self.is_double,
+            "eps_test": self.eps_test,
+            "eps_train": self.eps_train,
+            "eps_train_final": self.eps_train_final,
+            "icm_lr_scale": 0.,
+            "icm_reward_scale": 0.,
+            "icm_forward_loss_weight": 0.
+        }
 
 class DQNHyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("dqn", "ddqn",

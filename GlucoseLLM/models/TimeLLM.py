@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 
 from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, GPT2Config, GPT2Model, GPT2Tokenizer
-from layers.Embed import PatchEmbedding
+from GlucoseLLM.layers.Embed import PatchEmbedding
 import transformers
-from layers.StandardNorm import Normalize
+from GlucoseLLM.layers.StandardNorm import Normalize
 
 transformers.logging.set_verbosity_error()
 
@@ -40,7 +40,7 @@ class Model(nn.Module):
         self.stride = configs.stride
 
         if configs.llm_model == 'LLAMA':
-            model_dir = './model_hub'
+            model_dir = './GlucoseLLM/model_hub'
             
             self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-7b')
             self.llama_config.num_hidden_layers = configs.llm_layers
@@ -67,7 +67,7 @@ class Model(nn.Module):
                 print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
 
         elif configs.llm_model == 'GPT2':
-            model_dir = './model_hub'
+            model_dir = './GlucoseLLM/model_hub'
             
             self.llama_config = GPT2Config.from_pretrained(f'{model_dir}/gpt2')
             self.llama_config.num_hidden_layers = configs.llm_layers

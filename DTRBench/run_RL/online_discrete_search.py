@@ -8,6 +8,8 @@ from DTRBench.src.helper_fn import get_best_hparams, get_policy_class, get_hpara
 from DTRBench.utils.misc import to_bool, early_stopping_callback
 from DTRBench.src.helper_fn import create_study_with_filter
 import DTRGym
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 def parse_args():
@@ -16,21 +18,21 @@ def parse_args():
     # training-aid hyperparameters
     parser.add_argument("--sampler", type=str, default="TPESampler", choices=["TPESampler", "BruteForceSampler"])
     parser.add_argument("--n_trials", type=int, default=1)
-    parser.add_argument("--task", type=str, default="SimGlucose")
+    parser.add_argument("--task", type=str, default="SimGlucoseEnv")
     parser.add_argument("--setting", type=int, default=1)
     parser.add_argument("--logdir", type=str, default="settings_db")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--training_num", type=int, default=1)
+    parser.add_argument("--training_num", type=int, default=10)
     parser.add_argument("--test_num", type=int, default=100)
     parser.add_argument("--epoch", type=int, default=100)
-    parser.add_argument("--num_actions", type=int, default=1)
+    parser.add_argument("--num_actions", type=int, default=5)
     parser.add_argument("--step_per_epoch", type=int, default=1000)
     parser.add_argument("--multi_obj", type=to_bool, default=False)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--cat_num", type=int, default=1)
-    parser.add_argument("--policy_name", type=str, default="DQN",
-                        choices=["LLM-DQN", "LLM-C51", "LLM-discrete-SAC",
+    parser.add_argument("--policy_name", type=str, default="DDQN",
+                        choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 
                                  "discrete-SAC", "discrete-SAC-rnn"])
