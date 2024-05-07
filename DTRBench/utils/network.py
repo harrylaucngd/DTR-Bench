@@ -29,11 +29,18 @@ Sequence[Dict[Any, Any]]]
 
 
 class GlucoseLLM(TimeLLM.Model):
-    def __init__(self, configs, mode='Q'):
+    def __init__(self, configs, use_target):
         super().__init__(configs)
-        self.mode = mode  # Set the default mode or accept it from instantiation
+        self.use_target = use_target
 
-    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mask=None):
+    def forward_Q(self, *args, **kwargs):
+        pass
+
+    def forward_text(self, *args, **kwargs):
+        pass
+
+    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mask=None, state=None, info={}):
+        # todo: must return logits and state, split the forward function into two functions
         if self.mode == 'Q':
             # Inference the whole network
             dec_out = self.forecast(series, prompt)
@@ -46,6 +53,7 @@ class GlucoseLLM(TimeLLM.Model):
             return llm_output
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
+        return logits, state
 
     def set_mode(self, mode):
         if mode not in ['Q', 'str']:
@@ -81,6 +89,11 @@ class GlucoseLLM(TimeLLM.Model):
         response = self.forward(series, prompt, mode='Q')
         return response
 
+    def get_target_model(self):
+        pass
+
+    def sync_target_model(self):
+        pass
 
 def define_llm_network(input_shape: int, output_shape: int,
                           cat_num: int = 1, device="cuda" if torch.cuda.is_available() else "cpu"
@@ -373,106 +386,3 @@ class QRDQN(nn.Module):
         obs = obs.view(-1, self.action_shape, self.num_quantiles)
         return obs, state
 
-
-class SeqEncoder(nn.Module):
-    def __init__(self, backbone_num_layer, feature_dim, hidden_size,
-                 device: Union[str, int, torch.device] = "cpu"):
-        super().__init__()
-        self.fc1 = nn.Linear(feature_dim, hidden_size).to(device)
-        self.lstm = nn.LSTM(
-            input_size=hidden_size,
-            hidden_size=hidden_size,
-            num_layers=backbone_num_layer,
-            batch_first=True,
-        ).to(device)
-
-        self.device = device
-
-    def forward(self, x: torch.Tensor, state=None, info={}):
-        x = torch.as_tensor(x, device=self.device, dtype=torch.float32)
-        x = self.fc1(x)
-        self.lstm.flatten_parameters()
-        if state is None:
-            x, (hidden, cell) = self.lstm(x)
-        else:
-            x, (hidden, cell) = self.lstm(
-                x, (
-                    state["encoder_hidden"].transpose(0, 1).contiguous(),
-                    state["encoder_cell"].transpose(0, 1).contiguous()
-                )
-            )
-        return x, {
-            "encoder_hidden": hidden.transpose(0, 1).detach(),
-            "encoder_cell": cell.transpose(0, 1).detach()
-        }
-
-
-class SSLNet(nn.Module):
-    def __init__(self, backbone_num_layer, feature_dim, hidden_size,
-                 device: Union[str, int, torch.device] = "cpu"):
-        super().__init__()
-        self.encoder = SeqEncoder(backbone_num_layer, feature_dim, hidden_size, device)
-        self.decoder = SeqEncoder(backbone_num_layer, hidden_size, feature_dim, device)
-        self.device = device
-
-    def forward(self, x: torch.Tensor, state=None, info={}):
-        x = torch.as_tensor(x, device=self.device, dtype=torch.float32)
-        if state is None:
-            x, e_state = self.encoder(x)
-            x, d_state = self.decoder(x)
-        else:
-            x, e_state = self.encoder(
-                x, (
-                    state["encoder_state"]["hidden"].transpose(0, 1).contiguous(),
-                    state["encoder_state"]["cell"].transpose(0, 1).contiguous()
-                )
-            )
-            x, d_state = self.decoder(
-                x, (
-                    state["decoder_state"]["hidden"].transpose(0, 1).contiguous(),
-                    state["decoder_state"]["cell"].transpose(0, 1).contiguous()
-                )
-            )
-        encoder_state = {
-            "hidden": e_state["hidden"].transpose(0, 1).detach(),
-            "cell": e_state["cell"].transpose(0, 1).detach()
-        }
-        decoder_state = {
-            "hidden": d_state["hidden"].transpose(0, 1).detach(),
-            "cell": d_state["cell"].transpose(0, 1).detach()
-        }
-
-        return x, {"encoder_state": encoder_state, "decoder_state": decoder_state}
-
-
-class PredLOSNet(nn.Module):
-    def __init__(self, backbone_num_layer, task_num_layer, feature_dim, output_dim, hidden_size,
-                 activation=nn.ReLU, norm_layer=None, episodic=False,
-                 device: Union[str, int, torch.device] = "cpu"):
-        super().__init__()
-        self.backbone = SeqEncoder(backbone_num_layer, feature_dim, hidden_size, device).to(device)
-        self.episodic = episodic
-        self.pred_los_net = MLP(input_dim=hidden_size, output_dim=output_dim,
-                                hidden_sizes=[hidden_size] * task_num_layer,
-                                activation=activation, norm_layer=norm_layer, device=device, flatten_input=False).to(
-            device)
-        self.device = device
-
-    def forward(self, x: torch.Tensor, state=None, info={}):
-        x = torch.as_tensor(x, device=self.device, dtype=torch.float)
-        x, backbone_state = self.backbone(x)
-        if not self.episodic:
-            x = x[:, -1, :]
-        LOS = self.pred_los_net(x)
-        return LOS, None
-
-
-if __name__ == "__main__":
-    input_shape = 3
-    output_shape = 2
-    network = define_single_network(input_shape, output_shape,
-                                    use_rnn=False, use_dueling=False, cat_num=2, linear=True)
-    print(network)
-    network = define_single_network(input_shape, output_shape,
-                                    use_rnn=False, use_dueling=False, cat_num=1, linear=True)
-    print(network)

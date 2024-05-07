@@ -66,6 +66,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self._target = target_update_freq > 0
         self._freq = target_update_freq
         self._iter = 0
+        # todo: move model_old to GlucoseLLM
         if self._target:
             # Initialize model_old with the same configuration as the main model
             self.model_old = model(self.model.configs)
@@ -80,16 +81,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
 
-    def set_eps(self, eps: float) -> None:
-        """Set the eps for epsilon-greedy exploration."""
-        self.eps = eps
-
-    def train(self, mode: bool = True) -> "LLM_DQN_Policy":
-        """Set the module in training mode, except for the target network."""
-        self.training = mode
-        self.model.train(mode)
-        return self
-
+    # todo: L move sync_weight to GlucoseLLM
     def sync_weight(self) -> None:
         """Synchronize the weight for the target network, excluding the llm_model."""
         state_dict_to_sync = {
@@ -100,44 +92,6 @@ class LLM_DQN_Policy(DQNPolicy):
         # only update reprogramming and projection layers
         self.model_old.load_state_dict(state_dict_to_sync, strict=False)
 
-
-    def _target_q(self, buffer: ReplayBuffer, indices: np.ndarray) -> torch.Tensor:
-        batch = buffer[indices]  # batch.obs_next: s_{t+n}
-        result = self(batch, input="obs_next")
-        if self._target:
-            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
-            target_q = self(batch, model="model_old", input="obs_next").logits
-        else:
-            target_q = result.logits
-        if self._is_double:
-            return target_q[np.arange(len(result.act)), result.act]
-        else:  # Nature DQN, over estimate
-            return target_q.max(dim=1)[0]
-
-    def process_fn(
-        self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
-    ) -> Batch:
-        """Compute the n-step return for Q-learning targets.
-
-        More details can be found at
-        :meth:`~tianshou.policy.BasePolicy.compute_nstep_return`.
-        """
-        batch = self.compute_nstep_return(
-            batch, buffer, indices, self._target_q, self._gamma, self._n_step,
-            self._rew_norm
-        )
-        return batch
-
-    def compute_q_value(
-        self, logits: torch.Tensor, mask: Optional[np.ndarray]
-    ) -> torch.Tensor:
-        """Compute the q value based on the network's raw output and action mask."""
-        if mask is not None:
-            # the masked q value should be smaller than logits.min()
-            min_value = logits.min() - logits.max() - 1.0
-            logits = logits + to_torch_as(1 - mask, logits) * min_value
-        return logits
-
     def forward(
         self,
         batch: Batch,
@@ -147,6 +101,7 @@ class LLM_DQN_Policy(DQNPolicy):
         **kwargs: Any,
     ) -> Batch:
         """
+        todo: 0. modify env function, a) sample_time=10 b) action_list append in step and reset in self.reset
         todo: 1. modify forward
         todo: 2. modify sync_weight
         todo: 3. modify is_double
@@ -184,13 +139,12 @@ class LLM_DQN_Policy(DQNPolicy):
         4. save obs_explain, act_explain, to state
 
         """
-        # TODO: How to play with batch.info?
+        # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
+        # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
-        for attr in ["act", "obs", "act_exp", "obs_exp"]:
-            if not hasattr(state, attr):
-                state[attr] = []
-                init = True
-        
+        if state is None:
+            state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
+
         act_exp_prompt = "" # TODO: expertised background knowledge for action explanation
         obs_exp_prompt = "" # TODO: expertised background knowledge for observation explanation
         Q_prompt = ""       # TODO: expertised prompt for Q value prediction
@@ -203,12 +157,14 @@ class LLM_DQN_Policy(DQNPolicy):
             if not hasattr(self, "max_action_num"):
                 self.max_action_num = q.shape[1]
             act = to_numpy(q.max(dim=1)[1])
-        else:       # explanation might apply
+        else:
+            # act explanation
             state["act"].append(self.take_action_from_info(batch.info)) # add last step act from info outside forward
             act_exp_prompt += act_prompt_reprogramming(state["obs"], state["act"], state["act_exp"])
             act_explain = model.explain_act(act_exp_prompt, mode=str) if self.need_act_explain else ""
             state["act_exp"].append(act_explain)
 
+            # obs explanation
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
             state["obs"].append(obs_next)
@@ -216,6 +172,7 @@ class LLM_DQN_Policy(DQNPolicy):
             obs_explain = model.explain_obs(obs_exp_prompt, mode=str) if self.need_obs_explain else ""
             state["obs_exp"].append(obs_explain)
 
+            # Q value prediction
             series, q_prompt = q_prompt_reprogramming(state["obs"], state["act"], act_explain, obs_explain)
             Q_prompt += q_prompt
             logits = model.q_pred(series, Q_prompt, mode='Q')
@@ -223,6 +180,9 @@ class LLM_DQN_Policy(DQNPolicy):
             if not hasattr(self, "max_action_num"):
                 self.max_action_num = q.shape[1]
             act = to_numpy(q.max(dim=1)[1])
+
+        #     append cur_state to state history
+        # .......
 
         return Batch(logits=logits, act=act, state=state)
 
@@ -248,18 +208,3 @@ class LLM_DQN_Policy(DQNPolicy):
         self.optim.step()
         self._iter += 1
         return {"loss": loss.item()}
-
-    def exploration_noise(
-        self,
-        act: Union[np.ndarray, Batch],
-        batch: Batch,
-    ) -> Union[np.ndarray, Batch]:
-        if isinstance(act, np.ndarray) and not np.isclose(self.eps, 0.0):
-            bsz = len(act)
-            rand_mask = np.random.rand(bsz) < self.eps
-            q = np.random.rand(bsz, self.max_action_num)  # [0, 1]
-            if hasattr(batch.obs, "mask"):
-                q += batch.obs.mask
-            rand_act = q.argmax(axis=1)
-            act[rand_mask] = rand_act[rand_mask]
-        return act
