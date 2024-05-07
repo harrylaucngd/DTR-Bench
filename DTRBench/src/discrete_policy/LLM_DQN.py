@@ -216,9 +216,9 @@ class LLM_DQN_Policy(DQNPolicy):
             obs_explain = model.explain_obs(obs_exp_prompt, mode=str) if self.need_obs_explain else ""
             state["obs_exp"].append(obs_explain)
 
-            q_prompt = q_prompt_reprogramming(state["obs"], state["act"], act_explain, obs_explain)
+            series, q_prompt = q_prompt_reprogramming(state["obs"], state["act"], act_explain, obs_explain)
             Q_prompt += q_prompt
-            logits = model.q_pred(Q_prompt, state["obs"], state["act"], mode='Q')
+            logits = model.q_pred(series, Q_prompt, mode='Q')
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
             if not hasattr(self, "max_action_num"):
                 self.max_action_num = q.shape[1]

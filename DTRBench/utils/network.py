@@ -33,18 +33,14 @@ class GlucoseLLM(TimeLLM.Model):
         super().__init__(configs)
         self.mode = mode  # Set the default mode or accept it from instantiation
 
-    def forward(self, x_enc, x_mark_enc, x_dec=None, x_mark_dec=None, mask=None):
+    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mask=None):
         if self.mode == 'Q':
             # Inference the whole network
-            if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-                return dec_out[:, -self.pred_len:, :]
+            dec_out = self.forecast(series, prompt)
+            return dec_out[:, -self.num_actions:, :]
         elif self.mode == 'str':
             # Only inference the llm_model part
-            # Assume x_enc has been appropriately preprocessed to serve as input for llm_model
-            # Generate prompt embeddings
-            prompt = self.generate_prompt(x_enc)  # You would need to implement this method or modify accordingly
-            prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(x_enc.device))
+            prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(self.device))
             # Process with llm_model
             llm_output = self.llm_model(inputs_embeds=prompt_embeddings).last_hidden_state
             return llm_output
@@ -69,18 +65,20 @@ class GlucoseLLM(TimeLLM.Model):
     def explain_action(self, prompt, mode='str'):
         prompt = prompt + "\nPlease explain why the agent chose the last action within 100 words:"
         temp, max_length, top_p = 0.2, 300, 0.3
-        response = self.llm_infer(prompt, temp, max_length, top_p)
+        series=torch.tensor([])
+        response = self.forward(series, prompt, temp, max_length, top_p)
         return "\nExplanation of the last action: \n" + response
 
     def explain_obs(self, prompt, mode='str'):
         prompt = prompt + ("\nPlease analyze the current state within 100 words:")
         temp, max_length, top_p = 0.2, 300, 0.3
-        response = self.llm_infer(prompt, temp, max_length, top_p)
+        series=torch.tensor([])
+        response = self.forward(series, prompt, temp, max_length, top_p)
         return "\nAnalysis of the current state: \n" + response
     
-    def q_pred(self, prompt, obs, act, mode='Q'):
-        prompt = prompt + "\nPlease predict the q value for the 5 possible actions in the next timestep:"
-        response = self.forward(prompt, obs, act, mode='Q')
+    def q_pred(self, series, prompt, mode='Q'):
+        prompt = prompt + f"\nPlease predict the q value for the {self.num_actions} possible actions in the next timestep:"
+        response = self.forward(series, prompt, mode='Q')
         return response
 
 

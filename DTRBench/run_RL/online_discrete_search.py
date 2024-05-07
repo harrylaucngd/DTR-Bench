@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--cat_num", type=int, default=1)
-    parser.add_argument("--policy_name", type=str, default="DDQN",
+    parser.add_argument("--policy_name", type=str, default="DDQN-dueling",
                         choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 

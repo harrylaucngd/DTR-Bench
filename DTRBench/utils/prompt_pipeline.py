@@ -1,3 +1,5 @@
+import torch
+
 def act_prompt_reprogramming(obs, act, act_exp):
     history_prompt = ""
     if (act_exp == []) or all(exp == "" for exp in act_exp):    # first round or self.need_act_explain = False
@@ -19,6 +21,10 @@ def obs_prompt_reprogramming(obs, act, obs_exp):
     return history_prompt
 
 def q_prompt_reprogramming(obs, act, act_explain, obs_explain):
-    history_prompt = ""
-
-    return history_prompt
+    series = torch.tensor([])
+    for (o, a) in zip(obs, act):
+        series.append(o)
+        series.append(a)
+    series.append(act[-1])
+    history_prompt = f"The explanation for the last action: {act_explain}. The explanation for the current observation: {obs_explain}. "
+    return series, history_prompt
