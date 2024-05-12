@@ -18,7 +18,8 @@ GlucoseLLM/checkpoints
 _*/
 *log/
 #*results/
-settings_db
+settings_db/
+out/
 log/
 log_*
 agent_log/
