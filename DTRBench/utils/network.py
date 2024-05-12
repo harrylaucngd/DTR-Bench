@@ -29,9 +29,16 @@ Sequence[Dict[Any, Any]]]
 
 
 class GlucoseLLM(TimeLLM.Model):
-    def __init__(self, configs, use_target):
+    def __init__(
+            self,
+            configs: dict,
+            state_shape: Union[int, Sequence[int]],
+            action_shape: Union[int, Sequence[int]] = 0,
+            device: Union[str, int, torch.device] = "cpu",
+            llm: str = "gpt2",
+            llm_dim: int = 768,
+    ) -> None:
         super().__init__(configs)
-        self.use_target = use_target
 
     def forward_Q(self, *args, **kwargs):
         pass
@@ -50,15 +57,9 @@ class GlucoseLLM(TimeLLM.Model):
             prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(self.device))
             # Process with llm_model
             llm_output = self.llm_model(inputs_embeds=prompt_embeddings).last_hidden_state
-            return llm_output
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
-        return logits, state
-
-    def set_mode(self, mode):
-        if mode not in ['Q', 'str']:
-            raise ValueError("Invalid mode specified. Choose 'Q' for full inference or 'str' for partial inference.")
-        self.mode = mode
+        return logits, state, llm_output
 
     def freeze_llm_model(self):
         """Ensure all llm_model parameters are frozen."""
@@ -95,13 +96,14 @@ class GlucoseLLM(TimeLLM.Model):
     def sync_target_model(self):
         pass
 
+
 def define_llm_network(input_shape: int, output_shape: int,
-                          cat_num: int = 1, device="cuda" if torch.cuda.is_available() else "cpu"
+                          device="cuda" if torch.cuda.is_available() else "cpu", llm="gpt2", llm_dim=768
                           ):
     with open('./DTRBench/configs/dqn_configs.yaml', 'r') as file:
         configs = yaml.safe_load(file)
-    net = GlucoseLLM(state_shape=input_shape, action_shape=output_shape,
-                     device=device, configs = configs).to(device)
+    net = GlucoseLLM(configs=configs, state_shape=input_shape, action_shape=output_shape,
+                     device=device, llm=llm, llm_dim=llm_dim).to(device)
 
     return net
     

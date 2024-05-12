@@ -280,8 +280,10 @@ class DQNObjective(RLObjective):
     
 
 class LLM_DQN_Objective(DQNObjective):
-    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, **kwargs):
         super().__init__(env_name, hparam_space, device, **kwargs)
+        self.llm = llm
+        self.llm_dim = llm_dim
 
     def define_policy(self,
                       # general hp
@@ -292,14 +294,11 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step,
                       target_update_freq,
-                      icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
-                      icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
-                      icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
                       **kwargs
                       ):
         # define model
         net = define_llm_network(self.state_shape, self.action_shape,   # Changing to GlucoseLLM
-                                    device=self.device)
+                                    device=self.device, llm=self.llm, llm_dim=self.llm_dim)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
@@ -310,8 +309,6 @@ class LLM_DQN_Objective(DQNObjective):
             target_update_freq=target_update_freq,
             state_shape = self.state_shape, 
             action_shape = self.action_shape,
-            state_description = "", # TODO:fill it in
-            action_description = "" # TODO:fill it in
         )
         return policy
 

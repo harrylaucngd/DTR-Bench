@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
+from transformers import pipeline, Conversation
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import DQNPolicy
@@ -81,6 +82,16 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
 
+    def take_action(self, info):
+        return info["action_list"][-1]
+
+    def concat_batches(self, batch1, batch2):
+        obs_concat = batch1.obs + batch2.obs  # For lists, use '+'
+        act_concat = batch1.act + batch2.act
+        act_exp_concat = batch1.act_exp + batch2.act_exp
+        obs_exp_concat = batch1.obs_exp + batch2.obs_exp
+        return Batch(obs_concat, act_concat, act_exp_concat, obs_exp_concat)
+
     # todo: L move sync_weight to GlucoseLLM
     def sync_weight(self) -> None:
         """Synchronize the weight for the target network, excluding the llm_model."""
@@ -142,15 +153,19 @@ class LLM_DQN_Policy(DQNPolicy):
         # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
         # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
+        conversation = Conversation()
         if state is None:
             state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
+            is_first_round = True
 
+        curr_state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
         act_exp_prompt = "" # TODO: expertised background knowledge for action explanation
         obs_exp_prompt = "" # TODO: expertised background knowledge for observation explanation
         Q_prompt = ""       # TODO: expertised prompt for Q value prediction
-        if init:    # first round, no explanation needed
+        if is_first_round:    # first round, no explanation needed
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
+            conversation.add_user_input
             logits = model.q_pred(Q_prompt, obs_next, act=None, mode='Q')
 
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
@@ -159,21 +174,21 @@ class LLM_DQN_Policy(DQNPolicy):
             act = to_numpy(q.max(dim=1)[1])
         else:
             # act explanation
-            state["act"].append(self.take_action_from_info(batch.info)) # add last step act from info outside forward
-            act_exp_prompt += act_prompt_reprogramming(state["obs"], state["act"], state["act_exp"])
+            curr_state.act.append(self.take_action_from_info(batch.info)) # add last step act from info outside forward
+            act_exp_prompt += act_prompt_reprogramming(state.obs, state.act+curr_state.act, state.act_exp)
             act_explain = model.explain_act(act_exp_prompt, mode=str) if self.need_act_explain else ""
-            state["act_exp"].append(act_explain)
+            curr_state.act_exp.append(act_explain)
 
             # obs explanation
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
-            state["obs"].append(obs_next)
-            obs_exp_prompt += obs_prompt_reprogramming(state["obs"], state["act"], state["obs_exp"])
+            curr_state.obs.append(obs_next)
+            obs_exp_prompt += obs_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, state.act_exp)
             obs_explain = model.explain_obs(obs_exp_prompt, mode=str) if self.need_obs_explain else ""
-            state["obs_exp"].append(obs_explain)
+            curr_state.obs_exp.append(obs_explain)
 
             # Q value prediction
-            series, q_prompt = q_prompt_reprogramming(state["obs"], state["act"], act_explain, obs_explain)
+            series, q_prompt = q_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, act_explain, obs_explain)
             Q_prompt += q_prompt
             logits = model.q_pred(series, Q_prompt, mode='Q')
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
@@ -181,8 +196,8 @@ class LLM_DQN_Policy(DQNPolicy):
                 self.max_action_num = q.shape[1]
             act = to_numpy(q.max(dim=1)[1])
 
-        #     append cur_state to state history
-        # .......
+        # append curr_state to state history
+        state = self.concat_batches(state, curr_state)
 
         return Batch(logits=logits, act=act, state=state)
 

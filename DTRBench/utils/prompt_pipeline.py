@@ -1,6 +1,8 @@
 import torch
+from transformers import pipeline, Conversation
 
 def act_prompt_reprogramming(obs, act, act_exp):
+    conversation = Conversation()
     history_prompt = ""
     if (act_exp == []) or all(exp == "" for exp in act_exp):    # first round or self.need_act_explain = False
         for i, (o, a) in enumerate(zip(obs, act)):
