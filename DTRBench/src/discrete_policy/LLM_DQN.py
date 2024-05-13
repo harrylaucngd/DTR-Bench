@@ -3,13 +3,12 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
-from transformers import pipeline, Conversation
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import DQNPolicy
 from DTRBench.utils.network import GlucoseLLM
 
-from DTRBench.utils.prompt_pipeline import act_prompt_reprogramming, obs_prompt_reprogramming, q_prompt_reprogramming
+from DTRBench.utils.prompt_pipeline import Conversation, act_prompt_reprogramming, obs_prompt_reprogramming, q_prompt_reprogramming
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -153,7 +152,6 @@ class LLM_DQN_Policy(DQNPolicy):
         # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
         # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
-        conversation = Conversation()
         if state is None:
             state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
             is_first_round = True
@@ -161,12 +159,13 @@ class LLM_DQN_Policy(DQNPolicy):
         curr_state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
         act_exp_prompt = "" # TODO: expertised background knowledge for action explanation
         obs_exp_prompt = "" # TODO: expertised background knowledge for observation explanation
-        Q_prompt = ""       # TODO: expertised prompt for Q value prediction
+        Q_prompt = ""       # TODO: expertised prompt for series information description and Q value prediction
         if is_first_round:    # first round, no explanation needed
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
-            conversation.add_user_input
-            logits = model.q_pred(Q_prompt, obs_next, act=None, mode='Q')
+            conversation = Conversation()
+            conversation.add_component("user", Q_prompt)
+            logits = model.q_pred(obs_next, conversation, mode='Q')
 
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
             if not hasattr(self, "max_action_num"):
@@ -174,23 +173,25 @@ class LLM_DQN_Policy(DQNPolicy):
             act = to_numpy(q.max(dim=1)[1])
         else:
             # act explanation
-            curr_state.act.append(self.take_action_from_info(batch.info)) # add last step act from info outside forward
-            act_exp_prompt += act_prompt_reprogramming(state.obs, state.act+curr_state.act, state.act_exp)
-            act_explain = model.explain_act(act_exp_prompt, mode=str) if self.need_act_explain else ""
+            curr_state.act.append(self.take_action(batch.info)) # add last step act from info outside forward
+            conversation = act_prompt_reprogramming(state.obs, state.act+curr_state.act, state.act_exp)
+            conversation.append_description(act_exp_prompt)
+            act_explain = model.explain_act(conversation, mode=str) if self.need_act_explain else ""
             curr_state.act_exp.append(act_explain)
 
             # obs explanation
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
             curr_state.obs.append(obs_next)
-            obs_exp_prompt += obs_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, state.act_exp)
-            obs_explain = model.explain_obs(obs_exp_prompt, mode=str) if self.need_obs_explain else ""
+            conversation = obs_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, state.act_exp)
+            conversation.append_description(obs_exp_prompt)
+            obs_explain = model.explain_obs(conversation, mode=str) if self.need_obs_explain else ""
             curr_state.obs_exp.append(obs_explain)
 
             # Q value prediction
-            series, q_prompt = q_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, act_explain, obs_explain)
-            Q_prompt += q_prompt
-            logits = model.q_pred(series, Q_prompt, mode='Q')
+            series, conversation = q_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, act_explain, obs_explain)
+            conversation.append_description(Q_prompt)
+            logits = model.q_pred(series, conversation, mode='Q')
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
             if not hasattr(self, "max_action_num"):
                 self.max_action_num = q.shape[1]

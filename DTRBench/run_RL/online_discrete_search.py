@@ -34,8 +34,8 @@ def parse_args():
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_obs_explain", type=bool, default=True)
     parser.add_argument("--llm", type=str, default="gpt2",
-                        choices=["llama2-14b", "llama-14b",
-                                 "llama3-8b", "llama2-7b", "llama-7b",
+                        choices=["llama-2-13b", "llama-13b",
+                                 "llama-3-8b", "llama-2-7b", "llama-7b",
                                  "gpt2"])
     parser.add_argument("--policy_name", type=str, default="C51",
                         choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
@@ -49,10 +49,10 @@ def parse_args():
     return args
 
 llm_dim_table = {
-    "llama2-14b": {"llm_dim": 5120},
-    "llama-14b": {"llm_dim": 5120},
-    "llama3-8b": {"llm_dim": 4096},
-    "llama2-7b": {"llm_dim": 4096},
+    "llama-2-13b": {"llm_dim": 5120},
+    "llama-13b": {"llm_dim": 5120},
+    "llama-3-8b": {"llm_dim": 4096},
+    "llama-2-7b": {"llm_dim": 4096},
     "llama-7b": {"llm_dim": 4096},
     "gpt2": {"llm_dim": 768}
 }

@@ -17,6 +17,7 @@ from typing import (
     Union,
     no_type_check,
 )
+from transformers import pipeline
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -26,6 +27,16 @@ from transformers import pipelines
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
+
+
+llm_tokenization_table = {
+    "llama-2-13b": "meta-llama/Llama-2-13b-hf",
+    "llama-13b": "huggyllama/llama-13b",
+    "llama-3-8b": "meta-llama/Meta-Llama-3-8b",
+    "llama-2-7b": "meta-llama/Llama-2-7b-hf",
+    "llama-7b": "huggyllama/llama-7b",
+    "gpt2": "openai-community/gpt2"
+}
 
 
 class GlucoseLLM(TimeLLM.Model):
@@ -39,24 +50,27 @@ class GlucoseLLM(TimeLLM.Model):
             llm_dim: int = 768,
     ) -> None:
         super().__init__(configs)
+        if isinstance(action_shape, int):
+            self.num_actions = action_shape
+        elif isinstance(action_shape, Sequence):
+            self.num_actions = 1
+            for dim in action_shape:
+                self.num_actions *= dim
 
     def forward_Q(self, *args, **kwargs):
+        pipe = pipeline("conversational", )
         pass
 
     def forward_text(self, *args, **kwargs):
         pass
 
-    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mask=None, state=None, info={}):
+    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mode='Q', mask=None, state=None, info={}):
         # todo: must return logits and state, split the forward function into two functions
-        if self.mode == 'Q':
-            # Inference the whole network
-            dec_out = self.forecast(series, prompt)
-            return dec_out[:, -self.num_actions:, :]
-        elif self.mode == 'str':
-            # Only inference the llm_model part
-            prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(self.device))
-            # Process with llm_model
-            llm_output = self.llm_model(inputs_embeds=prompt_embeddings).last_hidden_state
+        if mode == 'Q':
+            logits, state = self.forward_Q(self, series, prompt)
+            llm_output = ""
+        elif mode == 'str':
+            logits, state, llm_output = self.forward_text(self, series, prompt, temp=0.2, max_length=300, top_p=0.3)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -71,24 +85,24 @@ class GlucoseLLM(TimeLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def explain_action(self, prompt, mode='str'):
-        prompt = prompt + "\nPlease explain why the agent chose the last action within 100 words:"
+    def explain_action(self, conversation, mode='str'):
+        prompt = conversation.append_question("Please explain why the agent chose the last action within 100 words:")
         temp, max_length, top_p = 0.2, 300, 0.3
         series=torch.tensor([])
-        response = self.forward(series, prompt, temp, max_length, top_p)
-        return "\nExplanation of the last action: \n" + response
+        _, _, response = self.forward(series, prompt, temp, max_length, top_p)
+        return "Explanation of the last action: " + response
 
-    def explain_obs(self, prompt, mode='str'):
-        prompt = prompt + ("\nPlease analyze the current state within 100 words:")
+    def explain_obs(self, conversation, mode='str'):
+        prompt = conversation.append_question("Please analyze the current state within 100 words:")
         temp, max_length, top_p = 0.2, 300, 0.3
         series=torch.tensor([])
-        response = self.forward(series, prompt, temp, max_length, top_p)
-        return "\nAnalysis of the current state: \n" + response
+        _, _, response = self.forward(series, prompt, temp, max_length, top_p)
+        return "Analysis of the current state: " + response
     
-    def q_pred(self, series, prompt, mode='Q'):
-        prompt = prompt + f"\nPlease predict the q value for the {self.num_actions} possible actions in the next timestep:"
-        response = self.forward(series, prompt, mode='Q')
-        return response
+    def q_pred(self, series, conversation, mode='Q'):
+        prompt = conversation.append_question(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:")
+        q_list, _, _ = self.forward(series, prompt, mode=mode)
+        return q_list
 
     def get_target_model(self):
         pass
