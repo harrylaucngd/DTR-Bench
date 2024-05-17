@@ -16,7 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--sampler", type=str, default="TPESampler", choices=["TPESampler", "BruteForceSampler"])
+    parser.add_argument("--sampler", type=str, default="BruteForceSampler", choices=["TPESampler", "BruteForceSampler"])
     parser.add_argument("--n_trials", type=int, default=1)
     parser.add_argument("--task", type=str, default="SimGlucoseEnv")
     parser.add_argument("--setting", type=int, default=1)
@@ -37,7 +37,7 @@ def parse_args():
                         choices=["llama-2-13b", "llama-13b",
                                  "llama-3-8b", "llama-2-7b", "llama-7b",
                                  "gpt2"])
-    parser.add_argument("--policy_name", type=str, default="C51",
+    parser.add_argument("--policy_name", type=str, default="DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 
@@ -99,8 +99,8 @@ if __name__ == "__main__":
                                 cat_num=args.cat_num,
                                 linear=args.linear
                                 )
-    obj = obj_class(args.task, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, multi_obj=args.multi_obj,
-                    logger="tensorboard",
+    obj = obj_class(args.task, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
+                    need_act_explain = args.need_act_explain, need_obs_explain = args.need_obs_explain, multi_obj=args.multi_obj, logger="tensorboard",
                     )
 
     if args.sampler == "BruteForceSampler":

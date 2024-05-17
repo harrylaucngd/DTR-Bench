@@ -1,8 +1,8 @@
 import numpy as np
-import yaml
+import argparse
 import torch
 import torch.nn as nn
-from GlucoseLLM.models import TimeLLM
+from GlucoseLLM.models import GlucoseLLM
 from tianshou.utils.net.common import ActorCritic, MLP
 from typing import Union, List, Tuple, Optional, Callable, Sequence, Dict, Any
 from typing import (
@@ -39,38 +39,49 @@ llm_tokenization_table = {
 }
 
 
-class GlucoseLLM(TimeLLM.Model):
+class LLMNet(GlucoseLLM.Model):
     def __init__(
             self,
-            configs: dict,
+            configs: argparse.Namespace,
             state_shape: Union[int, Sequence[int]],
             action_shape: Union[int, Sequence[int]] = 0,
-            device: Union[str, int, torch.device] = "cpu",
+            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
             llm: str = "gpt2",
             llm_dim: int = 768,
+            need_llm: bool = False,
     ) -> None:
-        super().__init__(configs)
         if isinstance(action_shape, int):
             self.num_actions = action_shape
         elif isinstance(action_shape, Sequence):
             self.num_actions = 1
             for dim in action_shape:
                 self.num_actions *= dim
+        configs.pred_len = self.num_actions
+        configs.seq_len = state_shape   # TODO: The seq_len would be dynamic in our case. How to modify GlucoseLLM accordingly?
+        configs.llm_model = llm
+        configs.llm_dim = llm_dim
+        super().__init__(configs, need_llm=need_llm)
+        self.configs = configs
+        self.input_shape = state_shape
+        self.output_shape = action_shape
 
-    def forward_Q(self, *args, **kwargs):
-        pipe = pipeline("conversational", )
+    def forward_Q(self, series, messages):
         pass
 
-    def forward_text(self, *args, **kwargs):
+    def forward_text(self, messages, temp=0.2, max_length=300, top_p=0.3):
         pass
 
     def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mode='Q', mask=None, state=None, info={}):
         # todo: must return logits and state, split the forward function into two functions
+        logits, state = None, None
+        tokenizer = llm_tokenization_table[self.llm_model]
+        pipe = pipeline("conversational", tokenizer)
+        messages = pipe(prompt)
         if mode == 'Q':
-            logits, state = self.forward_Q(self, series, prompt)
+            logits, state = self.forward_Q(self, series, messages)
             llm_output = ""
         elif mode == 'str':
-            logits, state, llm_output = self.forward_text(self, series, prompt, temp=0.2, max_length=300, top_p=0.3)
+            llm_output = self.forward_text(self, messages, temp=temp, max_length=max_length, top_p=top_p)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -104,21 +115,69 @@ class GlucoseLLM(TimeLLM.Model):
         q_list, _, _ = self.forward(series, prompt, mode=mode)
         return q_list
 
-    def get_target_model(self):
-        pass
 
-    def sync_target_model(self):
-        pass
+def get_target_model(model):
+    """
+    Initialize the target network according to the q-network.
+    Exclude the llm_model part from initialization.
+    """
+    model_old = LLMNet(configs=model.configs, state_shape=model.input_shape, action_shape=model.output_shape,
+                     device="cuda" if torch.cuda.is_available() else "cpu", llm=model.llm, llm_dim=model.llm_dim, 
+                     need_llm=False).to(device="cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Copy all layers and parameters from model to model_old except for llm_model
+    for name, param in model.named_parameters():
+        if 'llm_model' not in name:
+            getattr(model_old, name.split('.')[0]).weight = param.data
+
+    # Copy the rest of the attributes excluding llm_model
+    excluded_attributes = ['llm_model', 'tokenizer']
+    for attr_name in dir(model):
+        if not attr_name.startswith('__') and attr_name not in excluded_attributes and not callable(getattr(model, attr_name)):
+            setattr(model_old, attr_name, getattr(model, attr_name))
+
+    # Set model_old's llm_model to reference model's llm_model
+    model_old.llm_model = model.llm_model
+    model_old.tokenizer = model.tokenizer
+
+    # Ensure llm_model parameters are not trainable in model_old
+    for param in model_old.llm_model.parameters():
+        param.requires_grad = False
+    return model_old
+
+
+def sync_target_model(model, model_old):
+    """
+    Synchronize the parameters of model_old with model.
+    Exclude the llm_model part from synchronization.
+    """
+    model_dict = model.state_dict()
+    model_old_dict = model_old.state_dict()
+
+    # Filter out llm_model parameters and update model_old's parameters
+    model_dict = {k: v for k, v in model_dict.items() if 'llm_model' not in k}
+    model_old_dict.update(model_dict)
+    model_old.load_state_dict(model_old_dict)
+    return model_old
 
 
 def define_llm_network(input_shape: int, output_shape: int,
                           device="cuda" if torch.cuda.is_available() else "cpu", llm="gpt2", llm_dim=768
                           ):
-    with open('./DTRBench/configs/dqn_configs.yaml', 'r') as file:
-        configs = yaml.safe_load(file)
-    net = GlucoseLLM(configs=configs, state_shape=input_shape, action_shape=output_shape,
-                     device=device, llm=llm, llm_dim=llm_dim).to(device)
-
+    configs = argparse.Namespace(
+        d_ff = 32,
+        patch_len = 16,  # TODO: Adaptive value?
+        stride = 8,  # TODO: Adaptive value?
+        llm_layers = 6,
+        d_model = 16,
+        dropout = 0.1,
+        n_heads = 8,
+        enc_in = 7,
+        prompt_domain = 0,
+        content = "",
+    )
+    net = LLMNet(configs=configs, state_shape=input_shape, action_shape=output_shape,
+                     device=device, llm=llm, llm_dim=llm_dim, need_llm=True).to(device)
     return net
     
 

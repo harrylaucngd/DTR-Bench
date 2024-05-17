@@ -6,7 +6,7 @@ import torch
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import DQNPolicy
-from DTRBench.utils.network import GlucoseLLM
+from DTRBench.utils.network import LLMNet, get_target_model, sync_target_model
 
 from DTRBench.utils.prompt_pipeline import Conversation, act_prompt_reprogramming, obs_prompt_reprogramming, q_prompt_reprogramming
 
@@ -43,7 +43,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def __init__(
         self,
-        model: GlucoseLLM,
+        model: torch.nn.Module,
         optim: torch.optim.Optimizer,
         discount_factor: float = 0.99,
         estimation_step: int = 1,
@@ -51,8 +51,8 @@ class LLM_DQN_Policy(DQNPolicy):
         reward_normalization: bool = False,
         is_double: bool = True,
         clip_loss_grad: bool = False,
-        need_act_explain = True,    # TODO: add for LLM_DQN_Objective
-        need_obs_explain = True,    # TODO: add for LLM_DQN_Objective
+        need_act_explain = True,
+        need_obs_explain = True,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -66,15 +66,8 @@ class LLM_DQN_Policy(DQNPolicy):
         self._target = target_update_freq > 0
         self._freq = target_update_freq
         self._iter = 0
-        # todo: move model_old to GlucoseLLM
         if self._target:
-            # Initialize model_old with the same configuration as the main model
-            self.model_old = model(self.model.configs)
-            self.model_old.llm_model = self.model.llm_model
-            self.model_old.patch_embedding = torch.nn.Module.deepcopy(model.patch_embedding)
-            self.model_old.output_projection = torch.nn.Module.deepcopy(model.output_projection)
-            self.model_old.normalize_layers = torch.nn.Module.deepcopy(model.normalize_layers)
-            self.model_old.eval()
+            self.model_old = get_target_model(self.model)
         self._rew_norm = reward_normalization
         self._is_double = is_double
         self._clip_loss_grad = clip_loss_grad
@@ -90,17 +83,6 @@ class LLM_DQN_Policy(DQNPolicy):
         act_exp_concat = batch1.act_exp + batch2.act_exp
         obs_exp_concat = batch1.obs_exp + batch2.obs_exp
         return Batch(obs_concat, act_concat, act_exp_concat, obs_exp_concat)
-
-    # todo: L move sync_weight to GlucoseLLM
-    def sync_weight(self) -> None:
-        """Synchronize the weight for the target network, excluding the llm_model."""
-        state_dict_to_sync = {
-            name: param.clone()
-            for name, param in self.model.state_dict().items()
-            if "llm_model" not in name  # exclude llm_model
-        }
-        # only update reprogramming and projection layers
-        self.model_old.load_state_dict(state_dict_to_sync, strict=False)
 
     def forward(
         self,
@@ -122,32 +104,6 @@ class LLM_DQN_Policy(DQNPolicy):
                                           {"role": "assistent", "content": "blabla"}]
                                                 https://huggingface.co/docs/transformers/main/en/chat_templating
         todo: 7.https://tianshou.org/en/v0.4.7/tutorials/batch.html
-
-        Define Q generation as self(prompt, obs, mode=Q), define string generation as self(prompt, obs, mode=str)
-        1. build prompt
-        system_prompt = blablabla
-        history_prompt = state
-
-        1. observation explanation
-        if need_obs_explain:
-            obs_explain = model.explain_obs(system_prompt, obs, mode=str)
-        else:
-            obs_explain = []
-        new_prompt = system_prompt + history_prompt + obs_explain    #add obs_explain to prompt
-
-        2. action explanation
-        if need_act_explain:
-            act_exp_prompt = new_prompt + self.take_action_from_info(state) + question_prompt
-            act_explain = model.explain_act(system_prompt, act, mode=str)
-        else:
-            act_explain = []
-
-        3. Q inference
-        logits, state = model(new_prompt, obs, mode=Q)
-
-
-        4. save obs_explain, act_explain, to state
-
         """
         # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
         # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
@@ -204,7 +160,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def learn(self, batch: Batch, **kwargs: Any) -> Dict[str, float]:
         if self._target and self._iter % self._freq == 0:
-            self.sync_weight() # todo: only sync the Q module
+            self.model_old = sync_target_model(self.model, self.model_old)
         self.optim.zero_grad()
         weight = batch.pop("weight", 1.0)
         q = self(batch).logits

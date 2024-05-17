@@ -280,10 +280,12 @@ class DQNObjective(RLObjective):
     
 
 class LLM_DQN_Objective(DQNObjective):
-    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, **kwargs):
+    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, need_act_explain, need_obs_explain, **kwargs):
         super().__init__(env_name, hparam_space, device, **kwargs)
         self.llm = llm
         self.llm_dim = llm_dim
+        self.need_act_explain = need_act_explain
+        self.need_obs_explain = need_obs_explain
 
     def define_policy(self,
                       # general hp
@@ -309,6 +311,8 @@ class LLM_DQN_Objective(DQNObjective):
             target_update_freq=target_update_freq,
             state_shape = self.state_shape, 
             action_shape = self.action_shape,
+            need_act_explain = self.need_act_explain,
+            need_obs_explain = self.need_obs_explain,
         )
         return policy
 
