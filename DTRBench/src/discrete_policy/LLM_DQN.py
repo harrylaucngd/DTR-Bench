@@ -109,7 +109,7 @@ class LLM_DQN_Policy(DQNPolicy):
         todo: 5. in network, add functions to control which mode to use
         todo: 6. transformers.pipeline   [{"role": "system", "content": "blablabla"},
                                           {"role": "user", "content": "blabla"},
-                                          {"role": "assistent", "content": "blabla"}]
+                                          {"role": "assistant", "content": "blabla"}]
                                                 https://huggingface.co/docs/transformers/main/en/chat_templating
         todo: 7.https://tianshou.org/en/v0.4.7/tutorials/batch.html
 
