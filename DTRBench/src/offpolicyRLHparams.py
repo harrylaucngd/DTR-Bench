@@ -192,10 +192,6 @@ class LLM_DQN_HyperParams(OffPolicyRLHyperParameterSpace):
         trial.set_user_attr("eps_test", eps_test)
         trial.set_user_attr("eps_train", eps_train)
         trial.set_user_attr("eps_train_final", eps_train_final)
-
-        trial.set_user_attr("icm_lr_scale", 0.)
-        trial.set_user_attr("icm_reward_scale", 0.)
-        trial.set_user_attr("icm_forward_loss_weight", 0.)
         return {
             "lr": self.lr,
             "n_step": self.n_step,
@@ -203,10 +199,7 @@ class LLM_DQN_HyperParams(OffPolicyRLHyperParameterSpace):
             "is_double": self.is_double,
             "eps_test": self.eps_test,
             "eps_train": self.eps_train,
-            "eps_train_final": self.eps_train_final,
-            "icm_lr_scale": 0.,
-            "icm_reward_scale": 0.,
-            "icm_forward_loss_weight": 0.
+            "eps_train_final": self.eps_train_final
         }
 
 class DQNHyperParams(OffPolicyRLHyperParameterSpace):

@@ -11,13 +11,15 @@ __pycache__
 
 # datasets and models
 GlucoseLLM/dataset
-GlucoseLLM/model_hub
+model_hub
 GlucoseLLM/checkpoints
 
 # others
 _*/
 *log/
 #*results/
+settings_db/
+out/
 log/
 log_*
 agent_log/

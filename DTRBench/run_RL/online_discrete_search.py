@@ -16,7 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--sampler", type=str, default="TPESampler", choices=["TPESampler", "BruteForceSampler"])
+    parser.add_argument("--sampler", type=str, default="BruteForceSampler", choices=["TPESampler", "BruteForceSampler"])
     parser.add_argument("--n_trials", type=int, default=1)
     parser.add_argument("--task", type=str, default="SimGlucoseEnv")
     parser.add_argument("--setting", type=int, default=1)
@@ -31,7 +31,13 @@ def parse_args():
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--cat_num", type=int, default=1)
-    parser.add_argument("--policy_name", type=str, default="DDQN-dueling",
+    parser.add_argument("--need_act_explain", type=bool, default=True)
+    parser.add_argument("--need_obs_explain", type=bool, default=True)
+    parser.add_argument("--llm", type=str, default="gpt2",
+                        choices=["llama-2-13b", "llama-13b",
+                                 "llama-3-8b", "llama-2-7b", "llama-7b",
+                                 "gpt2"])
+    parser.add_argument("--policy_name", type=str, default="DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 
@@ -42,6 +48,14 @@ def parse_args():
 
     return args
 
+llm_dim_table = {
+    "llama-2-13b": {"llm_dim": 5120},
+    "llama-13b": {"llm_dim": 5120},
+    "llama-3-8b": {"llm_dim": 4096},
+    "llama-2-7b": {"llm_dim": 4096},
+    "llama-7b": {"llm_dim": 4096},
+    "gpt2": {"llm_dim": 768}
+}
 
 if __name__ == "__main__":
     torch.cuda.empty_cache()
@@ -51,6 +65,8 @@ if __name__ == "__main__":
         use_rnn = True
     else:
         use_rnn = False
+
+    llm_dim = llm_dim_table[args.llm]["llm_dim"]
 
     hparam_class = get_hparam_class(args.policy_name, offline=False)
     obj_class = get_obj_class(args.policy_name, offline=False)
@@ -78,12 +94,13 @@ if __name__ == "__main__":
                                 args.epoch,
                                 args.step_per_epoch,  # number of training steps per epoch
                                 args.buffer_size,
-                                use_rnn, args.num_actions,
+                                use_rnn,
+                                args.num_actions,
                                 cat_num=args.cat_num,
                                 linear=args.linear
                                 )
-    obj = obj_class(args.task, hparam_space, device=args.device, multi_obj=args.multi_obj,
-                    logger="tensorboard",
+    obj = obj_class(args.task, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
+                    need_act_explain = args.need_act_explain, need_obs_explain = args.need_obs_explain, multi_obj=args.multi_obj, logger="tensorboard",
                     )
 
     if args.sampler == "BruteForceSampler":
