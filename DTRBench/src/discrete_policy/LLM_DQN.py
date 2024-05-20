@@ -43,7 +43,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def __init__(
         self,
-        model: torch.nn.Module,
+        model: LLMNet,
         optim: torch.optim.Optimizer,
         discount_factor: float = 0.99,
         estimation_step: int = 1,
@@ -55,27 +55,16 @@ class LLM_DQN_Policy(DQNPolicy):
         need_obs_explain = True,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
-        self.model = model
-        self.optim = optim
-        self.eps = 0.0
-        assert 0.0 <= discount_factor <= 1.0, "discount factor should be in [0, 1]"
-        self._gamma = discount_factor
-        assert estimation_step > 0, "estimation_step should be greater than 0"
-        self._n_step = estimation_step
-        self._target = target_update_freq > 0
-        self._freq = target_update_freq
-        self._iter = 0
+        super().__init__(model, optim, discount_factor, estimation_step, target_update_freq, reward_normalization, is_double, clip_loss_grad, **kwargs)
         if self._target:
-            self.model_old = get_target_model(self.model)
-        self._rew_norm = reward_normalization
-        self._is_double = is_double
-        self._clip_loss_grad = clip_loss_grad
+            #self.model_old = get_target_model(self.model)
+            self.model_old = deepcopy(self.model)
+            self.model_old.eval()
         self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
 
     def take_action(self, info):
-        return info["action_list"][-1]
+        return info["action_history"][-1]
 
     def concat_batches(self, batch1, batch2):
         obs_concat = batch1.obs + batch2.obs  # For lists, use '+'
@@ -160,7 +149,8 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def learn(self, batch: Batch, **kwargs: Any) -> Dict[str, float]:
         if self._target and self._iter % self._freq == 0:
-            self.model_old = sync_target_model(self.model, self.model_old)
+            #self.model_old = sync_target_model(self.model, self.model_old)
+            self.sync_weight()
         self.optim.zero_grad()
         weight = batch.pop("weight", 1.0)
         q = self(batch).logits

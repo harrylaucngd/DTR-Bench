@@ -309,8 +309,6 @@ class LLM_DQN_Objective(DQNObjective):
             gamma,
             n_step,
             target_update_freq=target_update_freq,
-            state_shape = self.state_shape, 
-            action_shape = self.action_shape,
             need_act_explain = self.need_act_explain,
             need_obs_explain = self.need_obs_explain,
         )

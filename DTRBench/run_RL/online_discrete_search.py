@@ -37,7 +37,7 @@ def parse_args():
                         choices=["llama-2-13b", "llama-13b",
                                  "llama-3-8b", "llama-2-7b", "llama-7b",
                                  "gpt2"])
-    parser.add_argument("--policy_name", type=str, default="DQN",
+    parser.add_argument("--policy_name", type=str, default="LLM-DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
                                  "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
                                  "C51", "C51-rnn", 

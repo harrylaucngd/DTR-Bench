@@ -28,7 +28,7 @@ class FlattenHead(nn.Module):
 
 class Model(nn.Module):
 
-    def __init__(self, configs, need_llm=False):
+    def __init__(self, configs, need_llm=True):
         super(Model, self).__init__()
         self.pred_len = configs.pred_len
         self.seq_len = configs.seq_len
@@ -38,6 +38,7 @@ class Model(nn.Module):
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         self.need_llm = need_llm
+        self.llm = configs.llm_model
     
         if self.need_llm:
             if configs.llm_model == 'llama-2-13b':
@@ -175,7 +176,7 @@ class Model(nn.Module):
                 except EnvironmentError:
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
 
-            elif configs.llm_model == 'GPT2':
+            elif configs.llm_model == 'gpt2':
                 model_dir = './model_hub'
                 
                 self.llama_config = GPT2Config.from_pretrained(f'{model_dir}/gpt2')

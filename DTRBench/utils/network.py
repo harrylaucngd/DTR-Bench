@@ -64,6 +64,7 @@ class LLMNet(GlucoseLLM.Model):
         self.configs = configs
         self.input_shape = state_shape
         self.output_shape = action_shape
+        self.llm = llm
 
     def forward_Q(self, series, messages):
         pass
@@ -74,7 +75,7 @@ class LLMNet(GlucoseLLM.Model):
     def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mode='Q', mask=None, state=None, info={}):
         # todo: must return logits and state, split the forward function into two functions
         logits, state = None, None
-        tokenizer = llm_tokenization_table[self.llm_model]
+        tokenizer = llm_tokenization_table[self.llm]
         pipe = pipeline("conversational", tokenizer)
         messages = pipe(prompt)
         if mode == 'Q':
@@ -122,7 +123,7 @@ def get_target_model(model):
     Exclude the llm_model part from initialization.
     """
     model_old = LLMNet(configs=model.configs, state_shape=model.input_shape, action_shape=model.output_shape,
-                     device="cuda" if torch.cuda.is_available() else "cpu", llm=model.llm, llm_dim=model.llm_dim, 
+                     device="cuda" if torch.cuda.is_available() else "cpu", llm=model.llm, llm_dim=model.d_llm, 
                      need_llm=False).to(device="cuda" if torch.cuda.is_available() else "cpu")
     
     # Copy all layers and parameters from model to model_old except for llm_model

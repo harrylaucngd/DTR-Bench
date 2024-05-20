@@ -15,9 +15,7 @@ from .simglucose_env import create_SimGlucoseEnv_continuous, create_SimGlucoseEn
     create_SimGlucoseEnv_discrete_setting3, create_SimGlucoseEnv_discrete_setting4, \
     create_SimGlucoseEnv_discrete_setting5, create_SimGlucoseEnv_continuous_setting1, \
     create_SimGlucoseEnv_continuous_setting2, create_SimGlucoseEnv_continuous_setting3, \
-    create_SimGlucoseEnv_continuous_setting4, create_SimGlucoseEnv_continuous_setting5,\
-    create_SimGlucoseEnv_discrete_all_adolescents, create_SimGlucoseEnv_discrete_all_adults, \
-    create_SimGlucoseEnv_discrete_all_children
+    create_SimGlucoseEnv_continuous_setting4, create_SimGlucoseEnv_continuous_setting5
 from .ghaffari_cancer_env import create_GhaffariCancerEnv_discrete, create_GhaffariCancerEnv_continuous, \
     create_GhaffariCancerEnv_discrete_setting1, create_GhaffariCancerEnv_discrete_setting2, \
     create_GhaffariCancerEnv_discrete_setting3, create_GhaffariCancerEnv_discrete_setting4, \
