@@ -30,12 +30,12 @@ Sequence[Dict[Any, Any]]]
 
 
 llm_tokenization_table = {
-    "llama-2-13b": "meta-llama/Llama-2-13b-hf",
-    "llama-13b": "huggyllama/llama-13b",
-    "llama-3-8b": "meta-llama/Meta-Llama-3-8b",
-    "llama-2-7b": "meta-llama/Llama-2-7b-hf",
-    "llama-7b": "huggyllama/llama-7b",
-    "gpt2": "openai-community/gpt2"
+    "llama-2-13b": "./model_hub/llama-2-13b",
+    "llama-13b": "./model_hub/llama-13b",
+    "llama-3-8b": "./model_hub/llama-3-8b",
+    "llama-2-7b": "./model_hub/llama-2-7b",
+    "llama-7b": "./model_hub/llama-7b",
+    "gpt2": "./model_hub/gpt2"
 }
 
 
@@ -79,10 +79,10 @@ class LLMNet(GlucoseLLM.Model):
         pipe = pipeline("conversational", tokenizer)
         messages = pipe(prompt)
         if mode == 'Q':
-            logits, state = self.forward_Q(self, series, messages)
+            logits, state = self.forward_Q(series, messages)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(self, messages, temp=temp, max_length=max_length, top_p=top_p)
+            llm_output = self.forward_text(messages, temp=temp, max_length=max_length, top_p=top_p)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output

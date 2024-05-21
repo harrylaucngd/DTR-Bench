@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument("--setting", type=int, default=1)
     parser.add_argument("--logdir", type=str, default="settings_db")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--training_num", type=int, default=10)
+    parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--test_num", type=int, default=100)
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--num_actions", type=int, default=5)
