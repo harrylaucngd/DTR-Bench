@@ -6,6 +6,8 @@ class Conversation:
         # Initializes an empty conversation list
         self.conversation = []
 
+    # todo: add syntax check
+    # todo: add method to_batch
     def add_component(self, role, content):
         # Adds a new component to the conversation
         if role in ["system", "user", "assistant"]:

@@ -98,8 +98,10 @@ class LLM_DQN_Policy(DQNPolicy):
         # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
         if state is None:
-            state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
+            state = Batch(obs=[""], act=[""], act_exp=[""], obs_exp=[""])
             is_first_round = True
+        else:
+            is_first_round = False
 
         curr_state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
         act_exp_prompt = "" # TODO: expertised background knowledge for action explanation

@@ -182,7 +182,8 @@ class SinglePatientEnv(gym.Env):
                                 terminated=self.terminated, truncated=self.truncated,
                                 insulin=action)
         # reward = rew
-        all_info = {"state": state, "action": action, "instantaneous_reward": reward}
+        all_info = {"action": action, "instantaneous_reward": reward}
+        info.pop("patient_state")
         all_info.update(info)
         return obs, reward, self.terminated, self.truncated, info
 

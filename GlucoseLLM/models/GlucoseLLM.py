@@ -1,5 +1,6 @@
+import os.path
 from math import sqrt
-
+import os
 import torch
 import torch.nn as nn
 
@@ -39,22 +40,22 @@ class Model(nn.Module):
         self.stride = configs.stride
         self.need_llm = need_llm
         self.llm = configs.llm_model
-    
+
+        model_dir = os.path.join("model_hub")
+        os.makedirs(model_dir, exist_ok=True)
         if self.need_llm:
             if configs.llm_model == 'llama-2-13b':
-                model_dir = './model_hub'
-                
-                self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-2-13b')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
+                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-2-13b')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
                 
                 try:
                     self.llm_model = LlamaModel.from_pretrained(
                         f'{model_dir}/llama-2-13b',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
                 except EnvironmentError:
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
@@ -69,19 +70,18 @@ class Model(nn.Module):
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
             
             elif configs.llm_model == 'llama-13b':
-                model_dir = './model_hub'
                 
-                self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-13b')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
+                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-13b')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
                 
                 try:
                     self.llm_model = LlamaModel.from_pretrained(
                         f'{model_dir}/llama-13b',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
                 except EnvironmentError:
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
@@ -96,19 +96,19 @@ class Model(nn.Module):
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
             
             elif configs.llm_model == 'llama-3-8b':
-                model_dir = './model_hub'
+
                 
-                self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-3-8b')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
+                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-3-8b')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
                 
                 try:
                     self.llm_model = LlamaModel.from_pretrained(
                         f'{model_dir}/llama-3-8b',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
                 except EnvironmentError:
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
@@ -123,19 +123,19 @@ class Model(nn.Module):
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
             
             elif configs.llm_model == 'llama-2-7b':
-                model_dir = './model_hub'
+
                 
-                self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-2-7b')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
+                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-2-7b')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
                 
                 try:
                     self.llm_model = LlamaModel.from_pretrained(
                         f'{model_dir}/llama-2-7b',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
                 except EnvironmentError:
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
@@ -150,19 +150,19 @@ class Model(nn.Module):
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
             
             elif configs.llm_model == 'llama-7b':
-                model_dir = './model_hub'
+
                 
-                self.llama_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-7b')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
+                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/llama-7b')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
                 
                 try:
                     self.llm_model = LlamaModel.from_pretrained(
                         f'{model_dir}/llama-7b',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
                 except EnvironmentError:
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
@@ -177,32 +177,42 @@ class Model(nn.Module):
                     print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
 
             elif configs.llm_model == 'gpt2':
-                model_dir = './model_hub'
-                
-                self.llama_config = GPT2Config.from_pretrained(f'{model_dir}/gpt2')
-                self.llama_config.num_hidden_layers = configs.llm_layers
-                self.llama_config.output_attentions = True
-                self.llama_config.output_hidden_states = True
-                
+                self.llm_config = GPT2Config.from_pretrained(f'{model_dir}/gpt2')
+                self.llm_config.num_hidden_layers = configs.llm_layers
+                self.llm_config.output_attentions = True
+                self.llm_config.output_hidden_states = True
+
                 try:
                     self.llm_model = GPT2Model.from_pretrained(
                         f'{model_dir}/gpt2',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llama_config,
+                        config=self.llm_config,
                     )
-                except EnvironmentError:
-                    print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
+                except EnvironmentError:  # downloads model from HF is not already done
+                    print("Local model files not found. Attempting to download...")
+                    self.llm_model = GPT2Model.from_pretrained(
+                        'openai-community/gpt2',
+                        trust_remote_code=True,
+                        local_files_only=False,
+                        config=self.llm_config,
+                    )
 
                 try:
                     self.tokenizer = GPT2Tokenizer.from_pretrained(
                         f'{model_dir}/gpt2',
+                        cache_dir=f'{model_dir}/gpt2',
                         trust_remote_code=True,
                         local_files_only=True
                     )
-                except EnvironmentError:
-                    print("Local tokenizer files not found. Please ensure the tokenizer is correctly placed in ./model_hub")
-
+                except EnvironmentError:  # downloads the tokenizer from HF if not already done
+                    print("Local tokenizer files not found. Atempting to download them..")
+                    self.tokenizer = GPT2Tokenizer.from_pretrained(
+                        'openai-community/gpt2',
+                        cache_dir=f'{model_dir}/gpt2',
+                        trust_remote_code=True,
+                        local_files_only=False
+                    )
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             else:
