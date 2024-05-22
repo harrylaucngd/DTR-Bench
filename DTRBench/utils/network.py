@@ -18,6 +18,7 @@ from typing import (
     no_type_check,
 )
 from transformers import pipeline
+from transformers import LogitsProcessorList, TopKLogitsWarper, TopPLogitsWarper, TemperatureLogitsWarper, StoppingCriteriaList, MaxLengthCriteria
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -64,25 +65,66 @@ class LLMNet(GlucoseLLM.Model):
         self.configs = configs
         self.input_shape = state_shape
         self.output_shape = action_shape
+        self.device = device
         self.llm = llm
 
-    def forward_Q(self, series, messages):
-        pass
+    def forward_Q(self, series, prompt):
+        # Inference the whole network
+        dec_out = self.forecast(series, prompt)
+        return dec_out[:, -self.pred_len:, :].squeeze(-1), []
+        # return torch.tensor([[1,1,1,1,1,1,1,1,1,1,1]]), []
 
-    def forward_text(self, messages, temp=0.2, max_length=300, top_p=0.3):
-        pass
+    def forward_text(self, prompt, temperature=1.0, max_length=100, top_k=50, top_p=0.95):
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids.to(self.llm_model.device)
+        attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).attention_mask.to(self.llm_model.device)
+        
+        # Encode prompt
+        outputs = self.llm_model(input_ids=inputs, attention_mask=attention_mask)
+        hidden_states = outputs.last_hidden_state
 
-    def forward(self, series, prompt, temp=0.2, max_length=300, top_p=0.3, mode='Q', mask=None, state=None, info={}):
+        # Generate sequence
+        generated = inputs
+        for _ in range(max_length):
+            # Get logits from the language modeling head
+            logits = self.lm_head(hidden_states[:, -1, :])
+            logits = logits / temperature
+
+            # Apply top-k and top-p sampling
+            logits_processor = LogitsProcessorList([
+                TopKLogitsWarper(top_k),
+                TopPLogitsWarper(top_p),
+                TemperatureLogitsWarper(temperature)
+            ])
+            logits = logits_processor(generated, logits)
+
+            # Sample next token
+            next_token = torch.multinomial(torch.softmax(logits, dim=-1), num_samples=1)
+            generated = torch.cat((generated, next_token), dim=1)
+            
+            if next_token.item() == self.tokenizer.eos_token_id:
+                break
+            
+            # Update hidden states
+            outputs = self.llm_model(input_ids=next_token, attention_mask=attention_mask)
+            hidden_states = torch.cat((hidden_states, outputs.last_hidden_state), dim=1)
+
+        # Decode generated tokens to text
+        generated_text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
+        return generated_text
+        # return "The reason is unknown"
+
+    def forward(self, series, prompt, temp=1, max_length=100, top_k=50, top_p=0.95, mode='Q'):
         # todo: must return logits and state, split the forward function into two functions
         logits, state = None, None
         tokenizer = llm_tokenization_table[self.llm]
         pipe = pipeline("conversational", tokenizer)
         messages = pipe(prompt)
+        messages = "Predict the next action."
         if mode == 'Q':
             logits, state = self.forward_Q(series, messages)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(messages, temp=temp, max_length=max_length, top_p=top_p)
+            llm_output = self.forward_text(messages, temp=temp, max_length=max_length, top_k=top_k, top_p=top_p)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -99,21 +141,23 @@ class LLMNet(GlucoseLLM.Model):
 
     def explain_action(self, conversation, mode='str'):
         prompt = conversation.append_question("Please explain why the agent chose the last action within 100 words:")
-        temp, max_length, top_p = 0.2, 300, 0.3
-        series=torch.tensor([])
-        _, _, response = self.forward(series, prompt, temp, max_length, top_p)
+        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
+        series=torch.tensor([]).to(self.device)
+        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
         return "Explanation of the last action: " + response
 
     def explain_obs(self, conversation, mode='str'):
         prompt = conversation.append_question("Please analyze the current state within 100 words:")
-        temp, max_length, top_p = 0.2, 300, 0.3
-        series=torch.tensor([])
-        _, _, response = self.forward(series, prompt, temp, max_length, top_p)
+        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
+        series=torch.tensor([]).to(self.device)
+        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
         return "Analysis of the current state: " + response
     
     def q_pred(self, series, conversation, mode='Q'):
         prompt = conversation.append_question(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:")
-        q_list, _, _ = self.forward(series, prompt, mode=mode)
+        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
+        series = torch.tensor(series).unsqueeze(-1).to(self.device)
+        q_list, _, _ = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
         return q_list
 
 

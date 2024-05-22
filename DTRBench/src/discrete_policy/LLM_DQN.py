@@ -71,7 +71,7 @@ class LLM_DQN_Policy(DQNPolicy):
         act_concat = batch1.act + batch2.act
         act_exp_concat = batch1.act_exp + batch2.act_exp
         obs_exp_concat = batch1.obs_exp + batch2.obs_exp
-        return Batch(obs_concat, act_concat, act_exp_concat, obs_exp_concat)
+        return Batch(obs=obs_concat, act=act_concat, act_exp=act_exp_concat, obs_exp=obs_exp_concat)
 
     def forward(
         self,
