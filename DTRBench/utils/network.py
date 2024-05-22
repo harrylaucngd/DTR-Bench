@@ -211,7 +211,7 @@ def define_llm_network(input_shape: int, output_shape: int,
                           ):
     configs = argparse.Namespace(
         d_ff = 32,
-        patch_len = 16,  # TODO: Adaptive value?
+        patch_len = 9,  # TODO: Adaptive value?
         stride = 8,  # TODO: Adaptive value?
         llm_layers = 6,
         d_model = 16,
