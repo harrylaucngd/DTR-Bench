@@ -63,15 +63,34 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
 
-    def take_action(self, info):
-        return info["action_history"][-1]
-
     def concat_batches(self, batch1, batch2):
-        obs_concat = batch1.obs + batch2.obs  # For lists, use '+'
-        act_concat = batch1.act + batch2.act
-        act_exp_concat = batch1.act_exp + batch2.act_exp
-        obs_exp_concat = batch1.obs_exp + batch2.obs_exp
+        obs_concat = np.append(batch1.obs, batch2.obs)
+        act_concat = np.append(batch1.act, batch2.act)
+        act_exp_concat = np.append(batch1.act_exp, batch2.act_exp)
+        obs_exp_concat = np.append(batch1.obs_exp, batch2.obs_exp)
         return Batch(obs=obs_concat, act=act_concat, act_exp=act_exp_concat, obs_exp=obs_exp_concat)
+    
+    def align_state(self, state):
+        max_len = max(len(state.obs), len(state.act), len(state.act_exp), len(state.obs_exp))
+
+        def pad_list(lst, pad_value, max_len):
+            return np.append(lst, [pad_value] * (max_len - len(lst)))
+        
+        state.obs = pad_list(state.obs, -np.inf, max_len)
+        state.act = pad_list(state.act, -np.inf, max_len)
+        state.act_exp = pad_list(state.act_exp, "N/A", max_len)
+        state.obs_exp = pad_list(state.obs_exp, "N/A", max_len)
+        return state
+
+    def extract_state(self, state):
+        def trim_list(lst, trim_value):
+            return [x for x in lst if x != trim_value]
+
+        state.obs = trim_list(state.obs, -np.inf)
+        state.act = trim_list(state.act, -np.inf)
+        state.act_exp = trim_list(state.act_exp, "N/A")
+        state.obs_exp = trim_list(state.obs_exp, "N/A")
+        return state
 
     def forward(
         self,
@@ -98,9 +117,12 @@ class LLM_DQN_Policy(DQNPolicy):
         # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
         if state is None:
-            state = Batch(obs=[""], act=[""], act_exp=[""], obs_exp=[""])
+            state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
             is_first_round = True
         else:
+            for attribute in state.keys():
+                state[attribute] = state[attribute][0]
+            state = self.extract_state(state)
             is_first_round = False
 
         curr_state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
@@ -110,6 +132,7 @@ class LLM_DQN_Policy(DQNPolicy):
         if is_first_round:    # first round, no explanation needed
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
+            curr_state.obs = np.append(curr_state.obs, obs_next)
             conversation = Conversation()
             conversation.add_component("user", Q_prompt)
             logits = model.q_pred(obs_next, conversation, mode='Q')
@@ -120,23 +143,23 @@ class LLM_DQN_Policy(DQNPolicy):
             act = to_numpy(q.max(dim=1)[1])
         else:
             # act explanation
-            curr_state.act.append(self.take_action(batch.info)) # add last step act from info outside forward
-            conversation = act_prompt_reprogramming(state.obs, state.act+curr_state.act, state.act_exp)
+            curr_state.act = np.append(curr_state.act, batch.act[-1]) # add last step act from info outside forward
+            conversation = act_prompt_reprogramming(state.obs, np.append(state.act, curr_state.act), state.act_exp)
             conversation.append_description(act_exp_prompt)
-            act_explain = model.explain_act(conversation, mode=str) if self.need_act_explain else ""
-            curr_state.act_exp.append(act_explain)
+            act_explain = model.explain_act(conversation, mode='str') if self.need_act_explain else ""
+            curr_state.act_exp = np.append(curr_state.act_exp, act_explain)
 
             # obs explanation
             obs = batch[input]
             obs_next = obs.obs if hasattr(obs, "obs") else obs
-            curr_state.obs.append(obs_next)
-            conversation = obs_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, state.act_exp)
+            curr_state.obs = np.append(curr_state.obs, obs_next)
+            conversation = obs_prompt_reprogramming(np.append(state.obs, curr_state.obs), np.append(state.act, curr_state.act), state.act_exp)
             conversation.append_description(obs_exp_prompt)
-            obs_explain = model.explain_obs(conversation, mode=str) if self.need_obs_explain else ""
-            curr_state.obs_exp.append(obs_explain)
+            obs_explain = model.explain_obs(conversation, mode='str') if self.need_obs_explain else ""
+            curr_state.obs_exp = np.append(curr_state.obs_exp, obs_explain)
 
             # Q value prediction
-            series, conversation = q_prompt_reprogramming(state.obs+curr_state.obs, state.act+curr_state.act, act_explain, obs_explain)
+            series, conversation = q_prompt_reprogramming(np.append(state.obs, curr_state.obs), np.append(state.act, curr_state.act), act_explain, obs_explain)
             conversation.append_description(Q_prompt)
             logits = model.q_pred(series, conversation, mode='Q')
             q = self.compute_q_value(logits, getattr(obs, "mask", None))
@@ -144,8 +167,10 @@ class LLM_DQN_Policy(DQNPolicy):
                 self.max_action_num = q.shape[1]
             act = to_numpy(q.max(dim=1)[1])
 
-        # append curr_state to state history
-        state = self.concat_batches(state, curr_state)
+        # append curr_state to state history and align lengths of each attributes
+        state = self.align_state(self.concat_batches(state, curr_state))
+        for attribute in state.keys():
+            state[attribute] = [state[attribute]]
 
         return Batch(logits=logits, act=act, state=state)
 

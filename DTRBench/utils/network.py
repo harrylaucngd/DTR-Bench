@@ -72,28 +72,26 @@ class LLMNet(GlucoseLLM.Model):
         # Inference the whole network
         dec_out = self.forecast(series, prompt)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
-        # return torch.tensor([[1,1,1,1,1,1,1,1,1,1,1]]), []
 
-    def forward_text(self, prompt, temperature=1.0, max_length=100, top_k=50, top_p=0.95):
+    def forward_text(self, prompt, temp=1.0, max_length=100, top_k=50, top_p=0.95):
         inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids.to(self.llm_model.device)
         attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).attention_mask.to(self.llm_model.device)
         
         # Encode prompt
         outputs = self.llm_model(input_ids=inputs, attention_mask=attention_mask)
         hidden_states = outputs.last_hidden_state
-
+        '''
         # Generate sequence
         generated = inputs
         for _ in range(max_length):
             # Get logits from the language modeling head
-            logits = self.lm_head(hidden_states[:, -1, :])
-            logits = logits / temperature
+            logits = self.lm_head(hidden_states[:, -1, :]) / temp
 
             # Apply top-k and top-p sampling
             logits_processor = LogitsProcessorList([
                 TopKLogitsWarper(top_k),
                 TopPLogitsWarper(top_p),
-                TemperatureLogitsWarper(temperature)
+                TemperatureLogitsWarper(temp)
             ])
             logits = logits_processor(generated, logits)
 
@@ -111,7 +109,11 @@ class LLMNet(GlucoseLLM.Model):
         # Decode generated tokens to text
         generated_text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
         return generated_text
-        # return "The reason is unknown"
+        '''
+        logits = hidden_states[:, -1, :]
+        predicted_token_id = torch.argmax(logits, dim=-1).item()
+        generated_text = self.tokenizer.decode(predicted_token_id)
+        return generated_text
 
     def forward(self, series, prompt, temp=1, max_length=100, top_k=50, top_p=0.95, mode='Q'):
         # todo: must return logits and state, split the forward function into two functions
@@ -139,7 +141,7 @@ class LLMNet(GlucoseLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def explain_action(self, conversation, mode='str'):
+    def explain_act(self, conversation, mode='str'):
         prompt = conversation.append_question("Please explain why the agent chose the last action within 100 words:")
         temp, max_length, top_k, top_p = 1, 100, 50, 0.95
         series=torch.tensor([]).to(self.device)

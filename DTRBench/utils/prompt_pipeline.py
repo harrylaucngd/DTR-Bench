@@ -65,8 +65,9 @@ def q_prompt_reprogramming(obs, act, act_explain, obs_explain):
     series = torch.tensor([])
     history_prompt = Conversation()
     for (o, a) in zip(obs, act):
-        series.append(o)
-        series.append(a)
-    series.append(act[-1])
+        series = torch.cat((series, torch.tensor([o])), dim=0)
+        series = torch.cat((series, torch.tensor([a])), dim=0)
+    series = torch.cat((series, torch.tensor([act[-1]])), dim=0)
     history_prompt.add_component("user", f"The explanation for the last action: {act_explain}. The explanation for the current observation: {obs_explain}. ")
+    series = torch.unsqueeze(series, 0)
     return series, history_prompt
