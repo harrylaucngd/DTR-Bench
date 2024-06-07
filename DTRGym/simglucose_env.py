@@ -148,7 +148,8 @@ class SinglePatientEnv(gym.Env):
 
         self.bg_records.append(bg)
 
-        all_info = {"state": state, "action": np.zeros(shape=(1,)), "instantaneous_reward": 0}
+        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0}
+        info.pop("patient_state")
         all_info.update(info)
         return np.array(obs, dtype=np.float32), info
 
