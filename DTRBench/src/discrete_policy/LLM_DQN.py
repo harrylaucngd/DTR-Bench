@@ -63,34 +63,30 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
 
-    def concat_batches(self, batch1, batch2):
-        obs_concat = np.append(batch1.obs, batch2.obs)
-        act_concat = np.append(batch1.act, batch2.act)
-        act_exp_concat = np.append(batch1.act_exp, batch2.act_exp)
-        obs_exp_concat = np.append(batch1.obs_exp, batch2.obs_exp)
-        return Batch(obs=obs_concat, act=act_concat, act_exp=act_exp_concat, obs_exp=obs_exp_concat)
-    
-    def align_state(self, state):
-        max_len = max(len(state.obs), len(state.act), len(state.act_exp), len(state.obs_exp))
+    def compress_state(self, state):
+        separator = "|||"
+        compressed_state = {
+            'obs': [separator.join(map(str, state.obs))],
+            'act': [separator.join(map(str, state.act))],
+            'obs_exp': [separator.join(map(str, state.obs_exp))],
+            'act_exp': [separator.join(map(str, state.act_exp))],
+        }
+        return compressed_state
 
-        def pad_list(lst, pad_value, max_len):
-            return np.append(lst, [pad_value] * (max_len - len(lst)))
-        
-        state.obs = pad_list(state.obs, -np.inf, max_len)
-        state.act = pad_list(state.act, -np.inf, max_len)
-        state.act_exp = pad_list(state.act_exp, "N/A", max_len)
-        state.obs_exp = pad_list(state.obs_exp, "N/A", max_len)
-        return state
+    def extract_state(self, compressed_state):
+        separator = "|||"
+        extracted_state = Batch(
+            obs=compressed_state['obs'][0].split(separator),
+            act=compressed_state['act'][0].split(separator),
+            obs_exp=compressed_state['obs_exp'][0].split(separator),
+            act_exp=compressed_state['act_exp'][0].split(separator)
+        )
 
-    def extract_state(self, state):
-        def trim_list(lst, trim_value):
-            return [x for x in lst if x != trim_value]
+        # Convert numerical strings back to their respective types
+        extracted_state.obs = [eval(i) if i.replace('.','',1).isdigit() else i for i in extracted_state.obs]
+        extracted_state.act = [eval(i) if i.replace('.','',1).isdigit() else i for i in extracted_state.act]
 
-        state.obs = trim_list(state.obs, -np.inf)
-        state.act = trim_list(state.act, -np.inf)
-        state.act_exp = trim_list(state.act_exp, "N/A")
-        state.obs_exp = trim_list(state.obs_exp, "N/A")
-        return state
+        return extracted_state
 
     def forward(
         self,
@@ -101,76 +97,40 @@ class LLM_DQN_Policy(DQNPolicy):
         **kwargs: Any,
     ) -> Batch:
         """
-        todo: 0. modify env function, a) sample_time=10 b) action_list append in step and reset in self.reset
-        todo: 1. modify forward
-        todo: 2. modify sync_weight
-        todo: 3. modify is_double
-        todo: 4. change network definition
-        todo: 5. in network, add functions to control which mode to use
-        todo: 6. transformers.pipeline   [{"role": "system", "content": "blablabla"},
-                                          {"role": "user", "content": "blabla"},
-                                          {"role": "assistant", "content": "blabla"}]
-                                                https://huggingface.co/docs/transformers/main/en/chat_templating
-        todo: 7.https://tianshou.org/en/v0.4.7/tutorials/batch.html
+        todo: 1. modify sync_weight
+        todo: 2. modify is_double
         """
         # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
-        # TODO: How to play with batch.info? batch.info has action history. You can assume prev_act_list = batch.info["prev_act_list"]
         model = getattr(self, model)
         if state is None:
-            state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
-            is_first_round = True
+            state = Batch(obs=[], act=[], obs_exp=[], act_exp=[])
         else:
-            for attribute in state.keys():
-                state[attribute] = state[attribute][0]
             state = self.extract_state(state)
-            is_first_round = False
 
-        curr_state = Batch(obs=[], act=[], act_exp=[], obs_exp=[])
-        act_exp_prompt = "" # TODO: expertised background knowledge for action explanation
-        obs_exp_prompt = "" # TODO: expertised background knowledge for observation explanation
-        Q_prompt = ""       # TODO: expertised prompt for series information description and Q value prediction
-        if is_first_round:    # first round, no explanation needed
-            obs = batch[input]
-            obs_next = obs.obs if hasattr(obs, "obs") else obs
-            curr_state.obs = np.append(curr_state.obs, obs_next)
-            conversation = Conversation()
-            conversation.add_component("user", Q_prompt)
-            logits = model.q_pred(obs_next, conversation, mode='Q')
+        # obs and obs explanation
+        obs = batch[input]
+        obs_next = obs.obs if hasattr(obs, "obs") else obs
+        state.obs = np.append(state.obs, obs_next)
+        conversation = obs_prompt_reprogramming(state.obs, state.act, state.obs_exp)
+        obs_explain = model.explain_obs(conversation, mode='str') if self.need_obs_explain else ""
+        state.obs_exp = np.append(state.obs_exp, obs_explain)
 
-            q = self.compute_q_value(logits, getattr(obs, "mask", None))
-            if not hasattr(self, "max_action_num"):
-                self.max_action_num = q.shape[1]
-            act = to_numpy(q.max(dim=1)[1])
-        else:
-            # act explanation
-            curr_state.act = np.append(curr_state.act, batch.act[-1]) # add last step act from info outside forward
-            conversation = act_prompt_reprogramming(state.obs, np.append(state.act, curr_state.act), state.act_exp)
-            conversation.append_description(act_exp_prompt)
-            act_explain = model.explain_act(conversation, mode='str') if self.need_act_explain else ""
-            curr_state.act_exp = np.append(curr_state.act_exp, act_explain)
+        # Q value prediction
+        series, conversation = q_prompt_reprogramming(state.obs, state.act, state.obs_exp, state.act_exp)
+        logits = model.q_pred(series, conversation, mode='Q')
+        q = self.compute_q_value(logits, getattr(obs, "mask", None))
+        if not hasattr(self, "max_action_num"):
+            self.max_action_num = q.shape[1]
+        act = to_numpy(q.max(dim=1)[1])
+        state.act = np.append(state.act, act)
+        
+        # act explanation
+        conversation = act_prompt_reprogramming(state.obs, state.act, state.act_exp)
+        act_explain = model.explain_act(conversation, mode='str') if self.need_act_explain else ""
+        state.act_exp = np.append(state.act_exp, act_explain)
 
-            # obs explanation
-            obs = batch[input]
-            obs_next = obs.obs if hasattr(obs, "obs") else obs
-            curr_state.obs = np.append(curr_state.obs, obs_next)
-            conversation = obs_prompt_reprogramming(np.append(state.obs, curr_state.obs), np.append(state.act, curr_state.act), state.act_exp)
-            conversation.append_description(obs_exp_prompt)
-            obs_explain = model.explain_obs(conversation, mode='str') if self.need_obs_explain else ""
-            curr_state.obs_exp = np.append(curr_state.obs_exp, obs_explain)
-
-            # Q value prediction
-            series, conversation = q_prompt_reprogramming(np.append(state.obs, curr_state.obs), np.append(state.act, curr_state.act), act_explain, obs_explain)
-            conversation.append_description(Q_prompt)
-            logits = model.q_pred(series, conversation, mode='Q')
-            q = self.compute_q_value(logits, getattr(obs, "mask", None))
-            if not hasattr(self, "max_action_num"):
-                self.max_action_num = q.shape[1]
-            act = to_numpy(q.max(dim=1)[1])
-
-        # append curr_state to state history and align lengths of each attributes
-        state = self.align_state(self.concat_batches(state, curr_state))
-        for attribute in state.keys():
-            state[attribute] = [state[attribute]]
+        # compress state batch to len 1
+        state = self.compress_state(state)
 
         return Batch(logits=logits, act=act, state=state)
 

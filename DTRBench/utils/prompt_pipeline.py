@@ -1,4 +1,5 @@
 import torch
+from transformers import LlamaTokenizer, GPT2Tokenizer, AutoTokenizer
 
 
 class Conversation:
@@ -6,68 +7,93 @@ class Conversation:
         # Initializes an empty conversation list
         self.conversation = []
 
-    # todo: add syntax check
-    # todo: add method to_batch
     def add_component(self, role, content):
         # Adds a new component to the conversation
         if role in ["system", "user", "assistant"]:
             self.conversation.append({"role": role, "content": content})
+            self.syntax_check()
         else:
             raise ValueError("Role must be 'system', 'user', or 'assistant'.")
-        
-    def append_description(self, description):
-        # Concatenates a description in front of the first component's content in the conversation
-        if self.conversation:
-            self.conversation[0]["content"] = description + " " + self.conversation[0]["content"]
-        else:
-            raise ValueError("The current conversation is empty.")
+
+    def syntax_check(self):
+        # Checks for neighboring roles that are the same in the conversation
+        for i in range(1, len(self.conversation)):
+            if self.conversation[i]["role"] == self.conversation[i-1]["role"]:
+                raise ValueError(f"Syntax error: Consecutive '{self.conversation[i]['role']}' roles found.")
     
-    def append_question(self, question):
-        # Appends a question to the last component's content in the conversation
-        if self.conversation:
-            self.conversation[-1]["content"] += " " + question
-            return self.conversation
+    def count_tokens(self, text, llm):
+        if "gpt" in llm:
+            tokenizer = GPT2Tokenizer.from_pretrained(
+                f'model_hub/{llm}',
+                cache_dir=f'model_hub/{llm}',
+                trust_remote_code=True,
+                local_files_only=True
+            )
+        elif ("llama" in llm) and ("llama-3" not in llm):
+            tokenizer = LlamaTokenizer.from_pretrained(
+                f'model_hub/{llm}',
+                trust_remote_code=True,
+                local_files_only=True
+            )
+        elif "llama-3" in llm:
+            tokenizer = AutoTokenizer.from_pretrained(
+                f'model_hub/{llm}',
+                trust_remote_code=True,
+                local_files_only=True
+            )
         else:
-            raise ValueError("The current conversation is empty.")
+            raise ValueError("Unsupported LLM Class!")
+        tokens = tokenizer.encode(text)
+        return len(tokens)
+    
+    def to_str(self, context_length, llm):
+        # Provides a string representation of the conversation with a cutoff to below context length
+        conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
+        tokens = self.count_tokens(conv_str, llm)
+        
+        if tokens <= context_length:
+            return conv_str
+        
+        for i in range(len(self.conversation)):
+            conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation[i+1:])
+            tokens = self.count_tokens(conv_str, llm)
+            if tokens <= context_length:
+                return conv_str
 
-    def __str__(self):
-        # Provides a string representation of the conversation
-        return '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
-
-
-def act_prompt_reprogramming(obs, act, act_exp):
-    history_prompt = Conversation()
-    if (act_exp == []) or all(exp == "" for exp in act_exp):    # first round or self.need_act_explain = False
-        for i, (o, a) in enumerate(zip(obs, act)):
-            history_prompt.add_component("user", f"In timestep {i}, The blood glucose observation is {o}(unit), the agent takes action {a}. ")
-    else:
-        for i, (o, a, exp) in enumerate(zip(obs, act, act_exp)):
-            history_prompt.add_component("user", f"In timestep {i}, The blood glucose observation is {o}(unit), the agent takes action {a}. Please explain why the agent chose the last action within 100 words: ")
-            history_prompt.add_component("assistant", f"{exp}")
-    history_prompt.add_component("user", f"In current timestep, The blood glucose observation is {obs[-1]}(unit), the agent takes action {act[-1]}. ")
-    return history_prompt
-
+        return ""
+    
 
 def obs_prompt_reprogramming(obs, act, obs_exp):
     history_prompt = Conversation()
-    if (obs_exp == []) or all(exp == "" for exp in obs_exp):    # first round or self.need_obs_explain = False
-        for i, (o, a) in enumerate(zip(obs, act)):
-            history_prompt.add_component("user", f"In timestep {i}, The blood glucose observation is {o}(unit), the agent takes action {a}, The next blood glucose observation is {obs[i+1]}(unit). ")
-    else:
-        for i, (o, a, exp) in enumerate(zip(obs, act, obs_exp)):
-            history_prompt.add_component("user", f"In timestep {i}, The blood glucose observation is {o}(unit), the agent takes action {a}, The next blood glucose observation is {obs[i+1]}(unit). Please analyze the current state within 100 words: ")
-            history_prompt.add_component("assistant", f"{exp}")
-    history_prompt.add_component("user", f"In current timestep, The blood glucose observation is {obs[-1]}(unit). ")
+    for i, (o, a, exp) in enumerate(zip(obs, act, obs_exp)):
+        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o}(mg/dL), the agent takes action {a}, the next blood glucose observation is {obs[i+1]}(mg/dL). Please analyze the current state within 100 words: ")
+        history_prompt.add_component("assistant", f"{exp}")
+    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]}(mg/dL). ")
     return history_prompt
 
 
-def q_prompt_reprogramming(obs, act, act_explain, obs_explain):
+def q_prompt_reprogramming(obs, act, obs_exp, act_exp):
     series = torch.tensor([])
     history_prompt = Conversation()
     for (o, a) in zip(obs, act):
         series = torch.cat((series, torch.tensor([o])), dim=0)
         series = torch.cat((series, torch.tensor([a])), dim=0)
-    series = torch.cat((series, torch.tensor([act[-1]])), dim=0)
-    history_prompt.add_component("user", f"The explanation for the last action: {act_explain}. The explanation for the current observation: {obs_explain}. ")
+    series = torch.cat((series, torch.tensor([obs[-1]])), dim=0)
+    for i, (o, a, o_exp, a_exp) in enumerate(zip(obs, act, obs_exp, act_exp)):
+        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o}(mg/dL). Please analyze the current state within 100 words: ")
+        history_prompt.add_component("assistant", f"{o_exp}")
+        history_prompt.add_component("user", f"In timestep {i}, then the agent takes action {a}. Please explain why the agent chose the last action within 100 words: ")
+        history_prompt.add_component("assistant", f"{a_exp}")
+    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]}(mg/dL). Please analyze the current state within 100 words: ")
+    history_prompt.add_component("assistant", f"{obs_exp[-1]}")
     series = torch.unsqueeze(series, 0)
     return series, history_prompt
+
+
+def act_prompt_reprogramming(obs, act, act_exp):
+    history_prompt = Conversation()
+    for i, (o, a, exp) in enumerate(zip(obs, act, act_exp)):
+        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o}(mg/dL), the agent takes action {a}. Please explain why the agent chose the last action within 100 words: ")
+        history_prompt.add_component("assistant", f"{exp}")
+    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]}(mg/dL), the agent takes action {act[-1]}. ")
+    return history_prompt

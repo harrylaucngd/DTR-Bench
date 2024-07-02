@@ -3,7 +3,7 @@ from math import sqrt
 import torch
 import torch.nn as nn
 
-from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, GPT2Config, GPT2Model, GPT2Tokenizer
+from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, GPT2Config, GPT2Model, GPT2Tokenizer, AutoTokenizer
 from GlucoseLLM.layers.Embed import PatchEmbedding
 import transformers
 from GlucoseLLM.layers.StandardNorm import Normalize
@@ -113,7 +113,7 @@ class Model(nn.Module):
                     print("Local model files not found. Please ensure the model is correctly placed in ./model_hub")
 
                 try:
-                    self.tokenizer = LlamaTokenizer.from_pretrained(
+                    self.tokenizer = AutoTokenizer.from_pretrained(
                         f'{model_dir}/llama-3-8b',
                         trust_remote_code=True,
                         local_files_only=True

@@ -17,7 +17,6 @@ from typing import (
     Union,
     no_type_check,
 )
-from transformers import pipeline
 from transformers import LogitsProcessorList, TopKLogitsWarper, TopPLogitsWarper, TemperatureLogitsWarper, StoppingCriteriaList, MaxLengthCriteria
 import torch
 from torch import nn
@@ -29,15 +28,18 @@ ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
 
-
-llm_tokenization_table = {
-    "llama-2-13b": "./model_hub/llama-2-13b",
-    "llama-13b": "./model_hub/llama-13b",
-    "llama-3-8b": "./model_hub/llama-3-8b",
-    "llama-2-7b": "./model_hub/llama-2-7b",
-    "llama-7b": "./model_hub/llama-7b",
-    "gpt2": "./model_hub/gpt2"
+llm_context_window = {
+    "llama-2-13b": 4096,
+    "llama-13b": 2048,
+    "llama-3-8b": 4096,
+    "llama-2-7b": 4096,
+    "llama-7b": 2048,
+    "gpt2": 1024
 }
+
+obs_exp_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was injected, a raising or high level of action is witnessed, and vice versa." # expertised system prompt of background knowledge for observation explanation
+Q_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). 5 number of actions (Insulin Bolus Dose) represents 5 degrees of insulin injection to restrain high blood glucose level. So if the blood glucose level is observed to be high, the q value of the high value action should be high, and q value of the low value action should be low, and vice versa for low blood glucose level."       # expertised system prompt for series information description and Q value prediction
+act_exp_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). The reason for a high value action (high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin to prevent the blood glucose from getting too high, and vice versa." # expertised system prompt of background knowledge for action explanation
 
 
 class LLMNet(GlucoseLLM.Model):
@@ -73,55 +75,20 @@ class LLMNet(GlucoseLLM.Model):
         dec_out = self.forecast(series, prompt)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
-    def forward_text(self, prompt, temp=1.0, max_length=100, top_k=50, top_p=0.95):
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids.to(self.llm_model.device)
-        attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).attention_mask.to(self.llm_model.device)
+    def forward_text(self, prompt, temp=1.0, max_length=128, top_k=50, top_p=0.95):
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).input_ids.to(self.llm_model.device)
+        attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).attention_mask.to(self.llm_model.device)
         
         # Encode prompt
         outputs = self.llm_model(input_ids=inputs, attention_mask=attention_mask)
         hidden_states = outputs.last_hidden_state
-        '''
-        # Generate sequence
-        generated = inputs
-        for _ in range(max_length):
-            # Get logits from the language modeling head
-            logits = self.lm_head(hidden_states[:, -1, :]) / temp
-
-            # Apply top-k and top-p sampling
-            logits_processor = LogitsProcessorList([
-                TopKLogitsWarper(top_k),
-                TopPLogitsWarper(top_p),
-                TemperatureLogitsWarper(temp)
-            ])
-            logits = logits_processor(generated, logits)
-
-            # Sample next token
-            next_token = torch.multinomial(torch.softmax(logits, dim=-1), num_samples=1)
-            generated = torch.cat((generated, next_token), dim=1)
-            
-            if next_token.item() == self.tokenizer.eos_token_id:
-                break
-            
-            # Update hidden states
-            outputs = self.llm_model(input_ids=next_token, attention_mask=attention_mask)
-            hidden_states = torch.cat((hidden_states, outputs.last_hidden_state), dim=1)
-
-        # Decode generated tokens to text
-        generated_text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
-        return generated_text
-        '''
         logits = hidden_states[:, -1, :]
         predicted_token_id = torch.argmax(logits, dim=-1).item()
         generated_text = self.tokenizer.decode(predicted_token_id)
         return generated_text
 
-    def forward(self, series, prompt, temp=1, max_length=100, top_k=50, top_p=0.95, mode='Q'):
-        # todo: must return logits and state, split the forward function into two functions
+    def forward(self, series, messages, temp=1, max_length=100, top_k=50, top_p=0.95, mode='Q'):
         logits, state = None, None
-        tokenizer = llm_tokenization_table[self.llm]
-        pipe = pipeline("conversational", tokenizer)
-        messages = pipe(prompt)
-        messages = "Predict the next action."
         if mode == 'Q':
             logits, state = self.forward_Q(series, messages)
             llm_output = ""
@@ -141,26 +108,26 @@ class LLMNet(GlucoseLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def explain_act(self, conversation, mode='str'):
-        prompt = conversation.append_question("Please explain why the agent chose the last action within 100 words:")
-        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
-        series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
-        return "Explanation of the last action: " + response
-
     def explain_obs(self, conversation, mode='str'):
-        prompt = conversation.append_question("Please analyze the current state within 100 words:")
-        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
+        prompt = "system: "+ obs_exp_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + "Please analyze the current state within 100 words:"
+        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
         return "Analysis of the current state: " + response
     
     def q_pred(self, series, conversation, mode='Q'):
-        prompt = conversation.append_question(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:")
-        temp, max_length, top_k, top_p = 1, 100, 50, 0.95
+        prompt = "system: "+ Q_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + f"user: Please predict the q value for the {self.num_actions} possible actions in the next timestep:"
+        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
         series = torch.tensor(series).unsqueeze(-1).to(self.device)
         q_list, _, _ = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
         return q_list
+    
+    def explain_act(self, conversation, mode='str'):
+        prompt = "system: "+ act_exp_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + "Please explain why the agent chose the last action within 100 words:"
+        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
+        series=torch.tensor([]).to(self.device)
+        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
+        return "Explanation of the last action: " + response
 
 
 def get_target_model(model):
