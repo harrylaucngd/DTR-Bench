@@ -9,7 +9,7 @@ from DTRBench.utils.misc import to_bool, early_stopping_callback
 from DTRBench.src.helper_fn import create_study_with_filter
 import DTRGym
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=(DeprecationWarning, UserWarning))
 
 
 def parse_args():
@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--cat_num", type=int, default=1)
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_obs_explain", type=bool, default=True)
-    parser.add_argument("--llm", type=str, default="llama-3-8b",
+    parser.add_argument("--llm", type=str, default="gpt2",
                         choices=["llama-2-13b", "llama-13b",
                                  "llama-3-8b", "llama-2-7b", "llama-7b",
                                  "gpt2"])

@@ -1,6 +1,15 @@
 import torch
 from transformers import LlamaTokenizer, GPT2Tokenizer, AutoTokenizer
 
+model_hf = {
+    "llama-2-13b": "meta-llama/Llama-2-13b-hf",
+    "llama-13b": "huggyllama/llama-13b",
+    "llama-3-8b": "meta-llama/Llama-3-8b",
+    "llama-2-7b": "meta-llama/Llama-2-7b-hf",
+    "llama-7b": "huggyllama/llama-7b",
+    "gpt2": "openaicommunity/gpt2"
+}
+
 
 class Conversation:
     def __init__(self):
@@ -22,25 +31,22 @@ class Conversation:
                 raise ValueError(f"Syntax error: Consecutive '{self.conversation[i]['role']}' roles found.")
     
     def count_tokens(self, text, llm):
-        if "gpt" in llm:
-            tokenizer = GPT2Tokenizer.from_pretrained(
-                f'model_hub/{llm}',
-                cache_dir=f'model_hub/{llm}',
-                trust_remote_code=True,
-                local_files_only=True
-            )
-        elif ("llama" in llm) and ("llama-3" not in llm):
-            tokenizer = LlamaTokenizer.from_pretrained(
-                f'model_hub/{llm}',
-                trust_remote_code=True,
-                local_files_only=True
-            )
-        elif "llama-3" in llm:
-            tokenizer = AutoTokenizer.from_pretrained(
-                f'model_hub/{llm}',
-                trust_remote_code=True,
-                local_files_only=True
-            )
+        if ("gpt" in llm) or ("llama" in llm):
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    f'model_hub/{llm}',
+                    cache_dir=f'model_hub/{llm}',
+                    trust_remote_code=True,
+                    local_files_only=True
+                )
+            except EnvironmentError:
+                print("Local tokenizer files not found. Atempting to download them..")
+                self.tokenizer = LlamaTokenizer.from_pretrained(
+                        f'{model_hf[llm]}',
+                        cache_dir=f'model_hub/{llm}',
+                        trust_remote_code=True,
+                        local_files_only=False
+                    )
         else:
             raise ValueError("Unsupported LLM Class!")
         tokens = tokenizer.encode(text)
