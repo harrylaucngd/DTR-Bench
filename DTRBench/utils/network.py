@@ -37,8 +37,24 @@ llm_context_window = {
     "gpt2": 1024
 }
 
-obs_exp_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was injected, a raising or high level of action is witnessed, and vice versa." # expertised system prompt of background knowledge for observation explanation
-Q_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). 5 number of actions (Insulin Bolus Dose) represents 5 degrees of insulin injection to restrain high blood glucose level. In Q-learning, the Q-value represents the expected future rewards for taking a given action in a given state, with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high value action should be high, and q value of the low value action should be low, and vice versa for low blood glucose level."       # expertised system prompt for series information description and Q value prediction
+obs_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
+                  "of glucose metabolism in humans, often used in research of glucose control. "
+                  "The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels "
+                  "(the observation) within a target range through the administration of insulin (the action). "
+                  "The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose "
+                  "concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was "
+                  "injected, a raising or high level of action is witnessed, and vice versa.") # expertised system prompt of background knowledge for observation explanation
+Q_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of "
+            "glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
+            "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target "
+            "range through the administration of insulin (the action). 5 number of actions (Insulin Bolus Dose) "
+            "represents 5 degrees of insulin injection to restrain high blood glucose level. In Q-learning, "
+            "the Q-value represents the expected future rewards for taking a given action in a given state, "
+            "with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. "
+            "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
+            "value action should be high, and q value of the low value action should be low, and vice versa for low "
+            "blood glucose level.")       # expertised system prompt for series information description and Q value
+# prediction
 act_exp_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). The reason for a high value action (high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin to prevent the blood glucose from getting too high, and vice versa." # expertised system prompt of background knowledge for action explanation
 
 
@@ -76,6 +92,7 @@ class LLMNet(GlucoseLLM.Model):
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
     def forward_text(self, prompt, temp=1.0, max_length=128, top_k=50, top_p=0.95):
+        # todo: remove the following code and use pipeline to infer
         inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).input_ids.to(self.llm_model.device)
         attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).attention_mask.to(self.llm_model.device)
         

@@ -31,6 +31,7 @@ class Conversation:
                 raise ValueError(f"Syntax error: Consecutive '{self.conversation[i]['role']}' roles found.")
     
     def count_tokens(self, text, llm):
+        # todo：use LLM tokenizer
         if ("gpt" in llm) or ("llama" in llm):
             try:
                 tokenizer = AutoTokenizer.from_pretrained(
