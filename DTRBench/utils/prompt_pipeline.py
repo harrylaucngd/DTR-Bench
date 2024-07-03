@@ -1,73 +1,60 @@
 import torch
 from transformers import LlamaTokenizer, GPT2Tokenizer, AutoTokenizer
 
-model_hf = {
-    "llama-2-13b": "meta-llama/Llama-2-13b-hf",
-    "llama-13b": "huggyllama/llama-13b",
-    "llama-3-8b": "meta-llama/Llama-3-8b",
-    "llama-2-7b": "meta-llama/Llama-2-7b-hf",
-    "llama-7b": "huggyllama/llama-7b",
-    "gpt2": "openaicommunity/gpt2"
-}
-
 
 class Conversation:
     def __init__(self):
-        # Initializes an empty conversation list
+        # Initialize an empty conversation list
         self.conversation = []
 
     def add_component(self, role, content):
-        # Adds a new component to the conversation
+        # Add a new component to the conversation
         if role in ["system", "user", "assistant"]:
             self.conversation.append({"role": role, "content": content})
             self.syntax_check()
         else:
             raise ValueError("Role must be 'system', 'user', or 'assistant'.")
+        
+    def insert_component(self, role, content, loc):
+        # Insert a new component at the specified location
+        if role in ["system", "user", "assistant"]:
+            if loc < 0:
+                loc = len(self.conversation) + loc + 1
+            if loc > len(self.conversation):
+                loc = len(self.conversation)
+            self.conversation.insert(loc, {"role": role, "content": content})
+            self.syntax_check()
+        else:
+            raise ValueError("Role must be 'system', 'user', or 'assistant'.")
 
     def syntax_check(self):
-        # Checks for neighboring roles that are the same in the conversation
+        # Check for neighboring roles that are the same in the conversation
         for i in range(1, len(self.conversation)):
             if self.conversation[i]["role"] == self.conversation[i-1]["role"]:
                 raise ValueError(f"Syntax error: Consecutive '{self.conversation[i]['role']}' roles found.")
     
-    def count_tokens(self, text, llm):
-        # todo：use LLM tokenizer
-        if ("gpt" in llm) or ("llama" in llm):
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    f'model_hub/{llm}',
-                    cache_dir=f'model_hub/{llm}',
-                    trust_remote_code=True,
-                    local_files_only=True
-                )
-            except EnvironmentError:
-                print("Local tokenizer files not found. Atempting to download them..")
-                self.tokenizer = LlamaTokenizer.from_pretrained(
-                        f'{model_hf[llm]}',
-                        cache_dir=f'model_hub/{llm}',
-                        trust_remote_code=True,
-                        local_files_only=False
-                    )
-        else:
-            raise ValueError("Unsupported LLM Class!")
+    def count_tokens(self, text, tokenizer):
+        # Use LLM tokenizer to detect token overflow
         tokens = tokenizer.encode(text)
         return len(tokens)
     
-    def to_str(self, context_length, llm):
-        # Provides a string representation of the conversation with a cutoff to below context length
+    def clip(self, context_length, tokenizer):
+        # Clip the conversation to fit within the context length
         conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
-        tokens = self.count_tokens(conv_str, llm)
+        tokens = self.count_tokens(conv_str, tokenizer)
         
         if tokens <= context_length:
-            return conv_str
+            return self
         
         for i in range(len(self.conversation)):
             conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation[i+1:])
-            tokens = self.count_tokens(conv_str, llm)
+            tokens = self.count_tokens(conv_str, tokenizer)
             if tokens <= context_length:
-                return conv_str
+                clipped_conversation = Conversation()
+                clipped_conversation.conversation = self.conversation[i+1:]
+                return clipped_conversation
 
-        return ""
+        return Conversation()
     
 
 def obs_prompt_reprogramming(obs, act, obs_exp):

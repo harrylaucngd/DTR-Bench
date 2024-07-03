@@ -100,7 +100,6 @@ class LLM_DQN_Policy(DQNPolicy):
         todo: 1. modify sync_weight
         todo: 2. modify is_double
         """
-        # todo: when state is None, it is the first step of an episode, so you can initialize the state and prompt using state is None
         model = getattr(self, model)
         if state is None:
             state = Batch(obs=[], act=[], obs_exp=[], act_exp=[])
@@ -128,6 +127,9 @@ class LLM_DQN_Policy(DQNPolicy):
         conversation = act_prompt_reprogramming(state.obs, state.act, state.act_exp)
         act_explain = model.explain_act(conversation, mode='str') if self.need_act_explain else ""
         state.act_exp = np.append(state.act_exp, act_explain)
+
+        # update summary
+
 
         # compress state batch to len 1
         state = self.compress_state(state)

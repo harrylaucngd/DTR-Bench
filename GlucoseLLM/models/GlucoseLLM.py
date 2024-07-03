@@ -36,7 +36,6 @@ class FlattenHead(nn.Module):
 
 
 class Model(nn.Module):
-
     def __init__(self, configs, need_llm=True):
         super(Model, self).__init__()
         self.pred_len = configs.pred_len
@@ -165,6 +164,7 @@ class Model(nn.Module):
                     )
             else:
                 raise ValueError("Unsupported LLM!")
+            
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             else:
@@ -200,7 +200,6 @@ class Model(nn.Module):
         return dec_out[:, -self.pred_len:, :]
 
     def forecast(self, x_enc, prompt):
-
         x_enc = self.normalize_layers(x_enc, 'norm')
 
         B, T, N = x_enc.size()

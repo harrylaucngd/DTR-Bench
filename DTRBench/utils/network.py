@@ -22,7 +22,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from tianshou.data.batch import Batch
-from transformers import pipelines
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
@@ -53,9 +52,15 @@ Q_prompt = ("The Simglucose environment is a simulation environment designed to 
             "with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. "
             "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
             "value action should be high, and q value of the low value action should be low, and vice versa for low "
-            "blood glucose level.")       # expertised system prompt for series information description and Q value
-# prediction
-act_exp_prompt = "The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of glucose metabolism in humans, often used in research of glucose control. The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target range through the administration of insulin (the action). The reason for a high value action (high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin to prevent the blood glucose from getting too high, and vice versa." # expertised system prompt of background knowledge for action explanation
+            "blood glucose level.")       # expertised system prompt for series information description and Q value prediction
+act_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
+                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
+                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
+                  "target range through the administration of insulin (the action). The reason for a high value action "
+                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
+                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
+                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
+                  "to prevent the blood glucose from getting too high, and vice versa.") # expertised system prompt of background knowledge for action explanation
 
 
 class LLMNet(GlucoseLLM.Model):
@@ -91,7 +96,7 @@ class LLMNet(GlucoseLLM.Model):
         dec_out = self.forecast(series, prompt)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
-    def forward_text(self, prompt, temp=1.0, max_length=128, top_k=50, top_p=0.95):
+    def forward_text(self, prompt, max_length=128):
         # todo: remove the following code and use pipeline to infer
         inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).input_ids.to(self.llm_model.device)
         attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).attention_mask.to(self.llm_model.device)
@@ -104,13 +109,14 @@ class LLMNet(GlucoseLLM.Model):
         generated_text = self.tokenizer.decode(predicted_token_id)
         return generated_text
 
-    def forward(self, series, messages, temp=1, max_length=100, top_k=50, top_p=0.95, mode='Q'):
+    def forward(self, series, messages, max_length=100, mode='Q'):
         logits, state = None, None
+        prompt = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True, return_tensors="pt")
         if mode == 'Q':
-            logits, state = self.forward_Q(series, messages)
+            logits, state = self.forward_Q(series, prompt)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(messages, temp=temp, max_length=max_length, top_k=top_k, top_p=top_p)
+            llm_output = self.forward_text(prompt, max_length=max_length)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -126,24 +132,27 @@ class LLMNet(GlucoseLLM.Model):
             param.requires_grad = True
 
     def explain_obs(self, conversation, mode='str'):
-        prompt = "system: "+ obs_exp_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + "Please analyze the current state within 100 words:"
-        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
+        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
+        prompt.insert_component("system", obs_exp_prompt, 0)
+        prompt.insert_component("system", "Please analyze the current state within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
+        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return "Analysis of the current state: " + response
     
     def q_pred(self, series, conversation, mode='Q'):
-        prompt = "system: "+ Q_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + f"user: Please predict the q value for the {self.num_actions} possible actions in the next timestep:"
-        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
-        series = torch.tensor(series).unsqueeze(-1).to(self.device)
-        q_list, _, _ = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
+        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
+        prompt.insert_component("system", Q_prompt, 0)
+        prompt.insert_component("system", f"user: Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+        series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
+        q_list, _, _ = self.forward(series, prompt, max_length=256, mode=mode)
         return q_list
     
     def explain_act(self, conversation, mode='str'):
-        prompt = "system: "+ act_exp_prompt + conversation.to_str(llm_context_window[self.llm]-200, self.llm) + "Please explain why the agent chose the last action within 100 words:"
-        temp, max_length, top_k, top_p = 1, 256, 50, 0.95
+        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
+        prompt.insert_component("system", act_exp_prompt, 0)
+        prompt.insert_component("system", "Please explain why the agent chose the last action within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, temp, max_length, top_k, top_p, mode=mode)
+        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return "Explanation of the last action: " + response
 
 
