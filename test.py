@@ -16,8 +16,8 @@ def define_policy(  # general hp
                     **kwargs
                     ):
     # define model
-    net = define_llm_network(1, 1,   # Changing to GlucoseLLM
-                                device="cuda" if torch.cuda.is_available() else "cpu", llm="llama-3-8b", llm_dim=4096)
+    net = define_llm_network(1, 1, device="cuda" if torch.cuda.is_available() else "cpu", 
+                             llm="llama-3-8b", llm_dim=4096)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     # define policy
     policy = LLM_DQN_Policy(
