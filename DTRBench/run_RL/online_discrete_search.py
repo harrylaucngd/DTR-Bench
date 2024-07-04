@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument("--cat_num", type=int, default=1)
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_obs_explain", type=bool, default=True)
-    parser.add_argument("--llm", type=str, default="gpt2",
+    parser.add_argument("--llm", type=str, default="llama-3-8b",
                         choices=["llama-2-13b", "llama-13b",
                                  "llama-3-8b", "llama-2-7b", "llama-7b",
                                  "gpt2"])
@@ -44,7 +44,7 @@ def parse_args():
                                  "C51", "C51-rnn", 
                                  "discrete-SAC", "discrete-SAC-rnn"])
     parser.add_argument("--scale_obs", type=int, default=0)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "mps")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_known_args()[0]
 
     return args

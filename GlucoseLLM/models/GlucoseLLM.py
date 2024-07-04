@@ -2,8 +2,10 @@ import os.path
 from math import sqrt
 import torch
 import torch.nn as nn
+import gc
 
-from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, GPT2Config, GPT2Model, GPT2Tokenizer, AutoTokenizer
+from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, LlamaForCausalLM,\
+    GPT2Config, GPT2Model, GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer
 from GlucoseLLM.layers.Embed import PatchEmbedding
 import transformers
 from GlucoseLLM.layers.StandardNorm import Normalize
@@ -95,7 +97,7 @@ class Model(nn.Module):
                 self.llm_config.output_hidden_states = True
 
                 try:
-                    self.llm_model = LlamaModel.from_pretrained(
+                    self.llm_model = LlamaForCausalLM.from_pretrained(
                         f'{model_dir}/{configs.llm_model}',
                         trust_remote_code=True,
                         local_files_only=True,
@@ -109,7 +111,6 @@ class Model(nn.Module):
                         local_files_only=False,
                         config=self.llm_config,
                     )
-
                 try:
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         f'{model_dir}/{configs.llm_model}',
@@ -180,7 +181,7 @@ class Model(nn.Module):
         self.patch_embedding = PatchEmbedding(
             configs.d_model, self.patch_len, self.stride, configs.dropout)
 
-        self.word_embeddings = self.llm_model.get_input_embeddings().weight
+        self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
         self.num_tokens = 1000
         self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
@@ -208,7 +209,7 @@ class Model(nn.Module):
         x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
 
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
-        prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
+        prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
         source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
 
@@ -216,7 +217,7 @@ class Model(nn.Module):
         enc_out, n_vars = self.patch_embedding(x_enc)
         enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        dec_out = self.llm_model(inputs_embeds=llama_enc_out).last_hidden_state
+        dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
 
         dec_out = torch.reshape(

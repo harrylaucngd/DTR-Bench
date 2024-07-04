@@ -96,27 +96,30 @@ class LLMNet(GlucoseLLM.Model):
         dec_out = self.forecast(series, prompt)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
-    def forward_text(self, prompt, max_length=128):
-        # todo: remove the following code and use pipeline to infer
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).input_ids.to(self.llm_model.device)
-        attention_mask = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=max_length).attention_mask.to(self.llm_model.device)
-        
-        # Encode prompt
-        outputs = self.llm_model(input_ids=inputs, attention_mask=attention_mask)
-        hidden_states = outputs.last_hidden_state
-        logits = hidden_states[:, -1, :]
-        predicted_token_id = torch.argmax(logits, dim=-1).item()
-        generated_text = self.tokenizer.decode(predicted_token_id)
+    def forward_text(self, prompt, max_length=128, temp=0.9):
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.llm_model.device)
+        input_ids = inputs["input_ids"]
+        attention_mask = (input_ids != 0).long()
+        outputs = self.llm_model.generate(
+            input_ids=input_ids,
+            #max_length=4096,
+            num_return_sequences=1,
+            #do_sample=True,
+            #top_p=0.95,
+            #top_k=50
+        )
+        # decode output
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         return generated_text
 
-    def forward(self, series, messages, max_length=100, mode='Q'):
+    def forward(self, series, messages, max_length=100, temp=0.9, mode='Q'):
         logits, state = None, None
-        prompt = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True, return_tensors="pt")
+        prompt = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
         if mode == 'Q':
             logits, state = self.forward_Q(series, prompt)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(prompt, max_length=max_length)
+            llm_output = self.forward_text(prompt, max_length=max_length, temp=temp)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -136,7 +139,7 @@ class LLMNet(GlucoseLLM.Model):
         prompt.insert_component("system", obs_exp_prompt, 0)
         prompt.insert_component("system", "Please analyze the current state within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
+        _, _, response = self.forward(series, prompt, max_length=256, temp=0.9, mode=mode)
         return "Analysis of the current state: " + response
     
     def q_pred(self, series, conversation, mode='Q'):
@@ -144,7 +147,7 @@ class LLMNet(GlucoseLLM.Model):
         prompt.insert_component("system", Q_prompt, 0)
         prompt.insert_component("system", f"user: Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
         series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
-        q_list, _, _ = self.forward(series, prompt, max_length=256, mode=mode)
+        q_list, _, _ = self.forward(series, prompt, max_length=256, temp=0.9, mode=mode)
         return q_list
     
     def explain_act(self, conversation, mode='str'):
@@ -152,7 +155,7 @@ class LLMNet(GlucoseLLM.Model):
         prompt.insert_component("system", act_exp_prompt, 0)
         prompt.insert_component("system", "Please explain why the agent chose the last action within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
+        _, _, response = self.forward(series, prompt, max_length=256, temp=0.9, mode=mode)
         return "Explanation of the last action: " + response
 
 
