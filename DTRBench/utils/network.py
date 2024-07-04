@@ -42,7 +42,10 @@ obs_exp_prompt = ("The Simglucose environment is a simulation environment design
                   "(the observation) within a target range through the administration of insulin (the action). "
                   "The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose "
                   "concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was "
-                  "injected, a raising or high level of action is witnessed, and vice versa.") # expertised system prompt of background knowledge for observation explanation
+                  "injected, a raising or high level of action is witnessed, and vice versa. The following would be "
+                  "conversation history between user and you as an assistant, where the user gives blood glucose "
+                  "observation and the agent's action (Insulin Bolus Dose) at every timestep, and next timestep's "
+                  "observation, then the assistant give explaination to the observation at every next timestep.") # expertised system prompt of background knowledge for observation explanation
 Q_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of "
             "glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
             "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target "
@@ -52,7 +55,9 @@ Q_prompt = ("The Simglucose environment is a simulation environment designed to 
             "with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. "
             "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
             "value action should be high, and q value of the low value action should be low, and vice versa for low "
-            "blood glucose level.")       # expertised system prompt for series information description and Q value prediction
+            "blood glucose level. The following would be conversation history between user and you as an assistant, "
+            "where the user gives blood glucose observation and the agent's action (Insulin Bolus Dose) at every timestep, "
+            "then the assistant give explaination to both the observation and action at every timestep.")       # expertised system prompt for series information description and Q value prediction
 act_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
                   "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
                   "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
@@ -60,7 +65,21 @@ act_exp_prompt = ("The Simglucose environment is a simulation environment design
                   "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
                   "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
                   "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa.") # expertised system prompt of background knowledge for action explanation
+                  "to prevent the blood glucose from getting too high, and vice versa. The following would be conversation "
+                  "history between user and you as an assistant, where the user gives blood glucose observation and "
+                  "the agent's action (Insulin Bolus Dose) at every timestep, then the assistant give explaination to the "
+                  "action at every timestep.") # expertised system prompt of background knowledge for action explanation
+summary_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
+                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
+                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
+                  "target range through the administration of insulin (the action). The reason for a high value action "
+                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
+                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
+                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
+                  "to prevent the blood glucose from getting too high, and vice versa. The reason for a high value "
+                  "observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is "
+                  "typically in last/last several timestep, more insulin (action) was injected, a raising or high level "
+                  "of action is witnessed, and vice versa.") # expertised system prompt of background knowledge for regulation summary
 
 
 class LLMNet(GlucoseLLM.Model):
@@ -99,8 +118,8 @@ class LLMNet(GlucoseLLM.Model):
     def forward_text(self, prompt, max_length=128):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.llm_model.device)
         outputs = self.llm_model.generate(
-            **inputs, 
-            max_length=4096,
+            **inputs,
+            max_new_tokens=max_length,
             do_sample=True, 
             top_k=50,
             top_p=0.95,
@@ -111,6 +130,7 @@ class LLMNet(GlucoseLLM.Model):
 
     def forward(self, series, messages, max_length=100, mode='Q'):
         logits, state = None, None
+        # prompt = messages.to_str()
         prompt = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
         if mode == 'Q':
             logits, state = self.forward_Q(series, prompt)
@@ -131,29 +151,37 @@ class LLMNet(GlucoseLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def explain_obs(self, conversation, mode='str'):
+    def explain_obs(self, conversation, summary, mode='str'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", obs_exp_prompt, 0)
-        prompt.insert_component("system", "Please analyze the current state within 100 words:", -1)
+        prompt.append_content("Extracted rules and regulations: "+summary+"Please analyze the current state within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return "Analysis of the current state: " + response
+        return response
     
-    def q_pred(self, series, conversation, mode='Q'):
+    def q_pred(self, series, conversation, summary, mode='Q'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", Q_prompt, 0)
-        prompt.insert_component("system", f"user: Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+        prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
         series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
         q_list, _, _ = self.forward(series, prompt, max_length=256, mode=mode)
         return q_list
     
-    def explain_act(self, conversation, mode='str'):
+    def explain_act(self, conversation, summary, mode='str'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", act_exp_prompt, 0)
-        prompt.insert_component("system", "Please explain why the agent chose the last action within 100 words:", -1)
+        prompt.append_content("Extracted rules and regulations: "+summary+"Please explain why the agent chose the last action within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return "Explanation of the last action: " + response
+        return response
+
+    def summarize(self, conversation, mode='str'):
+        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
+        prompt.insert_component("system", summary_prompt, 0)
+        prompt.append_content("Please explain why the agent chose the last action within 100 words:", -1)
+        series=torch.tensor([]).to(self.device)
+        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
+        return response
 
 
 def get_target_model(model):

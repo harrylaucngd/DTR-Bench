@@ -105,7 +105,7 @@ class Model(nn.Module):
                     )
                 except EnvironmentError:  # downloads model from HF is not already done
                     print("Local model files not found. Attempting to download...")
-                    self.llm_model = LlamaModel.from_pretrained(
+                    self.llm_model = LlamaForCausalLM.from_pretrained(
                         f'{model_hf[configs.llm_model]}',
                         trust_remote_code=True,
                         local_files_only=False,
@@ -133,7 +133,7 @@ class Model(nn.Module):
                 self.llm_config.output_hidden_states = True
 
                 try:
-                    self.llm_model = LlamaModel.from_pretrained(
+                    self.llm_model = LlamaForCausalLM.from_pretrained(
                         f'{model_dir}/{configs.llm_model}',
                         trust_remote_code=True,
                         local_files_only=True,
@@ -141,7 +141,7 @@ class Model(nn.Module):
                     )
                 except EnvironmentError:  # downloads model from HF is not already done
                     print("Local model files not found. Attempting to download...")
-                    self.llm_model = LlamaModel.from_pretrained(
+                    self.llm_model = LlamaForCausalLM.from_pretrained(
                         f'{model_hf[configs.llm_model]}',
                         trust_remote_code=True,
                         local_files_only=False,

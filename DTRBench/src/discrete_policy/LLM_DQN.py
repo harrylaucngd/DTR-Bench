@@ -8,7 +8,7 @@ from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import DQNPolicy
 from DTRBench.utils.network import LLMNet, get_target_model, sync_target_model
 
-from DTRBench.utils.prompt_pipeline import Conversation, act_prompt_reprogramming, obs_prompt_reprogramming, q_prompt_reprogramming
+from DTRBench.utils.prompt_pipeline import Conversation, obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -51,8 +51,9 @@ class LLM_DQN_Policy(DQNPolicy):
         reward_normalization: bool = False,
         is_double: bool = True,
         clip_loss_grad: bool = False,
-        need_act_explain = True,
         need_obs_explain = True,
+        need_act_explain = True,
+        need_summary = True,
         **kwargs: Any,
     ) -> None:
         super().__init__(model, optim, discount_factor, estimation_step, target_update_freq, reward_normalization, is_double, clip_loss_grad, **kwargs)
@@ -60,8 +61,9 @@ class LLM_DQN_Policy(DQNPolicy):
             #self.model_old = get_target_model(self.model)
             self.model_old = deepcopy(self.model)
             self.model_old.eval()
-        self.need_act_explain = need_act_explain
         self.need_obs_explain = need_obs_explain
+        self.need_act_explain = need_act_explain
+        self.need_summary = need_summary
 
     def compress_state(self, state):
         separator = "|||"
@@ -102,21 +104,23 @@ class LLM_DQN_Policy(DQNPolicy):
         """
         model = getattr(self, model)
         if state is None:
-            state = Batch(obs=[], act=[], obs_exp=[], act_exp=[])
+            state = Batch(obs=[], act=[], obs_exp=[], act_exp=[], summary=[])
+            summ = ""
         else:
             state = self.extract_state(state)
+            summ = state.summary[-1]
 
         # obs and obs explanation
         obs = batch[input]
         obs_next = obs.obs if hasattr(obs, "obs") else obs
         state.obs = np.append(state.obs, obs_next)
         conversation = obs_prompt_reprogramming(state.obs, state.act, state.obs_exp)
-        obs_explain = model.explain_obs(conversation, mode='str') if self.need_obs_explain else ""
+        obs_explain = model.explain_obs(conversation, summ, mode='str') if self.need_obs_explain else ""
         state.obs_exp = np.append(state.obs_exp, obs_explain)
 
         # Q value prediction
         series, conversation = q_prompt_reprogramming(state.obs, state.act, state.obs_exp, state.act_exp)
-        logits = model.q_pred(series, conversation, mode='Q')
+        logits = model.q_pred(series, conversation, summ, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
@@ -125,11 +129,13 @@ class LLM_DQN_Policy(DQNPolicy):
         
         # act explanation
         conversation = act_prompt_reprogramming(state.obs, state.act, state.act_exp)
-        act_explain = model.explain_act(conversation, mode='str') if self.need_act_explain else ""
+        act_explain = model.explain_act(conversation, summ, mode='str') if self.need_act_explain else ""
         state.act_exp = np.append(state.act_exp, act_explain)
 
         # update summary
-
+        conversation = summary_reprogramming(state.obs, state.act, state.summary)
+        summary = model.summarize(conversation, mode='str') if self.need_summary else ""
+        state.summary = np.append(state.summary, summary)
 
         # compress state batch to len 1
         state = self.compress_state(state)
