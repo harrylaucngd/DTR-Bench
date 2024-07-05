@@ -126,6 +126,10 @@ class LLMNet(GlucoseLLM.Model):
             temperature=1
         )
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        generated_text = generated_text[len(prompt):].strip()
+        cutoff_index = generated_text.find("<|im_end|>")
+        if cutoff_index != -1:
+            generated_text = generated_text[:cutoff_index].strip()
         return generated_text
 
     def forward(self, series, messages, max_length=100, mode='Q'):
@@ -154,7 +158,10 @@ class LLMNet(GlucoseLLM.Model):
     def explain_obs(self, conversation, summary, mode='str'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", obs_exp_prompt, 0)
-        prompt.append_content("Extracted rules and regulations: "+summary+"Please analyze the current state within 100 words:", -1)
+        if summary is None:
+            prompt.append_content("Please analyze the current state within 100 words:", -1)
+        else:
+            prompt.append_content("Extracted rules and regulations: "+summary+"Please analyze the current state within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return response
@@ -162,7 +169,10 @@ class LLMNet(GlucoseLLM.Model):
     def q_pred(self, series, conversation, summary, mode='Q'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", Q_prompt, 0)
-        prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+        if summary is None:
+            prompt.append_content(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+        else:
+            prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
         series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
         q_list, _, _ = self.forward(series, prompt, max_length=256, mode=mode)
         return q_list
@@ -170,7 +180,10 @@ class LLMNet(GlucoseLLM.Model):
     def explain_act(self, conversation, summary, mode='str'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", act_exp_prompt, 0)
-        prompt.append_content("Extracted rules and regulations: "+summary+"Please explain why the agent chose the last action within 100 words:", -1)
+        if summary is None:
+            prompt.append_content("Please explain why the agent chose the last action within 100 words:", -1)
+        else:
+            prompt.append_content("Extracted rules and regulations: "+summary+"Please explain why the agent chose the last action within 100 words:", -1)
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return response

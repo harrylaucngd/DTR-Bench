@@ -105,7 +105,7 @@ class LLM_DQN_Policy(DQNPolicy):
         model = getattr(self, model)
         if state is None:
             state = Batch(obs=[], act=[], obs_exp=[], act_exp=[], summary=[])
-            summ = ""
+            summ = None
         else:
             state = self.extract_state(state)
             summ = state.summary[-1]

@@ -17,7 +17,7 @@ def define_policy(  # general hp
                     ):
     # define model
     net = define_llm_network(1, 5, device="cuda" if torch.cuda.is_available() else "cpu", 
-                             llm="llama-3-8b", llm_dim=5120)
+                             llm="llama-3-8b", llm_dim=4096)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     # define policy
     policy = LLM_DQN_Policy(
@@ -25,7 +25,7 @@ def define_policy(  # general hp
         optim,
         gamma,
         n_step,
-        target_update_freq=target_update_freq,
+        target_update_freq=0,
         need_obs_explain = True,
         need_act_explain = True,
         need_summary = True,

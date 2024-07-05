@@ -64,7 +64,7 @@ class Model(nn.Module):
                         f'{model_dir}/{configs.llm_model}',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
                 except EnvironmentError:  # downloads model from HF is not already done
                     print("Local model files not found. Attempting to download...")
@@ -72,7 +72,7 @@ class Model(nn.Module):
                         f'{model_hf[configs.llm_model]}',
                         trust_remote_code=True,
                         local_files_only=False,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
 
                 try:
@@ -101,7 +101,7 @@ class Model(nn.Module):
                         f'{model_dir}/{configs.llm_model}',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
                 except EnvironmentError:  # downloads model from HF is not already done
                     print("Local model files not found. Attempting to download...")
@@ -109,7 +109,7 @@ class Model(nn.Module):
                         f'{model_hf[configs.llm_model]}',
                         trust_remote_code=True,
                         local_files_only=False,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
                 try:
                     self.tokenizer = AutoTokenizer.from_pretrained(
@@ -137,7 +137,7 @@ class Model(nn.Module):
                         f'{model_dir}/{configs.llm_model}',
                         trust_remote_code=True,
                         local_files_only=True,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
                 except EnvironmentError:  # downloads model from HF is not already done
                     print("Local model files not found. Attempting to download...")
@@ -145,7 +145,7 @@ class Model(nn.Module):
                         f'{model_hf[configs.llm_model]}',
                         trust_remote_code=True,
                         local_files_only=False,
-                        config=self.llm_config,
+                        # config=self.llm_config,
                     )
 
                 try:
