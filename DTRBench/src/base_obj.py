@@ -20,24 +20,21 @@ from DTRBench.utils.data import load_buffer
 
 
 class RLObjective:
-    def __init__(self, env_name, seed, training_num, test_num, num_actions, logdir, device, logger="wandb", **kwargs
-                 ):
-
+    def __init__(self, env_name, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
         # define high level parameters
-        self.env_name, self.logger_type = env_name, logger
-        self.logger = None
+        self.env_name = env_name
+        self.hyperparam = hyperparam
+        self.meta_param = self.hyperparam.get_meta_params()
         self.device = device
 
-        # define job name for logging
-        self.job_name = self.env_name
+    def get_search_space(self):
+        return self.hyperparam.get_search_space()
 
-        # early stopping counter
-        self.rew_history = []
-
+    def prepare_env(self, seed):
         # prepare env
-        self.env, self.train_envs, self.test_envs = make_env(env_name, seed, training_num, 1,
-                                                             num_actions=num_actions)
-
+        self.env, self.train_envs, self.test_envs = make_env(self.env_name, int(seed),
+                                                             self.meta_param["training_num"], 1,
+                                                             num_actions=self.meta_param["num_actions"])
         state_shape = self.env.observation_space.shape or self.env.observation_space.n
         self.state_space = self.env.observation_space
         action_shape = self.env.action_space.shape or self.env.action_space.n
@@ -55,37 +52,32 @@ class RLObjective:
         else:
             self.action_shape = int(action_shape)
 
-    def search_once(self, meta_params: dict, hparams: dict = None, metric="best_reward", log_name=None):
+    def search_once(self, hparams: dict, metric="best_reward"):
         # todo: online search should be problematic because offline wandb logger cannot be used with online trainer
-        if self.logger == "wandb":
-            self.logger = WandbLogger(project="SepsisRL",
-                                      name=f"{self.env_name}-{meta_params['algo_name']}",
-                                      save_interval=1,
-                                      )
-        else:
-            raise NotImplementedError("Only wandb is supported for search_once")
-        hparams = hparams if hparams is not None else wandb.config
+        self.prepare_env(hparams["seed"])
         set_global_seed(hparams["seed"])
 
-        # use all hparam combinations as the job name
-        if log_name is None:
-            trial_name = "-".join([f"{k}{v}" for k, v in hparams.items()])
-            log_name = os.path.join(self.job_name, hparams["algo_name"],
-                                    f"{trial_name}-seed{hparams['seed']}")
-        else:
-            print(f"log name {log_name} is provided, will not use hparams to generate log name")
-        log_path = os.path.join(meta_params["logdir"], log_name)
+        self.logger = WandbLogger(project="SepsisRL",
+                                  name=f"{self.env_name}-{self.meta_param['algo_name']}",
+                                  save_interval=1,
+                                  )
 
-        self.log_path = str(log_path)
-        print(f"logging to {self.log_path}")
+        # get names
+        hp_name = "-".join([f"{k}{v}" for k, v in hparams.items()])
+        log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
+
+        print(f"logging to {log_path}")
         wandb.log({"model_dir": log_path})
-        os.makedirs(self.log_path, exist_ok=True)
-        self.policy = self.define_policy(**hparams)
+        os.makedirs(log_path, exist_ok=True)
 
+        # start training
+        self.policy = self.define_policy(**hparams)
         result = self.run(self.policy, **hparams)
         score = result[metric.replace("test/", "")]
 
         self.logger.log_test_data(result, step=0)
+
+        # todo:load best policy to test on other envs
         return score
 
     def early_stop_fn(self, mean_rewards):

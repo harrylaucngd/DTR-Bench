@@ -7,7 +7,6 @@ class OffPolicyRLHyperParameterSpace:
     _meta_hparams = [
         "algo_name",  # name of the algorithm
         "logdir",  # directory to save logs
-        "seed",
         "training_num",  # number of training envs
         "test_num",  # number of test envs
         "epoch",
@@ -20,24 +19,22 @@ class OffPolicyRLHyperParameterSpace:
     # general hyperparameter search space
     _general_hparams = {
         # general parameters
+        "seed": common_hparams["seed"],
         "batch_size": common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
+        "obs_mode": common_hparams["obs_mode"],
     }
     # policy hyperparameter search space
     _policy_hparams = {
-        "stack_num": None,  # number of frames to stack, must be specified in the child class
-        "cat_num": None,
-        # number of obs concatenation, must be specified in the child class, cannot be used with stack_num
     }
     _supported_algos = ()
 
     def __init__(self,
                  algo_name,  # name of the algorithm
                  logdir,  # directory to save logs
-                 seed,
                  training_num,  # number of training envs
                  test_num,  # number of test envs
                  epoch,
@@ -50,7 +47,6 @@ class OffPolicyRLHyperParameterSpace:
             raise NotImplementedError(f"algo_name {algo_name} not supported, support {self.__class__._supported_algos}")
         self.algo_name = algo_name
         self.logdir = logdir
-        self.seed = seed
         self.training_num = training_num
         self.test_num = test_num
         self.epoch = epoch
@@ -86,10 +82,11 @@ class OffPolicyRLHyperParameterSpace:
         search_space.update(self._policy_hparams)
         space = {}
         for k, v in search_space.items():
-            if isinstance(v, (list, tuple)):
-                space[k] = {"values": v}
-            elif isinstance(v, (int, float, bool, str)):
-                space[k] = {"value": v}
+            if isinstance(v, (int, float, bool, str, dict, list, tuple)):
+                if not hasattr(v, "__len__") or len(v) == 1:
+                    space[k] = {"value": v}
+                else:
+                    space[k] = {"values": v}
             else:
                 raise NotImplementedError(f"unsupported type {type(v)} for hyperparameter {k}")
         return space
@@ -191,48 +188,15 @@ class DQNHyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("dqn",)
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
-        "stack_num": 1,
-        "cat_num": 1,
-        "eps_test": 0.005,
-        "eps_train": 1,
-        "eps_train_final": 0.005,
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
         "is_double": False,
         "use_dueling": False,
+        "eps_test": common_hparams["eps_test"],
+        "eps_train": common_hparams["eps_train"],
+        "eps_train_final": common_hparams["eps_train_final"],
     }
 
-
-class DQNRNNHyperParams(DQNHyperParams):
-    _supported_algos = ("dqn-rnn",)
-    _policy_hparams = {
-        "lr": common_hparams["lr"],  # learning rate
-        "stack_num": common_hparams["stack_num"],
-        "cat_num": 1,
-        "eps_test": 0.005,
-        "eps_train": 1,
-        "eps_train_final": 0.005,
-        "n_step": common_hparams["n_step"],
-        "target_update_freq": common_hparams["target_update_freq"],
-        "is_double": False,
-        "use_dueling": False,
-    }
-
-
-class DQNObsCatHyperParams(DQNHyperParams):
-    _supported_algos = ("dqn-obs_cat",)
-    _policy_hparams = {
-        "lr": common_hparams["lr"],  # learning rate
-        "stack_num": 1,
-        "cat_num": common_hparams["cat_num"],
-        "eps_test": 0.005,
-        "eps_train": 1,
-        "eps_train_final": 0.005,
-        "n_step": common_hparams["n_step"],
-        "target_update_freq": common_hparams["target_update_freq"],
-        "is_double": False,
-        "use_dueling": False,
-    }
 
 # todo: add rainbow
 # todo: add cat and rnn version of the following policies

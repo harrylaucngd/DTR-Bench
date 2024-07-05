@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from tianshou.data import Collector, VectorReplayBuffer, ReplayBuffer
 from tianshou.exploration import GaussianNoise
-from GlucoseLLM.discrete_policy import LLM_DQN_Policy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy
 from tianshou.policy import DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, C51Policy, DiscreteSACPolicy
 from tianshou.policy.modelbased.icm import ICMPolicy
@@ -121,8 +121,7 @@ class DQNObjective(RLObjective):
             buffer = ReplayBuffer(self.meta_param["buffer_size"],
                                   ignore_obs_next=False,
                                   save_only_last_obs=False,
-                                  stack_num=stack_num
-                                  )
+                                  stack_num=stack_num)
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
@@ -183,8 +182,8 @@ class LLM_DQN_Objective(DQNObjective):
             gamma,
             n_step,
             target_update_freq=target_update_freq,
-            need_act_explain = self.need_act_explain,
-            need_obs_explain = self.need_obs_explain,
+            need_act_explain=self.need_act_explain,
+            need_obs_explain=self.need_obs_explain,
         )
         return policy
 
