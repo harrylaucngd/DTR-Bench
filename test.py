@@ -5,6 +5,9 @@ from torch.optim import Adam
 from DTRBench.utils.network import LLMNet
 from DTRBench.src.offpolicyRLObj import define_llm_network
 from DTRBench.src.discrete_policy.LLM_DQN import LLM_DQN_Policy
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def define_policy(  # general hp
                     gamma,
@@ -32,7 +35,7 @@ def define_policy(  # general hp
     )
     return policy
 
-policy = define_policy(0.9, 0.001, 1, 0)
+policy = define_policy(0.9, 0.001, 1, 1)
 
 # Generate synthetic observations and actions
 synthetic_obs = np.random.uniform(100, 200, 1)

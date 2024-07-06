@@ -3,9 +3,10 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
+import time
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
-from tianshou.policy import DQNPolicy
+from tianshou.policy import BasePolicy, DQNPolicy
 from DTRBench.utils.network import LLMNet, get_target_model, sync_target_model
 
 from DTRBench.utils.prompt_pipeline import Conversation, obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
@@ -56,15 +57,32 @@ class LLM_DQN_Policy(DQNPolicy):
         need_summary = True,
         **kwargs: Any,
     ) -> None:
-        super().__init__(model, optim, discount_factor, estimation_step, target_update_freq, reward_normalization, is_double, clip_loss_grad, **kwargs)
+        BasePolicy.__init__(self, **kwargs)
+        self.model = model
+        self.optim = optim
+        self.eps = 0.0
+        assert 0.0 <= discount_factor <= 1.0, "discount factor should be in [0, 1]"
+        self._gamma = discount_factor
+        assert estimation_step > 0, "estimation_step should be greater than 0"
+        self._n_step = estimation_step
+        self._target = target_update_freq > 0
+        self._freq = target_update_freq
+        self._iter = 0
         if self._target:
-            #self.model_old = get_target_model(self.model)
+            # self.model_old = get_target_model(self.model)
             self.model_old = deepcopy(self.model)
             self.model_old.eval()
+        self._rew_norm = reward_normalization
+        self._is_double = is_double
+        self._clip_loss_grad = clip_loss_grad
         self.need_obs_explain = need_obs_explain
         self.need_act_explain = need_act_explain
         self.need_summary = need_summary
 
+    def sync_weight(self) -> None:
+        """Synchronize the non-LLM weight for the target network."""
+        self.model_old.load_state_dict(self.model.state_dict())
+    
     def compress_state(self, state):
         separator = "|||"
         compressed_state = {
@@ -143,27 +161,3 @@ class LLM_DQN_Policy(DQNPolicy):
         state = self.compress_state(state)
 
         return Batch(logits=logits, act=act, state=state)
-
-    def learn(self, batch: Batch, **kwargs: Any) -> Dict[str, float]:
-        if self._target and self._iter % self._freq == 0:
-            #self.model_old = sync_target_model(self.model, self.model_old)
-            self.sync_weight()
-        self.optim.zero_grad()
-        weight = batch.pop("weight", 1.0)
-        q = self(batch).logits
-        q = q[np.arange(len(q)), batch.act]
-        returns = to_torch_as(batch.returns.flatten(), q)
-        td_error = returns - q
-
-        if self._clip_loss_grad:
-            y = q.reshape(-1, 1)
-            t = returns.reshape(-1, 1)
-            loss = torch.nn.functional.huber_loss(y, t, reduction="mean")
-        else:
-            loss = (td_error.pow(2) * weight).mean()
-
-        batch.weight = td_error  # prio-buffer
-        loss.backward()
-        self.optim.step()
-        self._iter += 1
-        return {"loss": loss.item()}

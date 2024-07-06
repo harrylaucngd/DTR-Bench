@@ -30,7 +30,7 @@ Sequence[Dict[Any, Any]]]
 llm_context_window = {
     "llama-2-13b": 4096,
     "llama-13b": 2048,
-    "llama-3-8b": 4096,
+    "llama-3-8b": 1028,
     "llama-2-7b": 4096,
     "llama-7b": 2048,
     "gpt2": 1024
@@ -191,7 +191,7 @@ class LLMNet(GlucoseLLM.Model):
     def summarize(self, conversation, mode='str'):
         prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
         prompt.insert_component("system", summary_prompt, 0)
-        prompt.append_content("Please explain why the agent chose the last action within 100 words:", -1)
+        prompt.append_content("Please summarize the rules and regulations you can observe or extract from the history data and background information. Separate each rule with a serial number.", -1)
         series=torch.tensor([]).to(self.device)
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return response
