@@ -45,7 +45,7 @@ def parse_args():
                                  "C51", "C51-rnn", 
                                  "discrete-SAC", "discrete-SAC-rnn"])
     parser.add_argument("--scale_obs", type=int, default=0)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "mps")
     args = parser.parse_known_args()[0]
 
     return args

@@ -72,6 +72,7 @@ class LLM_DQN_Policy(DQNPolicy):
             'act': [separator.join(map(str, state.act))],
             'obs_exp': [separator.join(map(str, state.obs_exp))],
             'act_exp': [separator.join(map(str, state.act_exp))],
+            'summary': [separator.join(map(str, state.summary))],
         }
         return compressed_state
 
@@ -81,7 +82,8 @@ class LLM_DQN_Policy(DQNPolicy):
             obs=compressed_state['obs'][0].split(separator),
             act=compressed_state['act'][0].split(separator),
             obs_exp=compressed_state['obs_exp'][0].split(separator),
-            act_exp=compressed_state['act_exp'][0].split(separator)
+            act_exp=compressed_state['act_exp'][0].split(separator),
+            summary=compressed_state['summary'][0].split(separator),
         )
 
         # Convert numerical strings back to their respective types

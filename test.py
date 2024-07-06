@@ -16,7 +16,7 @@ def define_policy(  # general hp
                     **kwargs
                     ):
     # define model
-    net = define_llm_network(1, 5, device="cuda" if torch.cuda.is_available() else "cpu", 
+    net = define_llm_network(1, 5, device="cuda" if torch.cuda.is_available() else "mps", 
                              llm="llama-3-8b", llm_dim=4096)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     # define policy
@@ -25,14 +25,14 @@ def define_policy(  # general hp
         optim,
         gamma,
         n_step,
-        target_update_freq=0,
+        target_update_freq=target_update_freq,
         need_obs_explain = True,
         need_act_explain = True,
         need_summary = True,
     )
     return policy
 
-policy = define_policy(0.9, 0.001, 10, 1)
+policy = define_policy(0.9, 0.001, 1, 0)
 
 # Generate synthetic observations and actions
 synthetic_obs = np.random.uniform(100, 200, 1)
