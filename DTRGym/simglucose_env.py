@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from DTRGym.utils import DiscreteActionWrapper
 import hashlib
 
+
 def hash_seed(seed):
     if isinstance(seed, str):
         seed = seed.encode("utf8")
@@ -27,6 +28,7 @@ def hash_seed(seed):
     else:
         raise ValueError(f"seed must be str or int, got {type(seed)}")
     return int(hashlib.sha256(seed).hexdigest(), 16) % (2 ** 31)
+
 
 def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # insulin is in U/min
@@ -50,7 +52,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
         else:
             delta_reward = -1
 
-        insulin_penalty = - 4 * np.log10(insulin+1)
+        insulin_penalty = - 4 * np.log10(insulin + 1)
 
         reward = risk_reward + delta_reward + insulin_penalty
 
@@ -79,7 +81,7 @@ def TIR_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
         else:
             delta_reward = -1
 
-        insulin_penalty = -0.4 * np.log10(insulin+1)
+        insulin_penalty = -0.4 * np.log10(insulin + 1)
 
         reward = bg_reward + delta_reward + insulin_penalty
 
@@ -131,10 +133,13 @@ class SinglePatientEnv(gymnasium.Env):
                          "act_key": ["Insulin Dose (U/h)"],
                          "metric_key": ["TIR", "Hypo", "Hyper", "CV"],
                          }
+        self._action_space = None  # Backing attribute for lazy loading
+        self._obs_space = None  # Backing attribute for lazy loading
 
     def reset(self, seed: int = None, **kwargs):
         self.seed(seed)
         self.t = 0
+        self.step_counter = 0
         '''
         patient_name must be 'adolescent#001' to 'adolescent#010',
         or 'adult#001' to 'adult#010', or 'child#001' to 'child#010'
@@ -145,8 +150,6 @@ class SinglePatientEnv(gymnasium.Env):
         if self.patient_name not in self.patient_list:
             raise ValueError(f"patient_name must be in {self.patient_list}")
 
-
-
         self.env, _, _, _ = self._create_env(random_init_bg=self.random_init_bg)
         obs, _, _, info = self.env.reset()
         bg = info["bg"]
@@ -155,7 +158,7 @@ class SinglePatientEnv(gymnasium.Env):
         state = self._get_state(obs[0], bg, meal)
         obs = self._state2obs(state, random_obs=self.random_obs, enable_missing=False)
         self.last_bg = obs
-        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0}
+        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0}
         info.pop("patient_state")
         all_info.update(info)
         return np.array(obs, dtype=np.float32), info
@@ -167,6 +170,7 @@ class SinglePatientEnv(gymnasium.Env):
         if action < self.action_space.low or action > self.action_space.high:
             raise ValueError(f"action should be in [{self.action_space.low}, {self.action_space.high}]")
         self.t += self.env.sample_time
+        self.step_counter += 1
         # This gym only controls basal insulin
         act = Action(basal=action, bolus=0)  # U/h -> U/min
         obs, _, _, info = self.env.step(act)
@@ -188,7 +192,7 @@ class SinglePatientEnv(gymnasium.Env):
                                 insulin=action)
         self.last_bg = bg_next
         # reward = rew
-        all_info = {"action": action, "instantaneous_reward": reward}
+        all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter}
         info.pop("patient_state")
         all_info.update(info)
         return obs, reward, self.terminated, self.truncated, info
@@ -196,14 +200,14 @@ class SinglePatientEnv(gymnasium.Env):
     def seed(self, seed):
         self.np_random, seed1 = seeding.np_random(seed=seed)
 
-    def get_metrics(self):
-        obs_records = np.array(self.bg_records)
-        TIR = np.sum(np.logical_and(obs_records >= 70, obs_records <= 180)) / len(obs_records)
-        hypo = np.sum(obs_records < 70) / len(obs_records)
-        hyper = np.sum(obs_records > 180) / len(obs_records)
-        CV = np.std(obs_records) / np.mean(obs_records)
-        metrics = {"TIR": TIR, "Hypo": hypo, "Hyper": hyper, "CV": CV}
-        return metrics
+    # def get_metrics(self):
+    #     obs_records = np.array(self.bg_records)
+    #     TIR = np.sum(np.logical_and(obs_records >= 70, obs_records <= 180)) / len(obs_records)
+    #     hypo = np.sum(obs_records < 70) / len(obs_records)
+    #     hyper = np.sum(obs_records > 180) / len(obs_records)
+    #     CV = np.std(obs_records) / np.mean(obs_records)
+    #     metrics = {"TIR": TIR, "Hypo": hypo, "Hyper": hyper, "CV": CV}
+    #     return metrics
 
     def _create_env(self, random_init_bg=True):
         # Derive a random seed. This gets passed as a uint, but gets
@@ -259,21 +263,28 @@ class SinglePatientEnv(gymnasium.Env):
         else:
             self.last_obs = obs
         return np.array([obs], dtype=np.float32)
+
     @property
     def action_space(self):
-        ub = self.env.pump._params["max_basal"] / 60  # U/h -> U/min
-        return spaces.Box(low=0, high=ub, shape=(1,))
+        if self._action_space is None:  # Check if it is already calculated
+            pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
+            ub = pump._params["max_basal"] / 60
+            self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
+        return self._action_space
 
     @property
     def observation_space(self):
-        return spaces.Box(low=0, high=1000, shape=(1,))
+        if self._obs_space is None:
+            self._obs_space = spaces.Box(low=10, high=600, shape=(1,), dtype=np.float32)
+        return self._obs_space
 
     @property
     def max_basal(self):
         return self.env.pump._params["max_basal"]
 
+
 class RandomPatientEnv(gymnasium.Env):
-    def __init__(self, max_t: int = 24 * 60,
+    def __init__(self, max_t: int = 18 * 60,  # 5:00 AM to 11:00 AM
                  candidates=None,
                  reward_fn=risk_reward_fn,
                  random_init_bg: bool = False,
@@ -281,7 +292,7 @@ class RandomPatientEnv(gymnasium.Env):
                  random_meal: bool = False,
                  missing_rate=0.0,
                  sample_time=1,
-                 start_time=0):
+                 start_time=5*60):  # get up at 5:00 AM
         self.env = None
         self.reward_fn = reward_fn
         self.max_t = max_t

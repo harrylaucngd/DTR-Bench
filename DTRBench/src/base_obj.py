@@ -53,26 +53,23 @@ class RLObjective:
             self.action_shape = int(action_shape)
 
     def search_once(self, hparams: dict, metric="best_reward"):
-        # todo: online search should be problematic because offline wandb logger cannot be used with online trainer
-        self.prepare_env(hparams["seed"])
-        set_global_seed(hparams["seed"])
-
-        self.logger = WandbLogger(project="SepsisRL",
-                                  name=f"{self.env_name}-{self.meta_param['algo_name']}",
-                                  save_interval=1,
-                                  )
+        self.prepare_env(int(hparams["seed"]))
+        set_global_seed(int(hparams["seed"]))
 
         # get names
-        hp_name = "-".join([f"{k}{v}" for k, v in hparams.items()])
-        log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
+        hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
+                            for k, v in hparams.items() if k not in self.meta_param.keys() or k != "wandb_project_name"])
+        self.log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
 
-        print(f"logging to {log_path}")
-        wandb.log({"model_dir": log_path})
-        os.makedirs(log_path, exist_ok=True)
+        print(f"logging to {self.log_path}")
+        os.makedirs(self.log_path, exist_ok=True)
+        writer = SummaryWriter(log_dir=self.log_path)
+        self.logger = WandbLogger(project=hparams["wandb_project_name"], config=hparams, train_interval=24*15)
+        self.logger.load(writer)
 
         # start training
-        self.policy = self.define_policy(**hparams)
-        result = self.run(self.policy, **hparams)
+        self.policy = self.define_policy(**{**hparams, **self.meta_param})
+        result = self.run(self.policy, **{**hparams, **self.meta_param})
         score = result[metric.replace("test/", "")]
 
         self.logger.log_test_data(result, step=0)

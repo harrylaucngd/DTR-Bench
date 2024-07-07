@@ -1,4 +1,3 @@
-import optuna
 import argparse
 import torch
 import os
@@ -32,14 +31,15 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
     parser.add_argument("--task", type=str, default="SimGlucoseEnv")
     parser.add_argument("--setting", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default="debug")
     parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--test_num", type=int, default=100)
-    parser.add_argument("--epoch", type=int, default=100)
-    parser.add_argument("--num_actions", type=int, default=5)
-    parser.add_argument("--step_per_epoch", type=int, default=1000)
+    parser.add_argument("--epoch", type=int, default=50)
+    parser.add_argument("--num_actions", type=int, default=11)
+    parser.add_argument("--step_per_epoch", type=int, default=10*12*18)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--policy_name", type=str, default="DQN",
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     if args.role == "sweep":
         sweep_configuration = {
             "method": "grid",
-            "project": 'LLM4RL',
+            "project": args.wandb_project_name,
             "name": env_name + f"-{args.policy_name}",
             "metric": {"goal": "maximize", "name": "reward_best"},
             "parameters": search_space
@@ -89,7 +89,11 @@ if __name__ == "__main__":
         if args.role == "run_single":
             obj = obj_class(env_name, hparam_space, device=args.device, logger="tensorboard")
             config_dict = hparam_space.sample(mode="random")
-            obj.search_once(config_dict)
+            obj.search_once({**config_dict, **{"wandb_project_name": args.wandb_project_name}})
         else:
             print("role must be one of [sweep, agent, run_single], get {}".format(args.role))
             raise NotImplementedError
+
+        # todo: obs add drug
+        # todo: test sweep
+        # todo: eval multiple

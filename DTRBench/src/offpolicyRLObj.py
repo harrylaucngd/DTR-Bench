@@ -8,7 +8,7 @@ from tianshou.policy import DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, C51Policy, DiscreteSACPolicy
 from tianshou.policy.modelbased.icm import ICMPolicy
 from tianshou.policy.modelfree.dqn import DQNPolicy
-from tianshou.trainer import offpolicy_trainer
+from tianshou.trainer import OffpolicyTrainer
 from tianshou.utils.net.common import EnsembleLinear
 from tianshou.utils.net.continuous import Actor, Critic, ActorProb
 from tianshou.utils.net.discrete import Actor as discreteActor
@@ -28,64 +28,47 @@ class DQNObjective(RLObjective):
                       # general hp
                       gamma,
                       lr,
-                      stack_num,
+                      obs_mode,
                       linear,
-                      cat_num,
 
                       # dqn hp
                       n_step,
                       target_update_freq,
                       is_double,
                       use_dueling,
-                      icm_lr_scale=0,  # help="use intrinsic curiosity module with this lr scale"
-                      icm_reward_scale=0,  # help="scaling factor for intrinsic curiosity reward"
-                      icm_forward_loss_weight=0,  # help="weight for the forward model loss in ICM",
                       **kwargs
                       ):
         # define model
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = DQNPolicy(
-            net,
-            optim,
-            gamma,
-            n_step,
+            model=net,
+            optim=optim,
+            discount_factor=gamma,
+            estimation_step=n_step,
             target_update_freq=target_update_freq,
             is_double=is_double,  # we will have a separate runner for double dqn
+            action_space=self.action_space,
+            observation_space=self.state_space,
         )
-        if icm_lr_scale > 0:
-            feature_net = define_single_network(self.state_shape, 256, use_rnn=False, device=self.device)
-            action_dim = int(np.prod(self.action_shape))
-            feature_dim = feature_net.output_dim
-            icm_net = IntrinsicCuriosityModule(
-                feature_net.net,
-                feature_dim,
-                action_dim,
-                hidden_sizes=[512],
-                device=self.device
-            )
-            icm_optim = torch.optim.Adam(icm_net.parameters(), lr=lr)
-            policy = ICMPolicy(
-                policy, icm_net, icm_optim, icm_lr_scale, icm_reward_scale,
-                icm_forward_loss_weight
-            ).to(self.device)
         return policy
 
     def run(self, policy,
+            seed,
             eps_test,
             eps_train,
             eps_train_final,
-            stack_num,
-            cat_num,
+            obs_mode,
             step_per_collect,
             update_per_step,
             batch_size,
             **kwargs
             ):
         def save_best_fn(policy):
-            torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
         def train_fn(epoch, env_step):
             # nature DQN setting, linear decay in the first 10k steps
@@ -100,12 +83,12 @@ class DQNObjective(RLObjective):
 
         def test_fn(epoch, env_step):
             policy.set_eps(eps_test)
-
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
         assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
         stack_num = max(stack_num, cat_num)
         # seed
-        np.random.seed(self.meta_param["seed"])
-        torch.manual_seed(self.meta_param["seed"])
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
@@ -127,20 +110,15 @@ class DQNObjective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
 
-        # test train_collector and start filling replay buffer
-        print("warm start replay buffer, this may take a while...")
-        train_collector.collect(n_step=batch_size * self.meta_param["training_num"])
-        # trainer
-
-        result = offpolicy_trainer(
+        result = OffpolicyTrainer(
             policy,
-            train_collector,
-            test_collector,
-            self.meta_param["epoch"],
-            self.meta_param["step_per_epoch"],
-            step_per_collect,
-            self.meta_param["test_num"],
-            batch_size,
+            max_epoch=self.meta_param["epoch"],
+            batch_size=batch_size,
+            train_collector=train_collector,
+            test_collector=test_collector,
+            step_per_epoch = self.meta_param["step_per_epoch"],
+            step_per_collect=step_per_collect,
+            episode_per_test=self.meta_param["test_num"],
             train_fn=train_fn,
             test_fn=test_fn,
             stop_fn=self.early_stop_fn,
@@ -148,7 +126,7 @@ class DQNObjective(RLObjective):
             logger=self.logger,
             update_per_step=update_per_step,
             save_checkpoint_fn=self.save_checkpoint_fn,
-        )
+        ).run()
         return result
     
 
@@ -188,6 +166,7 @@ class LLM_DQN_Objective(DQNObjective):
         return policy
 
     def run(self, policy,
+            seed,
             eps_test,
             eps_train,
             eps_train_final,
@@ -215,8 +194,8 @@ class LLM_DQN_Objective(DQNObjective):
             policy.set_eps(eps_test)
 
         # seed
-        np.random.seed(self.meta_param["seed"])
-        torch.manual_seed(self.meta_param["seed"])
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM

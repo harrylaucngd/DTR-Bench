@@ -1,4 +1,4 @@
-import optuna
+
 from DTRBench.src.base_hparams import common_hparams
 import numpy as np
 
@@ -6,7 +6,7 @@ import numpy as np
 class OffPolicyRLHyperParameterSpace:
     _meta_hparams = [
         "algo_name",  # name of the algorithm
-        "logdir",  # directory to save logs
+        "log_dir",  # directory to save logs
         "training_num",  # number of training envs
         "test_num",  # number of test envs
         "epoch",
@@ -34,7 +34,7 @@ class OffPolicyRLHyperParameterSpace:
 
     def __init__(self,
                  algo_name,  # name of the algorithm
-                 logdir,  # directory to save logs
+                 log_dir,  # directory to save logs
                  training_num,  # number of training envs
                  test_num,  # number of test envs
                  epoch,
@@ -46,7 +46,7 @@ class OffPolicyRLHyperParameterSpace:
         if algo_name.lower() not in [i.lower() for i in self.__class__._supported_algos]:
             raise NotImplementedError(f"algo_name {algo_name} not supported, support {self.__class__._supported_algos}")
         self.algo_name = algo_name
-        self.logdir = logdir
+        self.log_dir = log_dir
         self.training_num = training_num
         self.test_num = test_num
         self.epoch = epoch
@@ -120,38 +120,6 @@ class OffPolicyRLHyperParameterSpace:
         result = {}
         dict_args = [self.get_general_params(), self.get_policy_params(), self.get_meta_params(), ]
         # if args in both general and meta, meta will overwrite general (seed)
-        for dictionary in dict_args:
-            result.update(dictionary)
-        return result
-
-    def define_general_hparams(self, trial: optuna.trial.Trial):
-        for name, space in self._general_hparams.items():
-            if isinstance(space, list):
-                value = trial.suggest_categorical(name, space)
-            else:
-                value = trial.set_user_attr(name, space)
-            setattr(self, name, value)
-
-    def define_policy_hparams(self, trial: optuna.trial.Trial):
-        for name, space in self._policy_hparams.items():
-            if isinstance(space, list):
-                value = trial.suggest_categorical(name, space)
-            else:
-                value = trial.set_user_attr(name, space)
-            setattr(self, name, value)
-
-    def __call__(self, trial: optuna.trial.Trial):
-        # define meta hparams
-        for p in self._meta_hparams:
-            trial.set_user_attr(p, getattr(self, p))
-
-        # define general hparams
-        meta_hparams = self.get_meta_params()
-        general_hparams = self.define_general_hparams(trial)
-        policy_hparams = self.define_policy_hparams(trial)
-        self.check_illegal()
-        result = {}
-        dict_args = [meta_hparams, general_hparams, policy_hparams]
         for dictionary in dict_args:
             result.update(dictionary)
         return result
