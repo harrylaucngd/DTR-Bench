@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--need_obs_explain", type=bool, default=True)
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_summary", type=bool, default=True)
+    parser.add_argument("--exp_freq", type=int, default=1)
     parser.add_argument("--llm", type=str, default="llama-3-8b",
                         choices=["llama-2-13b", "llama-13b",
                                  "llama-3-8b", "llama-2-7b", "llama-7b",
@@ -103,7 +104,7 @@ if __name__ == "__main__":
                                 )
     obj = obj_class(args.task, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
                     need_obs_explain = args.need_obs_explain, need_act_explain = args.need_act_explain, 
-                    need_summary = args.need_summary, multi_obj=args.multi_obj, logger="tensorboard",
+                    need_summary = args.need_summary, exp_freq = args.exp_freq, multi_obj=args.multi_obj, logger="tensorboard",
                     )
 
     if args.sampler == "BruteForceSampler":

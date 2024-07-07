@@ -55,6 +55,7 @@ class LLM_DQN_Policy(DQNPolicy):
         need_obs_explain = True,
         need_act_explain = True,
         need_summary = True,
+        exp_freq = 1,
         **kwargs: Any,
     ) -> None:
         BasePolicy.__init__(self, **kwargs)
@@ -78,6 +79,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_obs_explain = need_obs_explain
         self.need_act_explain = need_act_explain
         self.need_summary = need_summary
+        self.exp_freq = exp_freq
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weight for the target network."""
@@ -130,6 +132,17 @@ class LLM_DQN_Policy(DQNPolicy):
             state = self.extract_state(state)
             summ = state.summary[-1]
 
+        # decide to explain or not
+        step = batch.info["step"]
+        attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
+        for attr in attributes:
+            explain_bool = getattr(self, attr)
+            if (self.exp_freq == 0) or (step % self.exp_freq != 0):
+                explain_bool = False
+            elif step % self.exp_freq == 0:
+                explain_bool = True
+            setattr(self, attr, explain_bool)
+        
         # obs and obs explanation
         obs = batch[input]
         obs_next = obs.obs if hasattr(obs, "obs") else obs

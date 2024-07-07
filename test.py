@@ -32,6 +32,7 @@ def define_policy(  # general hp
         need_obs_explain = True,
         need_act_explain = True,
         need_summary = True,
+        exp_freq = 1,
     )
     return policy
 
