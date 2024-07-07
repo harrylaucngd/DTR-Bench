@@ -1,4 +1,4 @@
-import optuna
+
 import torch
 import random
 import numpy as np
@@ -43,23 +43,3 @@ def set_global_seed(seed):
 
     return _worker_init_fn
 
-def early_stopping_callback(study, trial):
-    trials_df = study.trials_dataframe()
-    completed_trials = len(trials_df[trials_df["state"] == "COMPLETE"])
-
-    # Number of trials to check for repetitions
-    n_trials_to_check = 3
-
-    # If fewer trials than n_trials_to_check have been completed, don't stop
-    if completed_trials < n_trials_to_check:
-        return
-
-    # Get the last n_trials_to_check trials
-    recent_trials = study.trials[-n_trials_to_check:]
-
-    # Check if objective values are the same for all of them
-    is_repeated = all(trial.value == recent_trials[0].value for trial in recent_trials)
-
-    if is_repeated:
-        print(f"Stopping optimization because the objective value repeated for the last {n_trials_to_check} trials.")
-        raise optuna.TrialPruned()
