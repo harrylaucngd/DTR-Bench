@@ -292,7 +292,7 @@ class RandomPatientEnv(gymnasium.Env):
                  random_meal: bool = False,
                  missing_rate=0.0,
                  sample_time=1,
-                 start_time=5*60):  # get up at 5:00 AM
+                 start_time=5 * 60):  # get up at 5:00 AM
         self.env = None
         self.reward_fn = reward_fn
         self.max_t = max_t
@@ -339,333 +339,76 @@ class RandomPatientEnv(gymnasium.Env):
         self.np_random, seed1 = seeding.np_random(seed=seed)
 
 
-def create_SimGlucoseEnv_continuous(max_t: int = 24 * 60, n_act: int = 5, **kwargs):
-    env = RandomPatientEnv(max_t, **kwargs)
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5,
+                                        **kwargs):
+    env = SinglePatientEnv(
+        patient_name,
+        max_t=max_t,
+        sample_time=1,
+        start_time=5 * 60,
+        random_init_bg=True,
+        random_obs=False, random_meal=True,
+        missing_rate=0)
+    if discrete:
+        wrapped_env = DiscreteActionWrapper(env, n_act)
+        return wrapped_env
     return env
 
 
-def create_SimGlucoseEnv_discrete(max_t: int = 24 * 60, n_act: int = 5, **kwargs):
-    env = RandomPatientEnv(max_t, **kwargs)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_setting1(max_t: int = 24 * 60, n_act: int = 5):
-    env = SinglePatientEnv('adolescent#001', max_t, random_init_bg=False,
-                           random_obs=False, random_meal=False,
+def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, **kwargs):
+    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
+                           random_obs=False, random_meal=True, start_time=5 * 60,
                            missing_rate=0.0)
     wrapped_env = DiscreteActionWrapper(env, n_act)
+    if discrete:
+        wrapped_env = DiscreteActionWrapper(env, n_act)
+        return wrapped_env
     return wrapped_env
 
 
-def create_SimGlucoseEnv_discrete_setting2(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=False,
-                           random_obs=False, random_meal=False,
-                           missing_rate=0.0)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_setting3(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=False,
-                           missing_rate=0.0)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_setting4(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.0)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_setting5(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_all_adolescents1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adolescent#001",
-                                       "adolescent#002",
-                                       "adolescent#003",
-                                       "adolescent#004",
-                                       "adolescent#005",
-                                       "adolescent#006",
-                                       "adolescent#007",
-                                       "adolescent#008",
-                                       "adolescent#009",
-                                       "adolescent#010"],
+def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
+    env = RandomPatientEnv(16 * 60,
+                           sample_time=1,
+                           candidates=["adult#001",
+                                       "adult#002",
+                                       "adult#003",
+                                       "adult#004", ],
                            random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
+                           start_time=5 * 60,
+                           random_obs=False, random_meal=True,
                            missing_rate=0.)
     wrapped_env = DiscreteActionWrapper(env, n_act)
+    if discrete:
+        wrapped_env = DiscreteActionWrapper(env, n_act)
+        return wrapped_env
     return wrapped_env
 
-
-def create_SimGlucoseEnv_discrete_all_adults1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
+def create_SimGlucoseEnv_all4(n_act: int = 5, discrete=False, **kwargs):
+    env = RandomPatientEnv(16 * 60,
+                           sample_time=1,
                            candidates=["adult#001",
                                        "adult#002",
                                        "adult#003",
                                        "adult#004",
-                                       "adult#005",
-                                       "adult#006",
-                                       "adult#007",
-                                       "adult#008",
-                                       "adult#009",
-                                       "adult#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
 
-
-def create_SimGlucoseEnv_discrete_all_children1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["child#001",
+                                       "child#001",
                                        "child#002",
                                        "child#003",
                                        "child#004",
-                                       "child#005",
-                                       "child#006",
-                                       "child#007",
-                                       "child#008",
-                                       "child#009",
-                                       "child#010"],
+
+                                       "adolescent#001",
+                                        "adolescent#002",
+                                        "adolescent#003",
+                                        "adolescent#004",
+                                       ],
                            random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
+                           start_time=5 * 60,
+                           random_obs=False, random_meal=True,
                            missing_rate=0.)
     wrapped_env = DiscreteActionWrapper(env, n_act)
+    if discrete:
+        wrapped_env = DiscreteActionWrapper(env, n_act)
+        return wrapped_env
     return wrapped_env
 
 
-def create_SimGlucoseEnv_discrete_all_adolescents2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adolescent#001",
-                                       "adolescent#002",
-                                       "adolescent#003",
-                                       "adolescent#004",
-                                       "adolescent#005",
-                                       "adolescent#006",
-                                       "adolescent#007",
-                                       "adolescent#008",
-                                       "adolescent#009",
-                                       "adolescent#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_all_adults2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adult#001",
-                                       "adult#002",
-                                       "adult#003",
-                                       "adult#004",
-                                       "adult#005",
-                                       "adult#006",
-                                       "adult#007",
-                                       "adult#008",
-                                       "adult#009",
-                                       "adult#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_discrete_all_children2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["child#001",
-                                       "child#002",
-                                       "child#003",
-                                       "child#004",
-                                       "child#005",
-                                       "child#006",
-                                       "child#007",
-                                       "child#008",
-                                       "child#009",
-                                       "child#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
-    return wrapped_env
-
-
-def create_SimGlucoseEnv_continuous_setting1(max_t: int = 24 * 60, n_act: int = 5):
-    env = SinglePatientEnv('adolescent#001', max_t, random_init_bg=False,
-                           random_obs=False, random_meal=False,
-                           missing_rate=0.0)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_setting2(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=False,
-                           random_obs=False, random_meal=False,
-                           missing_rate=0.0)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_setting3(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=False,
-                           missing_rate=0.0)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_setting4(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.0)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_setting5(max_t: int = 24 * 60, n_act: int = 5):
-    env = RandomPatientEnv(max_t, random_init_bg=True,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_adolescents1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adolescent#001",
-                                       "adolescent#002",
-                                       "adolescent#003",
-                                       "adolescent#004",
-                                       "adolescent#005",
-                                       "adolescent#006",
-                                       "adolescent#007",
-                                       "adolescent#008",
-                                       "adolescent#009",
-                                       "adolescent#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_adults1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adult#001",
-                                       "adult#002",
-                                       "adult#003",
-                                       "adult#004",
-                                       "adult#005",
-                                       "adult#006",
-                                       "adult#007",
-                                       "adult#008",
-                                       "adult#009",
-                                       "adult#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_children1(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["child#001",
-                                       "child#002",
-                                       "child#003",
-                                       "child#004",
-                                       "child#005",
-                                       "child#006",
-                                       "child#007",
-                                       "child#008",
-                                       "child#009",
-                                       "child#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_adolescents2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adolescent#001",
-                                       "adolescent#002",
-                                       "adolescent#003",
-                                       "adolescent#004",
-                                       "adolescent#005",
-                                       "adolescent#006",
-                                       "adolescent#007",
-                                       "adolescent#008",
-                                       "adolescent#009",
-                                       "adolescent#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_adults2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["adult#001",
-                                       "adult#002",
-                                       "adult#003",
-                                       "adult#004",
-                                       "adult#005",
-                                       "adult#006",
-                                       "adult#007",
-                                       "adult#008",
-                                       "adult#009",
-                                       "adult#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    return env
-
-
-def create_SimGlucoseEnv_continuous_all_children2(max_t: int = 24 * 60, sample_time=1, n_act: int = 5, start_time=0):
-    env = RandomPatientEnv(max_t,
-                           sample_time=sample_time,
-                           candidates=["child#001",
-                                       "child#002",
-                                       "child#003",
-                                       "child#004",
-                                       "child#005",
-                                       "child#006",
-                                       "child#007",
-                                       "child#008",
-                                       "child#009",
-                                       "child#010"],
-                           random_init_bg=True,
-                           start_time=start_time,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.5)
-    return env

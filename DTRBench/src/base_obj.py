@@ -1,9 +1,5 @@
 import os
-
-import gymnasium as gym
-import numpy as np
-import pandas as pd
-import torch
+from tqdm import tqdm
 import wandb
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from tianshou.data import Collector
@@ -11,18 +7,18 @@ from tianshou.env import DummyVectorEnv
 from tianshou.policy.base import BasePolicy
 from tianshou.utils import TensorboardLogger, WandbLogger
 from torch.utils.tensorboard import SummaryWriter
-
+from tianshou.trainer.utils import gather_info, test_episode
 from DTRGym import buffer_registry
 from DTRGym.base import make_env
 from DTRBench.utils.misc import set_global_seed
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.utils.data import load_buffer
 
 
 class RLObjective:
-    def __init__(self, env_name, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
+    def __init__(self, env_name, env_args:dict, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
         # define high level parameters
         self.env_name = env_name
+        self.env_args = env_args
         self.hyperparam = hyperparam
         self.meta_param = self.hyperparam.get_meta_params()
         self.device = device
@@ -30,11 +26,11 @@ class RLObjective:
     def get_search_space(self):
         return self.hyperparam.get_search_space()
 
-    def prepare_env(self, seed):
+    def prepare_env(self, seed, env_name, **env_kwargs):
         # prepare env
-        self.env, self.train_envs, self.test_envs = make_env(self.env_name, int(seed),
+        self.env, self.train_envs, self.test_envs = make_env(env_name, int(seed),
                                                              self.meta_param["training_num"], 1,
-                                                             num_actions=self.meta_param["num_actions"])
+                                                             num_actions=self.meta_param["num_actions"], **env_kwargs)
         state_shape = self.env.observation_space.shape or self.env.observation_space.n
         self.state_space = self.env.observation_space
         action_shape = self.env.action_space.shape or self.env.action_space.n
@@ -52,9 +48,47 @@ class RLObjective:
         else:
             self.action_shape = int(action_shape)
 
-    def search_once(self, hparams: dict, metric="best_reward"):
-        self.prepare_env(int(hparams["seed"]))
+    def wandb_search(self):
+        # init wandb to get hparams
+        self.logger = WandbLogger(train_interval=24 * 15)
+        hparams = wandb.config
+        # get names
+        hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
+                            for k, v in hparams.items() if
+                            k not in self.meta_param.keys() or k != "wandb_project_name"])
+        self.log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
+
+        print(f"logging to {self.log_path}")
+        os.makedirs(self.log_path, exist_ok=True)
+        writer = SummaryWriter(log_dir=self.log_path)
+
+        self.logger.load(writer)
+
+        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
         set_global_seed(int(hparams["seed"]))
+
+        # start training
+        print("prepare policy")
+        self.policy = self.define_policy(**{**hparams, **self.meta_param})
+        print("start training!")
+        best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
+
+        # test on all envs
+        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
+
+    def test_all_patients(self, policy, test_fn,  seed, logger, n_episode=20):
+        for patient_name in tqdm(["adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004",
+                             "adult#001", "adult#002", "adult#003", "adult#004",
+                             "child#001", "child#002", "child#003", "child#004", "child#005"], desc="final_testing"):
+            self.prepare_env(seed, "SimGlucoseEnv_single_patient", patient_name=patient_name,
+                             discrete=self.env_args["discrete"], n_act=self.env_args["n_act"])
+            test_collectors = Collector(policy, self.test_envs, exploration_noise=False)
+            result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
+            logger.write(f"final_test/{patient_name}", 0, result)
+
+    def search_once(self, hparams: dict, metric="best_reward"):
+        # init wandb to get hparams
+        self.logger = WandbLogger(project=hparams["wandb_project_name"], config=hparams, train_interval=24*15)
 
         # get names
         hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
@@ -64,8 +98,11 @@ class RLObjective:
         print(f"logging to {self.log_path}")
         os.makedirs(self.log_path, exist_ok=True)
         writer = SummaryWriter(log_dir=self.log_path)
-        self.logger = WandbLogger(project=hparams["wandb_project_name"], config=hparams, train_interval=24*15)
+
         self.logger.load(writer)
+
+        self.prepare_env(int(hparams["seed"]))
+        set_global_seed(int(hparams["seed"]))
 
         # start training
         self.policy = self.define_policy(**{**hparams, **self.meta_param})
@@ -73,7 +110,7 @@ class RLObjective:
         score = result[metric.replace("test/", "")]
 
         self.logger.log_test_data(result, step=0)
-
+        self.test_envs
         # todo:load best policy to test on other envs
         return score
 

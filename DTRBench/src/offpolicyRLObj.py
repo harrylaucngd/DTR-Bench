@@ -116,7 +116,7 @@ class DQNObjective(RLObjective):
             batch_size=batch_size,
             train_collector=train_collector,
             test_collector=test_collector,
-            step_per_epoch = self.meta_param["step_per_epoch"],
+            step_per_epoch=self.meta_param["step_per_epoch"],
             step_per_collect=step_per_collect,
             episode_per_test=self.meta_param["test_num"],
             train_fn=train_fn,
@@ -127,7 +127,11 @@ class DQNObjective(RLObjective):
             update_per_step=update_per_step,
             save_checkpoint_fn=self.save_checkpoint_fn,
         ).run()
-        return result
+
+
+        # load the best policy to test again
+        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
+        return policy, test_fn
     
 
 class LLM_DQN_Objective(DQNObjective):

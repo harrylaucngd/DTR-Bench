@@ -10,12 +10,8 @@ from .ahn_chemo_env import create_AhnChemoEnv_continuous, create_AhnChemoEnv_dis
 from .OberstSepsisEnv.env import create_OberstSepsisEnv_discrete, create_OberstSepsisEnv_discrete_setting1, \
     create_OberstSepsisEnv_discrete_setting2, create_OberstSepsisEnv_discrete_setting3, \
     create_OberstSepsisEnv_discrete_setting4, create_OberstSepsisEnv_discrete_setting5
-from .simglucose_env import create_SimGlucoseEnv_continuous, create_SimGlucoseEnv_discrete, \
-    create_SimGlucoseEnv_discrete_setting1, create_SimGlucoseEnv_discrete_setting2, \
-    create_SimGlucoseEnv_discrete_setting3, create_SimGlucoseEnv_discrete_setting4, \
-    create_SimGlucoseEnv_discrete_setting5, create_SimGlucoseEnv_continuous_setting1, \
-    create_SimGlucoseEnv_continuous_setting2, create_SimGlucoseEnv_continuous_setting3, \
-    create_SimGlucoseEnv_continuous_setting4, create_SimGlucoseEnv_continuous_setting5
+from .simglucose_env import (create_SimGlucoseEnv_all4, create_SimGlucoseEnv_adult1, create_SimGlucoseEnv_adult4,
+                             create_SimGlucoseEnv_single_patient)
 from .ghaffari_cancer_env import create_GhaffariCancerEnv_discrete, create_GhaffariCancerEnv_continuous, \
     create_GhaffariCancerEnv_discrete_setting1, create_GhaffariCancerEnv_discrete_setting2, \
     create_GhaffariCancerEnv_discrete_setting3, create_GhaffariCancerEnv_discrete_setting4, \
@@ -66,21 +62,10 @@ registered_ids = ["AhnChemoEnv-continuous",
                   "GhaffariCancerEnv-continuous-setting3",
                   "GhaffariCancerEnv-continuous-setting4",
                   "GhaffariCancerEnv-continuous-setting5",
-                  "SimGlucoseEnv-discrete",
-                  "SimGlucoseEnv-continuous",
-                  "SimGlucoseEnv-discrete-setting1",
-                  "SimGlucoseEnv-discrete-setting2",
-                  "SimGlucoseEnv-discrete-setting3",
-                  "SimGlucoseEnv-discrete-setting4",
-                  "SimGlucoseEnv-discrete-setting5",
-                  "SimGlucoseEnv-discrete-all_adolescents",
-                  "SimGlucoseEnv-discrete-all_adults",
-                  "SimGlucoseEnv-discrete-all_children",
-                  "SimGlucoseEnv-continuous-setting1",
-                  "SimGlucoseEnv-continuous-setting2",
-                  "SimGlucoseEnv-continuous-setting3",
-                  "SimGlucoseEnv-continuous-setting4",
-                  "SimGlucoseEnv-continuous-setting5"]
+                  "SimGlucoseEnv-all4",
+                  "SimGlucoseEnv-adult1",
+                  "SimGlucoseEnv-adult4",
+                  "SimGlucoseEnv-single-patient",]
 
 envs = ["AhnChemoEnv",
         "GhaffariCancerEnv",

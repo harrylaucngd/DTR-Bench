@@ -8,13 +8,15 @@ from DTRBench.src.helper_fn import get_policy_class, get_hparam_class, get_obj_c
 from DTRBench.utils.misc import to_bool
 import DTRGym
 import warnings
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+
 def call_agent():
     try:
-        obj = obj_class(args.task, hparam_space, device=args.device, logger="tensorboard")
-        obj.search_once(wandb.config)
+        obj = obj_class(env_name, hparam_space, device=args.device)
+        obj.wandb_search()
     except TimeoutError as e:
         # Update the status to 'crashed' due to timeout
         wandb.run.summary["status"] = "crashed"
@@ -32,23 +34,25 @@ def parse_args():
 
     # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
+    parser.add_argument("--sweep_id", type=str, default=None)
     parser.add_argument("--task", type=str, default="SimGlucoseEnv")
     parser.add_argument("--setting", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default="debug")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=100)
+    parser.add_argument("--test_num", type=int, default=50)
     parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--num_actions", type=int, default=11)
-    parser.add_argument("--step_per_epoch", type=int, default=10*12*18)
+    parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--policy_name", type=str, default="DQN",
-                        choices=["DQN",])
+                        choices=["DQN", ])
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="run_single", choices=["sweep", "agent", "run_single"])
+    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
 
     return args
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -59,7 +63,7 @@ if __name__ == "__main__":
 
     policy_type = get_policy_type(args.policy_name, offline=False)
     env_name = args.task + f"-{policy_type}-setting{args.setting}"
-    log_dir = os.path.join(args.log_dir, env_name+'-'+args.policy_name)
+    log_dir = os.path.join(args.log_dir, env_name + '-' + args.policy_name)
     hparam_space = hparam_class(args.policy_name,
                                 log_dir,
                                 args.training_num,  # number of training envs
@@ -81,13 +85,13 @@ if __name__ == "__main__":
             "metric": {"goal": "maximize", "name": "reward_best"},
             "parameters": search_space
         }
-        sweep_id = wandb.sweep(sweep_configuration, project=args.project)
-        wandb.agent(sweep_id=sweep_id, function=call_agent, project=args.project, entity="gilesluo")
+        sweep_id = wandb.sweep(sweep_configuration, project=args.wandb_project_name)
+        wandb.agent(sweep_id=sweep_id, function=call_agent, project=args.wandb_project_name, entity="gilesluo")
     else:
         if args.role == "agent":
-            wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.project, entity="gilesluo")
+            wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.wandb_project_name, entity="gilesluo")
         if args.role == "run_single":
-            obj = obj_class(env_name, hparam_space, device=args.device, logger="tensorboard")
+            obj = obj_class(env_name, hparam_space, device=args.device)
             config_dict = hparam_space.sample(mode="random")
             obj.search_once({**config_dict, **{"wandb_project_name": args.wandb_project_name}})
         else:
