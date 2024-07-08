@@ -4,7 +4,7 @@ import wandb
 from tianshou.data import Collector
 from dataclasses import asdict
 from tianshou.policy.base import BasePolicy
-from tianshou.utils import TensorboardLogger, WandbLogger
+from DTRBench.utils.wandb import WandbLogger
 from torch.utils.tensorboard import SummaryWriter
 from tianshou.trainer.utils import test_episode
 from DTRGym.base import make_env
@@ -58,9 +58,9 @@ class RLObjective:
 
         print(f"logging to {self.log_path}")
         os.makedirs(self.log_path, exist_ok=True)
-        writer = SummaryWriter(log_dir=self.log_path)
-
-        self.logger.load(writer)
+        # writer = SummaryWriter(log_dir=self.log_path)
+        #
+        # self.logger.load(writer)
 
         self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
         set_global_seed(int(hparams["seed"]))
@@ -72,7 +72,7 @@ class RLObjective:
         best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
 
         # test on all envs
-        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=1)
+        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
     def test_all_patients(self, policy, test_fn,  seed, logger, n_episode=20):
         for patient_name in tqdm(["adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004",
@@ -82,33 +82,35 @@ class RLObjective:
                              discrete=self.env_args["discrete"], n_act=self.env_args["n_act"])
             test_collectors = Collector(policy, self.test_envs, exploration_noise=False)
             result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
-            result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test-{patient_name}")
-            logger.write(f"final_test/{patient_name}", 0, result_dict)
+            result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test/{patient_name}")
+            logger.write("this arg doesn't matter", 0, result_dict)
 
     def search_once(self, hparams: dict, metric="best_reward"):
+        # todo: this is wrong
+        raise NotImplementedError
         # init wandb to get hparams
-        self.logger = WandbLogger(project=hparams["wandb_project_name"], config=hparams, train_interval=24*15)
-
-        # get names
-        hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
-                            for k, v in hparams.items() if k not in self.meta_param.keys() or k != "wandb_project_name"])
-        self.log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
-
-        print(f"logging to {self.log_path}")
-        os.makedirs(self.log_path, exist_ok=True)
-        writer = SummaryWriter(log_dir=self.log_path)
-
-        self.logger.load(writer)
-
-        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
-        set_global_seed(int(hparams["seed"]))
-
-        # start training
-        self.policy = self.define_policy(**{**hparams, **self.meta_param})
-        best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
-
-        # test on all envs
-        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
+        # self.logger = WandbLogger(project=hparams["wandb_project_name"],train_interval=24*15)
+        #
+        # # get names
+        # hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
+        #                     for k, v in hparams.items() if k not in self.meta_param.keys() or k != "wandb_project_name"])
+        # self.log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
+        #
+        # print(f"logging to {self.log_path}")
+        # os.makedirs(self.log_path, exist_ok=True)
+        # writer = SummaryWriter(log_dir=self.log_path)
+        #
+        # self.logger.load(writer)
+        #
+        # self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
+        # set_global_seed(int(hparams["seed"]))
+        #
+        # # start training
+        # self.policy = self.define_policy(**{**hparams, **self.meta_param})
+        # best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
+        #
+        # # test on all envs
+        # self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
     def early_stop_fn(self, mean_rewards):
         # todo: early stopping is not working for now, because stop_fn is called at each training step
