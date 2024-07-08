@@ -4,8 +4,7 @@ import torch
 import torch.nn as nn
 import gc
 
-from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, LlamaForCausalLM,\
-    GPT2Config, GPT2Model, GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from GlucoseLLM.layers.Embed import PatchEmbedding
 import transformers
 from GlucoseLLM.layers.StandardNorm import Normalize
@@ -13,12 +12,10 @@ from GlucoseLLM.layers.StandardNorm import Normalize
 transformers.logging.set_verbosity_error()
 
 model_hf = {
-    "llama-2-13b": "meta-llama/Llama-2-13b-hf",
-    "llama-13b": "huggyllama/llama-13b",
-    "llama-3-8b": "meta-llama/Llama-3-8b",
-    "llama-2-7b": "meta-llama/Llama-2-7b-hf",
-    "llama-7b": "huggyllama/llama-7b",
-    "gpt2": "openaicommunity/gpt2"
+    "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
+    "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
+    "Yi-1.5-9b-Chat": "01-ai/Yi-1.5-9b-Chat",
+    "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
 }
 
 
@@ -53,118 +50,35 @@ class Model(nn.Module):
         model_dir = os.path.join("model_hub")
         os.makedirs(model_dir, exist_ok=True)
         if self.need_llm:
-            if 'gpt' in configs.llm_model:
-                self.llm_config = GPT2Config.from_pretrained(f'{model_dir}/{configs.llm_model}')
-                self.llm_config.num_hidden_layers = configs.llm_layers
-                self.llm_config.output_attentions = True
-                self.llm_config.output_hidden_states = True
+            try:
+                self.llm_model = AutoModelForCausalLM.from_pretrained(
+                    f'{model_dir}/{configs.llm_model}',
+                    trust_remote_code=True,
+                    local_files_only=True,
+                )
+            except EnvironmentError:  # downloads model from HF if not already done
+                print("Local model files not found. Attempting to download...")
+                self.llm_model = AutoModelForCausalLM.from_pretrained(
+                    f'{model_hf[configs.llm_model]}',
+                    trust_remote_code=True,
+                    local_files_only=False,
+                )
 
-                try:
-                    self.llm_model = GPT2Model.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True,
-                        # config=self.llm_config,
-                    )
-                except EnvironmentError:  # downloads model from HF is not already done
-                    print("Local model files not found. Attempting to download...")
-                    self.llm_model = GPT2Model.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        trust_remote_code=True,
-                        local_files_only=False,
-                        # config=self.llm_config,
-                    )
-
-                try:
-                    self.tokenizer = GPT2Tokenizer.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True
-                    )
-                except EnvironmentError:  # downloads the tokenizer from HF if not already done
-                    print("Local tokenizer files not found. Atempting to download them..")
-                    self.tokenizer = GPT2Tokenizer.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=False
-                    )
-            elif 'llama-3' in configs.llm_model:
-                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/{configs.llm_model}')
-                self.llm_config.num_hidden_layers = configs.llm_layers
-                self.llm_config.output_attentions = True
-                self.llm_config.output_hidden_states = True
-
-                try:
-                    self.llm_model = LlamaForCausalLM.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True,
-                        # config=self.llm_config,
-                    )
-                except EnvironmentError:  # downloads model from HF is not already done
-                    print("Local model files not found. Attempting to download...")
-                    self.llm_model = LlamaForCausalLM.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        trust_remote_code=True,
-                        local_files_only=False,
-                        # config=self.llm_config,
-                    )
-                try:
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True
-                    )
-                except EnvironmentError:  # downloads the tokenizer from HF if not already done
-                    print("Local tokenizer files not found. Atempting to download them..")
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=False
-                    )
-            elif 'llama' in configs.llm_model:
-                self.llm_config = LlamaConfig.from_pretrained(f'{model_dir}/{configs.llm_model}')
-                self.llm_config.num_hidden_layers = configs.llm_layers
-                self.llm_config.output_attentions = True
-                self.llm_config.output_hidden_states = True
-
-                try:
-                    self.llm_model = LlamaForCausalLM.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True,
-                        # config=self.llm_config,
-                    )
-                except EnvironmentError:  # downloads model from HF is not already done
-                    print("Local model files not found. Attempting to download...")
-                    self.llm_model = LlamaForCausalLM.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        trust_remote_code=True,
-                        local_files_only=False,
-                        # config=self.llm_config,
-                    )
-
-                try:
-                    self.tokenizer = LlamaTokenizer.from_pretrained(
-                        f'{model_dir}/{configs.llm_model}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=True
-                    )
-                except EnvironmentError:  # downloads the tokenizer from HF if not already done
-                    print("Local tokenizer files not found. Atempting to download them..")
-                    self.tokenizer = LlamaTokenizer.from_pretrained(
-                        f'{model_hf[configs.llm_model]}',
-                        cache_dir=f'{model_dir}/{configs.llm_model}',
-                        trust_remote_code=True,
-                        local_files_only=False
-                    )
-            else:
-                raise ValueError("Unsupported LLM!")
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    f'{model_dir}/{configs.llm_model}',
+                    cache_dir=f'{model_dir}/{configs.llm_model}',
+                    trust_remote_code=True,
+                    local_files_only=True
+                )
+            except EnvironmentError:  # downloads the tokenizer from HF if not already done
+                print("Local tokenizer files not found. Attempting to download them...")
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    f'{model_hf[configs.llm_model]}',
+                    cache_dir=f'{model_dir}/{configs.llm_model}',
+                    trust_remote_code=True,
+                    local_files_only=False
+                )
             
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token

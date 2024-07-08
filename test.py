@@ -20,7 +20,7 @@ def define_policy(  # general hp
                     ):
     # define model
     net = define_llm_network(1, 5, device="cuda" if torch.cuda.is_available() else "mps", 
-                             llm="llama-3-8b", llm_dim=4096)
+                             llm="Qwen2-1.5B-Instruct", llm_dim=1536)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     # define policy
     policy = LLM_DQN_Policy(

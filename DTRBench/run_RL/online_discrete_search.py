@@ -36,15 +36,19 @@ def parse_args():
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_summary", type=bool, default=True)
     parser.add_argument("--exp_freq", type=int, default=1)
+    '''
+    Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
+    1. internlm/internlm2_5-7b-chat
+    2. microsoft/Phi-3-small-128k-instruct
+    3. 01-ai/Yi-1.5-9b-Chat
+    Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
+    1. Qwen/Qwen2-1.5B-Instruct
+    '''
     parser.add_argument("--llm", type=str, default="llama-3-8b",
-                        choices=["llama-2-13b", "llama-13b",
-                                 "llama-3-8b", "llama-2-7b", "llama-7b",
-                                 "gpt2"])
+                        choices=["internlm2_5-7b-chat", "Phi-3-small-128k-instruct", "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"])
     parser.add_argument("--policy_name", type=str, default="LLM-DQN",
-                        choices=["LLM-DQN", "LLM-DDQN", "LLM-C51", "LLM-discrete-SAC",
-                                 "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling",
-                                 "C51", "C51-rnn", 
-                                 "discrete-SAC", "discrete-SAC-rnn"])
+                        choices=["LLM-DQN", "LLM-DDQN", "C51", "C51-rnn", "discrete-SAC", "discrete-SAC-rnn", 
+                                 "DQN", "DDQN", "DQN-rnn", "DDQN-rnn", "DQN-dueling", "DDQN-dueling"])
     parser.add_argument("--scale_obs", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "mps")
     args = parser.parse_known_args()[0]
@@ -52,12 +56,10 @@ def parse_args():
     return args
 
 llm_dim_table = {
-    "llama-2-13b": {"llm_dim": 5120},
-    "llama-13b": {"llm_dim": 5120},
-    "llama-3-8b": {"llm_dim": 4096},
-    "llama-2-7b": {"llm_dim": 4096},
-    "llama-7b": {"llm_dim": 4096},
-    "gpt2": {"llm_dim": 768}
+    "internlm2_5-7b-chat": {"llm_dim": 4096},
+    "Phi-3-small-128k-instruct": {"llm_dim": 4096},
+    "Yi-1.5-9b-Chat": {"llm_dim": 4096},
+    "Qwen2-1.5B-Instruct": {"llm_dim": 1536},
 }
 
 if __name__ == "__main__":

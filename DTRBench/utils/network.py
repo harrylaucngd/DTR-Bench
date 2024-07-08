@@ -28,12 +28,10 @@ ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
 
 llm_context_window = {
-    "llama-2-13b": 4096,
-    "llama-13b": 2048,
-    "llama-3-8b": 1028,
-    "llama-2-7b": 4096,
-    "llama-7b": 2048,
-    "gpt2": 1024
+    "internlm2_5-7b-chat": 32768,
+    "Phi-3-small-128k-instruct": 131072,
+    "Yi-1.5-9b-Chat": 4096,
+    "Qwen2-1.5B-Instruct": 32768,
 }
 
 obs_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
