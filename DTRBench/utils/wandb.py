@@ -1,7 +1,7 @@
 import wandb
 from collections.abc import Callable
 from typing import Any, Optional
-
+import subprocess
 from tianshou.utils.logger.base import VALID_LOG_VALS_TYPE, BaseLogger
 
 
@@ -70,3 +70,21 @@ class WandbLogger(BaseLogger):
         except Exception as e:
             print(f"Error restoring data: {e}")
             return 0, 0, 0
+
+    def save_conda_env(self, file_name: str = "environment.yaml") -> None:
+        """Save the current conda environment to a file and log it to Weights & Biases."""
+        try:
+            # Export the current conda environment to a YAML file
+            subprocess.run(f"conda env export > {file_name}", shell=True, check=True)
+
+            # Log the environment file as an artifact in Weights & Biases
+            artifact = wandb.Artifact(name="conda-environment", type="environment")
+            artifact.add_file(file_name)
+            wandb.log_artifact(artifact)
+
+            print(f"Conda environment saved and logged as artifact: {file_name}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to export conda environment: {e}")
+        except Exception as e:
+            print(f"Error logging conda environment to wandb: {e}")

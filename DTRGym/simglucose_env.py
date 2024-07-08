@@ -158,10 +158,11 @@ class SinglePatientEnv(gymnasium.Env):
         state = self._get_state(obs[0], bg, meal)
         obs = self._state2obs(state, random_obs=self.random_obs, enable_missing=False)
         self.last_bg = obs
+        self.last_drug = 0
         all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0}
         info.pop("patient_state")
         all_info.update(info)
-        return np.array(obs, dtype=np.float32), info
+        return np.array([float(obs), self.last_drug], dtype=np.float32), info
 
     def step(self, action):
         if self.terminated or self.truncated:
@@ -191,11 +192,14 @@ class SinglePatientEnv(gymnasium.Env):
                                 terminated=self.terminated, truncated=self.truncated,
                                 insulin=action)
         self.last_bg = bg_next
+        last_drug = self.last_drug
+        self.last_drug = float(action)
         # reward = rew
         all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter}
         info.pop("patient_state")
         all_info.update(info)
-        return obs, reward, self.terminated, self.truncated, info
+        return (np.array([float(obs), float(last_drug)], dtype=np.float32),
+                reward, self.terminated, self.truncated, info)
 
     def seed(self, seed):
         self.np_random, seed1 = seeding.np_random(seed=seed)
@@ -275,7 +279,8 @@ class SinglePatientEnv(gymnasium.Env):
     @property
     def observation_space(self):
         if self._obs_space is None:
-            self._obs_space = spaces.Box(low=10, high=600, shape=(1,), dtype=np.float32)
+            self._obs_space = spaces.Box(low=np.array([54, self.action_space.low[0]]),
+                                         high=np.array([600, self.action_space.high[0]]), dtype=np.float32)
         return self._obs_space
 
     @property

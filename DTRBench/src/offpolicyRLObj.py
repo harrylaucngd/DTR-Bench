@@ -110,7 +110,7 @@ class DQNObjective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
 
-        result = OffpolicyTrainer(
+        OffpolicyTrainer(
             policy,
             max_epoch=self.meta_param["epoch"],
             batch_size=batch_size,
