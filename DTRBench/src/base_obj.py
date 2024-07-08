@@ -1,14 +1,12 @@
 import os
 from tqdm import tqdm
 import wandb
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from tianshou.data import Collector
-from tianshou.env import DummyVectorEnv
+from dataclasses import asdict
 from tianshou.policy.base import BasePolicy
 from tianshou.utils import TensorboardLogger, WandbLogger
 from torch.utils.tensorboard import SummaryWriter
-from tianshou.trainer.utils import gather_info, test_episode
-from DTRGym import buffer_registry
+from tianshou.trainer.utils import test_episode
 from DTRGym.base import make_env
 from DTRBench.utils.misc import set_global_seed
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
@@ -74,17 +72,18 @@ class RLObjective:
         best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
 
         # test on all envs
-        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
+        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=1)
 
     def test_all_patients(self, policy, test_fn,  seed, logger, n_episode=20):
         for patient_name in tqdm(["adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004",
                              "adult#001", "adult#002", "adult#003", "adult#004",
                              "child#001", "child#002", "child#003", "child#004", "child#005"], desc="final_testing"):
-            self.prepare_env(seed, "SimGlucoseEnv_single_patient", patient_name=patient_name,
+            self.prepare_env(seed, "SimGlucoseEnv-single-patient", patient_name=patient_name,
                              discrete=self.env_args["discrete"], n_act=self.env_args["n_act"])
             test_collectors = Collector(policy, self.test_envs, exploration_noise=False)
             result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
-            logger.write(f"final_test/{patient_name}", 0, result)
+            result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test-{patient_name}")
+            logger.write(f"final_test/{patient_name}", 0, result_dict)
 
     def search_once(self, hparams: dict, metric="best_reward"):
         # init wandb to get hparams
@@ -101,18 +100,15 @@ class RLObjective:
 
         self.logger.load(writer)
 
-        self.prepare_env(int(hparams["seed"]))
+        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
         set_global_seed(int(hparams["seed"]))
 
         # start training
         self.policy = self.define_policy(**{**hparams, **self.meta_param})
-        result = self.run(self.policy, **{**hparams, **self.meta_param})
-        score = result[metric.replace("test/", "")]
+        best_policy, test_fn = self.run(self.policy, **{**hparams, **self.meta_param})
 
-        self.logger.log_test_data(result, step=0)
-        self.test_envs
-        # todo:load best policy to test on other envs
-        return score
+        # test on all envs
+        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
     def early_stop_fn(self, mean_rewards):
         # todo: early stopping is not working for now, because stop_fn is called at each training step

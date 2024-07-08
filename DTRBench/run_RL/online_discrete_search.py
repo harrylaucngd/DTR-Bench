@@ -11,11 +11,11 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-
+wandb.require("core")
 
 def call_agent():
     try:
-        obj = obj_class(env_name, hparam_space, device=args.device)
+        obj = obj_class(env_name, env_args, hparam_space, device=args.device)
         obj.wandb_search()
     except TimeoutError as e:
         # Update the status to 'crashed' due to timeout
@@ -35,14 +35,13 @@ def parse_args():
     # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
     parser.add_argument("--sweep_id", type=str, default=None)
-    parser.add_argument("--task", type=str, default="SimGlucoseEnv")
-    parser.add_argument("--setting", type=int, default=1)
+    parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1")
     parser.add_argument("--log_dir", type=str, default="debug")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=50)
-    parser.add_argument("--epoch", type=int, default=50)
+    parser.add_argument("--test_num", type=int, default=2)
+    parser.add_argument("--epoch", type=int, default=2)
     parser.add_argument("--num_actions", type=int, default=11)
-    parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
+    parser.add_argument("--step_per_epoch", type=int, default=10)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--policy_name", type=str, default="DQN",
@@ -62,7 +61,9 @@ if __name__ == "__main__":
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
     policy_type = get_policy_type(args.policy_name, offline=False)
-    env_name = args.task + f"-{policy_type}-setting{args.setting}"
+    env_args = {"discrete": policy_type == "discrete",
+                "n_act": args.num_actions,}
+    env_name = args.task
     log_dir = os.path.join(args.log_dir, env_name + '-' + args.policy_name)
     hparam_space = hparam_class(args.policy_name,
                                 log_dir,
@@ -82,7 +83,7 @@ if __name__ == "__main__":
             "method": "grid",
             "project": args.wandb_project_name,
             "name": env_name + f"-{args.policy_name}",
-            "metric": {"goal": "maximize", "name": "reward_best"},
+            "metric": {"goal": "maximize", "name": "test/returns_stat/mean"},
             "parameters": search_space
         }
         sweep_id = wandb.sweep(sweep_configuration, project=args.wandb_project_name)
@@ -91,7 +92,7 @@ if __name__ == "__main__":
         if args.role == "agent":
             wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.wandb_project_name, entity="gilesluo")
         if args.role == "run_single":
-            obj = obj_class(env_name, hparam_space, device=args.device)
+            obj = obj_class(env_name, env_args, hparam_space, device=args.device)
             config_dict = hparam_space.sample(mode="random")
             obj.search_once({**config_dict, **{"wandb_project_name": args.wandb_project_name}})
         else:

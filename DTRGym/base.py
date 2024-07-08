@@ -148,7 +148,7 @@ class EpisodicEnv(gym.Env):
         return outcome, mort_risk
 
 
-def make_env(task, seed, training_num, test_num, num_actions, **env_args):
+def make_env(task, seed, training_num, test_num, **env_args):
     try:
         import envpool
     except:
@@ -160,16 +160,16 @@ def make_env(task, seed, training_num, test_num, num_actions, **env_args):
         )
         test_envs = envpool.make_gymnasium(task, num_envs=test_num, seed=seed, **env_args)
     else:
-        env = gym.make(task, n_act=num_actions)
+        env = gym.make(task, **env_args)
         if training_num > 1:
             train_envs = ShmemVectorEnv(
-                [lambda: gym.make(task, n_act=num_actions, **env_args) for _ in range(training_num)]
+                [lambda: gym.make(task, **env_args) for _ in range(training_num)]
             )
-            test_envs = ShmemVectorEnv([lambda: gym.make(task, n_act=num_actions, **env_args) for _ in range(test_num)])
+            test_envs = ShmemVectorEnv([lambda: gym.make(task, **env_args) for _ in range(test_num)])
 
         else:
-            train_envs = DummyVectorEnv([lambda: gym.make(task, n_act=num_actions, **env_args)])
-            test_envs = DummyVectorEnv([lambda: gym.make(task, n_act=num_actions, **env_args)])
+            train_envs = DummyVectorEnv([lambda: gym.make(task,  **env_args)])
+            test_envs = DummyVectorEnv([lambda: gym.make(task,  **env_args)])
         env.unwrapped.seed(seed)
         train_envs.seed(seed)
         test_envs.seed(seed)

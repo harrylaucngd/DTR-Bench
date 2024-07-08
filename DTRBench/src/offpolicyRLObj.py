@@ -21,8 +21,8 @@ from DTRBench.utils.network import define_llm_network, define_single_network, Ne
     
 
 class DQNObjective(RLObjective):
-    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
-        super().__init__(env_name, hparam_space, device, **kwargs)
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+        super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self,
                       # general hp
