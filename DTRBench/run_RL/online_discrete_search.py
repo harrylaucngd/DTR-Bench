@@ -44,7 +44,7 @@ def parse_args():
     Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
     1. Qwen/Qwen2-1.5B-Instruct
     '''
-    parser.add_argument("--llm", type=str, default="llama-3-8b",
+    parser.add_argument("--llm", type=str, default="Qwen2-1.5B-Instruct",
                         choices=["internlm2_5-7b-chat", "Phi-3-small-128k-instruct", "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"])
     parser.add_argument("--policy_name", type=str, default="LLM-DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "C51", "C51-rnn", "discrete-SAC", "discrete-SAC-rnn", 

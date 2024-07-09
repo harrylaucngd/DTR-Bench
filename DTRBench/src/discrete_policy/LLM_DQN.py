@@ -7,7 +7,8 @@ import time
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import BasePolicy, DQNPolicy
-from DTRBench.utils.network import LLMNet, get_target_model, sync_target_model
+
+from DTRBench.utils.network import LLMNet
 
 from DTRBench.utils.prompt_pipeline import Conversation, obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
 
@@ -69,10 +70,6 @@ class LLM_DQN_Policy(DQNPolicy):
         self._target = target_update_freq > 0
         self._freq = target_update_freq
         self._iter = 0
-        if self._target:
-            # self.model_old = get_target_model(self.model)
-            self.model_old = deepcopy(self.model)
-            self.model_old.eval()
         self._rew_norm = reward_normalization
         self._is_double = is_double
         self._clip_loss_grad = clip_loss_grad
@@ -82,8 +79,27 @@ class LLM_DQN_Policy(DQNPolicy):
         self.exp_freq = exp_freq
 
     def sync_weight(self) -> None:
-        """Synchronize the non-LLM weight for the target network."""
-        self.model_old.load_state_dict(self.model.state_dict())
+        """Synchronize the non-LLM weights for the target network."""
+        attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection", "normalized_layer"]
+        for attr in attributes:
+            old_attr = f"{attr}_old"
+            old_attr_obj = getattr(self.model, old_attr)
+            attr_obj = getattr(self.model, attr)
+            old_attr_obj.load_state_dict(attr_obj.state_dict())
+
+    def _target_q(self, buffer: ReplayBuffer, indices: np.ndarray) -> torch.Tensor:
+        batch = buffer[indices]  # batch.obs_next: s_{t+n}
+        result = self(batch, input="obs_next")
+        if self._target:
+            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
+            self.model.active_branch = "model_old"
+            target_q = self(batch, model="model", input="obs_next").logits
+        else:
+            target_q = result.logits
+        if self._is_double:
+            return target_q[np.arange(len(result.act)), result.act]
+        else:  # Nature DQN, over estimate
+            return target_q.max(dim=1)[0]
     
     def compress_state(self, state):
         separator = "|||"

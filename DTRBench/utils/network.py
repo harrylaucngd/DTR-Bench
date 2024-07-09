@@ -87,8 +87,8 @@ class LLMNet(GlucoseLLM.Model):
             state_shape: Union[int, Sequence[int]],
             action_shape: Union[int, Sequence[int]] = 0,
             device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-            llm: str = "gpt2",
-            llm_dim: int = 768,
+            llm: str = "Qwen2-1.5B-Instruct",
+            llm_dim: int = 1536,
             need_llm: bool = False,
     ) -> None:
         if isinstance(action_shape, int):
@@ -195,53 +195,8 @@ class LLMNet(GlucoseLLM.Model):
         return response
 
 
-def get_target_model(model):
-    """
-    Initialize the target network according to the q-network.
-    Exclude the llm_model part from initialization.
-    """
-    model_old = LLMNet(configs=model.configs, state_shape=model.input_shape, action_shape=model.output_shape,
-                     device="cuda" if torch.cuda.is_available() else "cpu", llm=model.llm, llm_dim=model.d_llm, 
-                     need_llm=False).to(device="cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Copy all layers and parameters from model to model_old except for llm_model
-    for name, param in model.named_parameters():
-        if 'llm_model' not in name:
-            getattr(model_old, name.split('.')[0]).weight = param.data
-
-    # Copy the rest of the attributes excluding llm_model
-    excluded_attributes = ['llm_model', 'tokenizer']
-    for attr_name in dir(model):
-        if not attr_name.startswith('__') and attr_name not in excluded_attributes and not callable(getattr(model, attr_name)):
-            setattr(model_old, attr_name, getattr(model, attr_name))
-
-    # Set model_old's llm_model to reference model's llm_model
-    model_old.llm_model = model.llm_model
-    model_old.tokenizer = model.tokenizer
-
-    # Ensure llm_model parameters are not trainable in model_old
-    for param in model_old.llm_model.parameters():
-        param.requires_grad = False
-    return model_old
-
-
-def sync_target_model(model, model_old):
-    """
-    Synchronize the parameters of model_old with model.
-    Exclude the llm_model part from synchronization.
-    """
-    model_dict = model.state_dict()
-    model_old_dict = model_old.state_dict()
-
-    # Filter out llm_model parameters and update model_old's parameters
-    model_dict = {k: v for k, v in model_dict.items() if 'llm_model' not in k}
-    model_old_dict.update(model_dict)
-    model_old.load_state_dict(model_old_dict)
-    return model_old
-
-
 def define_llm_network(input_shape: int, output_shape: int,
-                          device="cuda" if torch.cuda.is_available() else "cpu", llm="gpt2", llm_dim=768
+                          device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", llm_dim=1536,
                           ):
     configs = argparse.Namespace(
         d_ff = 32,

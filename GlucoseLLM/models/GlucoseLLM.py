@@ -94,28 +94,42 @@ class Model(nn.Module):
 
         self.patch_embedding = PatchEmbedding(
             configs.d_model, self.patch_len, self.stride, configs.dropout)
+        self.patch_embedding_old = PatchEmbedding(
+            configs.d_model, self.patch_len, self.stride, configs.dropout)
 
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
         self.num_tokens = 1000
         self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
+        self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
 
         self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
+        self.reprogramming_layer_old = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
 
         self.patch_nums = int((configs.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
 
         self.output_projection = FlattenHead(configs.enc_in, self.head_nf, self.pred_len,
                                                  head_dropout=configs.dropout)
+        self.output_projection_old = FlattenHead(configs.enc_in, self.head_nf, self.pred_len,
+                                                 head_dropout=configs.dropout)
 
         self.normalize_layers = Normalize(configs.enc_in, affine=False)
+        self.normalize_layers_old = Normalize(configs.enc_in, affine=False)
+
+        self.active_branch = "model"
 
     def forward(self, x_enc, prompt):
         dec_out = self.forecast(x_enc, prompt)
         return dec_out[:, -self.pred_len:, :]
 
     def forecast(self, x_enc, prompt):
-        x_enc = self.normalize_layers(x_enc, 'norm')
+        if self.active_branch == "model":
+            x_enc = self.normalize_layers(x_enc, 'norm')
+        elif self.active_branch == "model_old":
+            x_enc = self.normalize_layers_old(x_enc, 'norm')
+        else:
+            raise ValueError("Not supported branch!")
 
         B, T, N = x_enc.size()
         x_enc = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
@@ -125,11 +139,22 @@ class Model(nn.Module):
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
-        source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+        if self.active_branch == "model":
+            source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+        elif self.active_branch == "model_old":
+            source_embeddings = self.mapping_layer_old(self.word_embeddings.permute(1, 0)).permute(1, 0)
+        else:
+            raise ValueError("Not supported branch!")
 
         x_enc = x_enc.permute(0, 2, 1).contiguous()
-        enc_out, n_vars = self.patch_embedding(x_enc)
-        enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        if self.active_branch == "model":
+            enc_out, n_vars = self.patch_embedding(x_enc)
+            enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        elif self.active_branch == "model_old":
+            enc_out, n_vars = self.patch_embedding_old(x_enc)
+            enc_out = self.reprogramming_layer_old(enc_out, source_embeddings, source_embeddings)
+        else:
+            raise ValueError("Not supported branch!")
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
         dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
@@ -138,10 +163,18 @@ class Model(nn.Module):
             dec_out, (-1, n_vars, dec_out.shape[-2], dec_out.shape[-1]))
         dec_out = dec_out.permute(0, 1, 3, 2).contiguous()
 
-        dec_out = self.output_projection(dec_out[:, :, :, -self.patch_nums:])
+        if self.active_branch == "model":
+            dec_out = self.output_projection(dec_out[:, :, :, -self.patch_nums:])
+        elif self.active_branch == "model_old":
+            dec_out = self.output_projection_old(dec_out[:, :, :, -self.patch_nums:])
         dec_out = dec_out.permute(0, 2, 1).contiguous()
 
-        dec_out = self.normalize_layers(dec_out, 'denorm')
+        if self.active_branch == "model":
+            dec_out = self.normalize_layers(dec_out, 'denorm')
+        elif self.active_branch == "model_old":
+            dec_out = self.normalize_layers_old(dec_out, 'denorm')
+        else:
+            raise ValueError("Not supported branch!")
 
         return dec_out
 
