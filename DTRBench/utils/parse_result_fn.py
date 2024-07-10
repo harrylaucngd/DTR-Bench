@@ -84,11 +84,11 @@ def summarize_db_result(log_dir, offline=False):
         if offline:
             result = best_trial["user_attrs_result"]
             result = pd.Series(result)
-            result["logdir"] = log_dir
+            result["log_dir"] = log_dir
             result["algo"] = best_trial["user_attrs_algo_name"]
         else:
             result = best_trial[[idx for idx in best_trial.index if idx.startswith("user_attrs_eval")]]
-            result["logdir"] = log_dir
+            result["log_dir"] = log_dir
             result["algo"] = best_trial["user_attrs_algo_name"]
         result["best_trial"] = best_trial["number"] + 1
         result["completed_trials"] = len(study.trials)

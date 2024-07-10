@@ -39,7 +39,7 @@ def demo_train_policy(log_dir="demo"):
 
     # retrain the best model
     user_attrs, hyperparameters, _ = get_best_hparams(study_path)
-    user_attrs["logdir"] = log_dir
+    user_attrs["log_dir"] = log_dir
     hyperparameters.update(user_attrs)
     hyperparameters["epoch"] = 1  # retrain for 1 epoch only for demo
     result = obj.retrain_best_hparam(100, num_seed=1, **hyperparameters)

@@ -53,3 +53,6 @@ DTRGym/*/*plots/*.png
 log/online/*
 log/offline/*
 ICML result*
+
+DTRBench/run_RL/debug
+DTRBench/run_RL/wandb
