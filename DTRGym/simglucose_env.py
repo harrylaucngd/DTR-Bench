@@ -197,7 +197,7 @@ class SinglePatientEnv(gymnasium.Env):
         # reward = rew
         all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter}
         info.pop("patient_state")
-        all_info.update(info)
+        info.update(all_info)
         return (np.array([float(obs), float(last_drug)], dtype=np.float32),
                 reward, self.terminated, self.truncated, info)
 
