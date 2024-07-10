@@ -153,7 +153,7 @@ class OffPolicyRLHyperParameterSpace:
 
 
 class DQNHyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("dqn",)
+    _supported_algos = ("dqn", "ddqn")
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
         "n_step": common_hparams["n_step"],

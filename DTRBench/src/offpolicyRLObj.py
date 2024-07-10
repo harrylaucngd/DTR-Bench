@@ -135,8 +135,8 @@ class DQNObjective(RLObjective):
     
 
 class LLM_DQN_Objective(DQNObjective):
-    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, need_obs_explain, need_act_explain, need_summary, exp_freq, **kwargs):
-        super().__init__(env_name, hparam_space, device, **kwargs)
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, need_obs_explain, need_act_explain, need_summary, exp_freq, **kwargs):
+        super().__init__(env_name, env_args, hparam_space, device, **kwargs)
         self.llm = llm
         self.llm_dim = llm_dim
         self.need_obs_explain = need_obs_explain
@@ -148,7 +148,6 @@ class LLM_DQN_Objective(DQNObjective):
                       # general hp
                       gamma,
                       lr,
-                      stack_num,
 
                       # dqn hp
                       n_step,
@@ -170,6 +169,8 @@ class LLM_DQN_Objective(DQNObjective):
             need_act_explain = self.need_act_explain,
             need_summary = self.need_summary,
             exp_freq = self.exp_freq,
+            action_space=self.action_space,
+            observation_space=self.state_space,
         )
         return policy
 
@@ -178,7 +179,6 @@ class LLM_DQN_Objective(DQNObjective):
             eps_test,
             eps_train,
             eps_train_final,
-            stack_num,
             step_per_collect,
             update_per_step,
             batch_size,
@@ -212,14 +212,12 @@ class LLM_DQN_Objective(DQNObjective):
                 self.meta_param["buffer_size"],
                 buffer_num=len(self.train_envs),
                 ignore_obs_next=False,
-                save_only_last_obs=False,
-                stack_num=stack_num
+                save_only_last_obs=False
             )
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"],
                                   ignore_obs_next=False,
-                                  save_only_last_obs=False,
-                                  stack_num=stack_num
+                                  save_only_last_obs=False
                                   )
 
         # collector

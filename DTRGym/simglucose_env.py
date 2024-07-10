@@ -161,7 +161,7 @@ class SinglePatientEnv(gymnasium.Env):
         self.last_drug = 0
         all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0}
         info.pop("patient_state")
-        all_info.update(info)
+        info.update(all_info)
         return np.array([float(obs), self.last_drug], dtype=np.float32), info
 
     def step(self, action):

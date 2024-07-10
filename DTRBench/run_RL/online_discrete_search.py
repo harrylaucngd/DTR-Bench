@@ -15,7 +15,9 @@ wandb.require("core")
 
 def call_agent():
     try:
-        obj = obj_class(env_name, env_args, hparam_space, device=args.device)
+        obj = obj_class(env_name, env_args, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
+                    need_obs_explain = args.need_obs_explain, need_act_explain = args.need_act_explain, 
+                    need_summary = args.need_summary, exp_freq = args.exp_freq)
         obj.wandb_search()
     except TimeoutError as e:
         # Update the status to 'crashed' due to timeout
@@ -60,6 +62,7 @@ def parse_args():
                         choices=["internlm2_5-7b-chat", "Phi-3-small-128k-instruct", "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"])
     parser.add_argument("--policy_name", type=str, default="LLM-DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "DQN", "DDQN", "SAC", "TD3"])
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
 

@@ -14,10 +14,9 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     # "Phi-3-small-128k-instruct",
     # "Yi-1.5-9b-Chat",
     # "Qwen2-1.5B-Instruct"
+    _supported_algos = ("llm-dqn", "llm-ddqn")
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
-        "stack_num": common_hparams["stack_num"],
-        "cat_num": common_hparams["cat_num"],
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_test"],
         "eps_train_final": 0.005,
