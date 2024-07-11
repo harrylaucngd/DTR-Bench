@@ -34,7 +34,7 @@ class DQNObjective(RLObjective):
                       ):
         # define model
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if obs_mode == "cat":
+        if list(obs_mode.keys())[0] == "cat":
             cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
@@ -80,7 +80,7 @@ class DQNObjective(RLObjective):
         def test_fn(epoch, env_step):
             policy.set_eps(eps_test)
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if obs_mode == "cat":
+        if list(obs_mode.keys())[0] == "cat":
             cat_num, stack_num = 1, 1 # cat is the deprecated version of cur, we will use cur instead
         assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
         stack_num = max(stack_num, cat_num)
