@@ -1,16 +1,22 @@
 from copy import deepcopy
-from typing import Any, Dict, Optional, Union
+from typing import Any, Literal, cast
 
 import numpy as np
 import torch
-import time
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import BasePolicy, DQNPolicy
+from tianshou.data.batch import BatchProtocol
+from tianshou.data.types import (
+    BatchWithReturnsProtocol,
+    ModelOutputBatchProtocol,
+    ObsBatchProtocol,
+    RolloutBatchProtocol,
+)
 
 from DTRBench.utils.network import LLMNet
 
-from DTRBench.utils.prompt_pipeline import Conversation, obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
+from DTRBench.utils.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -130,15 +136,13 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def forward(
         self,
-        batch: Batch,
-        state: Optional[Union[dict, Batch, np.ndarray]] = None,
-        model: str = "model",
-        input: str = "obs",
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        model: Literal["model", "model_old"] = "model",
         **kwargs: Any,
-    ) -> Batch:
+    ) -> ModelOutputBatchProtocol:
         """
-        todo: 1. modify sync_weight
-        todo: 2. modify is_double
+        todo: improve state indices for better locate episode_id and step
         """
         model = getattr(self, model)
         if state is None:
@@ -160,7 +164,7 @@ class LLM_DQN_Policy(DQNPolicy):
             setattr(self, attr, explain_bool)
         
         # obs and obs explanation
-        obs = batch[input]
+        obs = batch.obs
         obs_next = obs.obs if hasattr(obs, "obs") else obs
         state.obs = np.append(state.obs, obs_next)
         conversation = obs_prompt_reprogramming(state.obs, state.act, state.obs_exp)
@@ -189,4 +193,5 @@ class LLM_DQN_Policy(DQNPolicy):
         # compress state batch to len 1
         state = self.compress_state(state)
 
-        return Batch(logits=logits, act=act, state=state)
+        result = Batch(logits=logits, act=act, state=state)
+        return cast(ModelOutputBatchProtocol, result)

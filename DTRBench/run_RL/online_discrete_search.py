@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument("--need_obs_explain", type=bool, default=True)
     parser.add_argument("--need_act_explain", type=bool, default=True)
     parser.add_argument("--need_summary", type=bool, default=True)
-    parser.add_argument("--exp_freq", type=int, default=1)
+    parser.add_argument("--exp_freq", type=int, default=24)
     '''
     Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
     1. internlm/internlm2_5-7b-chat

@@ -98,7 +98,7 @@ class LLMNet(GlucoseLLM.Model):
             for dim in action_shape:
                 self.num_actions *= dim
         configs.pred_len = self.num_actions
-        configs.seq_len = state_shape   # TODO: The seq_len would be dynamic in our case. How to modify GlucoseLLM accordingly?
+        configs.seq_len = state_shape
         configs.llm_model = llm
         configs.llm_dim = llm_dim
         super().__init__(configs, need_llm=need_llm)
@@ -118,7 +118,7 @@ class LLMNet(GlucoseLLM.Model):
         outputs = self.llm_model.generate(
             **inputs,
             max_new_tokens=max_length,
-            do_sample=True, 
+            do_sample=True,
             top_k=50,
             top_p=0.95,
             temperature=1
