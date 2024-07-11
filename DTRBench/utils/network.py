@@ -294,7 +294,8 @@ class Net(nn.Module):
             dtype=torch.float32,
         )
         if obs.ndim == 3:
-            obs = obs.reshape(obs.shape[0], -1)
+            obs = obs[:, -1, :]  # only use the last observation. ATTENTION: this is a temporary solution.
+            # If cat_num > 1, this will not work!!!!
         logits = self.model(obs)
         bsz = logits.shape[0]
         if self.use_dueling:  # Dueling DQN
@@ -387,6 +388,7 @@ class Actor(nn.Module):
         self.activation = getattr(nn, activation)()
         self.min_action = min_action
         self.max_action = max_action
+        self.device = self.preprocess_net.device
 
     def forward(self, obs, state=None, info={}):
         obs = torch.as_tensor(
@@ -406,15 +408,18 @@ class Critic(nn.Module):
             self,
             state_net: nn.Module,
             action_net: nn.Module,
-            fuse_hidden_sizes: Sequence[int] = (256, 256),
+            cat_size: int = 256,
+            fuse_hidden_sizes: Sequence[int] = (256,),
             device: str | int | torch.device = "cpu",
     ) -> None:
         super().__init__()
-        assert len(fuse_hidden_sizes) > 1, "The hidden sizes of the fusion network should be at least 2."
+
+        self.obs_net = state_net
+        self.act_net = action_net
         self.device = device
         self.output_dim = 1
         self.last = MLP(
-            fuse_hidden_sizes[0],
+            cat_size,
             1,
             fuse_hidden_sizes,
             device=self.device,
@@ -430,11 +435,11 @@ class Critic(nn.Module):
             info: dict[str, Any] | None = {},
     ):
         """Mapping: (s, a) -> logits -> Q(s, a)."""
-        obs, state = self.obs_net(obs, state)
+        obs, state = self.obs_net(obs, state)  # state here won't be useful anyway since tianshou does not RNN-critic
         act, _ = self.act_net(act)
         obs = torch.cat([obs, act], dim=1)
-        value, _ = self.last(obs)
-        return value, state
+        value = self.last(obs)
+        return value
 
 
 def define_single_network(input_shape: int, output_shape: int, hidden_size=256, num_layer=4,
@@ -473,28 +478,24 @@ def define_single_network(input_shape: int, output_shape: int, hidden_size=256, 
 def define_continuous_critic(state_shape: int, action_shape,
                              state_net_n_layer=2,
                              state_net_hidden_size=128,
-                             action_net_n_layer=2,
+                             action_net_n_layer=1,
                              action_net_hidden_size=128,
-                             fuse_net_n_layer=2,
-                             use_rnn=False, cat_num: int = 1, linear=False,
+                             fuse_net_n_layer=1,
+                             linear=False,
                              device="cuda" if torch.cuda.is_available() else "cpu"):
-    if use_rnn:
-        obs_net = Recurrent(layer_num=state_net_n_layer,
-                            state_shape=state_shape,
-                            action_shape=state_net_hidden_size,
-                            device=device,
-                            hidden_layer_size=state_net_hidden_size,
-                            ).to(device)
-    else:
-        obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
-                      hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
-                      activation=nn.ReLU if not linear else None,
-                      device=device, dueling_param=None, cat_num=cat_num).to(device)
+    """
+    Since Tianshou's critic network does not support RNN style network, we use a simple MLP network here.
+    """
+    obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
+                  hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
+                  activation=nn.ReLU if not linear else None,
+                  device=device, dueling_param=None, cat_num=1).to(device)
     act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
                   hidden_sizes=action_net_n_layer * [action_net_hidden_size],
                   activation=nn.ReLU,
                   device=device, cat_num=1).to(device)
-    critic = Critic(obs_net, act_net, fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size]*fuse_net_n_layer,
+    critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
+                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size]*fuse_net_n_layer,
                     device=device).to(device)
 
     return critic

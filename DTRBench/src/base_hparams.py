@@ -2,6 +2,7 @@ common_hparams = {
     "seed": [6311, 6890, 663, 4242, 8376],
     "lr": [1e-3, 1e-4, 1e-5],
     "batch_size": [32, 256],
+    # ATTENTION: cat_num must be 1 since tianshou does not support it for env interaction! Please don't use cat_num>1
     "obs_mode": [{"stack": {"stack_num": 24,
                             "cat_num": 1}},
                  {"cur": {"stack_num": 1,

@@ -35,8 +35,11 @@ def parse_args():
 
     # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
-    parser.add_argument("--sweep_id", type=str, default=None)
-    parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1")
+    parser.add_argument("--sweep_id", type=str, default="wrr1dlgt", help="sweep id for wandb,"
+                                                                         " only used in agent mode")
+    parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
+                        help="remeber to change this for different tasks! "
+                             "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--test_num", type=int, default=50)
@@ -46,8 +49,10 @@ def parse_args():
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
 
-    parser.add_argument("--policy_name", type=str, default="TD3",
-                        choices=["DQN", ])
+    parser.add_argument("--policy_name", type=str, default="TD3",  # Change this for different sweep!
+                        choices=["DQN", "TD3"],
+                        help="remeber to change this for different tasks! "
+                             "Wandb sweep won't work correctly if this is not changed!")
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
@@ -101,7 +106,3 @@ if __name__ == "__main__":
         else:
             print("role must be one of [sweep, agent, run_single], get {}".format(args.role))
             raise NotImplementedError
-
-        # todo: obs add drug
-        # todo: test sweep
-        # todo: eval multiple

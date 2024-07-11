@@ -53,7 +53,6 @@ class DQNObjective(RLObjective):
         return policy
 
     def run(self, policy,
-            seed,
             eps_test,
             eps_train,
             eps_train_final,
@@ -84,9 +83,6 @@ class DQNObjective(RLObjective):
             cat_num, stack_num = 1, 1 # cat is the deprecated version of cur, we will use cur instead
         assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
         stack_num = max(stack_num, cat_num)
-        # seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
@@ -173,7 +169,6 @@ class LLM_DQN_Objective(DQNObjective):
         return policy
 
     def run(self, policy,
-            seed,
             eps_test,
             eps_train,
             eps_train_final,
@@ -199,9 +194,6 @@ class LLM_DQN_Objective(DQNObjective):
         def test_fn(epoch, env_step):
             policy.set_eps(eps_test)
 
-        # seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
@@ -379,11 +371,11 @@ class TD3Objective(RLObjective):
         actor = Actor(net_a, min_action=min_action, max_action=max_action).to(self.device)
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
-        critic1 = define_continuous_critic(self.state_shape, self.action_shape, use_rnn=stack_num > 1, linear=linear,
-                                           device=self.device, cat_num=cat_num)
+        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+                                           device=self.device)
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
-        critic2 = define_continuous_critic(self.state_shape, self.action_shape, use_rnn=stack_num > 1, linear=linear,
-                                           device=self.device, cat_num=cat_num)
+        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+                                           device=self.device)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
         policy = TD3Policy(
@@ -405,43 +397,61 @@ class TD3Objective(RLObjective):
         return policy
 
     def run(self, policy,
-            stack_num,
-            cat_num,
+            obs_mode,
             step_per_collect,
             update_per_step,
             batch_size,
             start_timesteps,
             **kwargs):
+        cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
+                              obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
         stack_num = max(stack_num, cat_num)
+
         # collector
         if self.meta_param["training_num"] > 1:
-            buffer = VectorReplayBuffer(self.meta_param["buffer_size"], len(self.train_envs), stack_num=stack_num)
+            buffer = VectorReplayBuffer(
+                self.meta_param["buffer_size"],
+                buffer_num=len(self.train_envs),
+                ignore_obs_next=False,
+                save_only_last_obs=False,
+                stack_num=stack_num
+            )
         else:
-            buffer = ReplayBuffer(self.meta_param["buffer_size"], stack_num=stack_num)
+            buffer = ReplayBuffer(self.meta_param["buffer_size"],
+                                  ignore_obs_next=False,
+                                  save_only_last_obs=False,
+                                  stack_num=stack_num)
+
+        # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.train_envs)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
             train_collector.collect(n_step=start_timesteps, random=True)
 
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
 
-        result = offpolicy_trainer(
+        OffpolicyTrainer(
             policy,
-            train_collector,
-            test_collector,
-            self.meta_param["epoch"],
-            self.meta_param["step_per_epoch"],
-            step_per_collect,
-            self.meta_param["test_num"],
-            batch_size,
+            max_epoch=self.meta_param["epoch"],
+            batch_size=batch_size,
+            train_collector=train_collector,
+            test_collector=test_collector,
+            step_per_epoch=self.meta_param["step_per_epoch"],
+            step_per_collect=step_per_collect,
+            episode_per_test=self.meta_param["test_num"],
+            train_fn=lambda epoch, env_step: None,
+            test_fn=lambda epoch, env_step: None,
+            stop_fn=self.early_stop_fn,
             save_best_fn=save_best_fn,
             logger=self.logger,
             update_per_step=update_per_step,
-            stop_fn=self.early_stop_fn,
-            save_checkpoint_fn=self.save_checkpoint_fn
-        )
-        return result
+            save_checkpoint_fn=self.save_checkpoint_fn,
+        ).run()
+
+        # load the best policy to test again
+        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
+        return policy, lambda epoch, env_step: None
 
     # todo: add PPO objective
