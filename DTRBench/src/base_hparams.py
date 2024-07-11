@@ -4,8 +4,8 @@ common_hparams = {
     "batch_size": [32, 256],
     "obs_mode": [{"stack": {"stack_num": 24,
                             "cat_num": 1}},
-                 {"cat": {"stack_num": 1,
-                          "cat_num": 24}}],
+                 {"cur": {"stack_num": 1,
+                          "cat_num": 1}}],
     "batch_norm": False,
     "dropout": 0,
     "target_update_freq": 3000, #
