@@ -13,6 +13,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 wandb.require("core")
 
+
 def call_agent():
     try:
         obj = obj_class(env_name, env_args, hparam_space, device=args.device)
@@ -44,8 +45,10 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
-    parser.add_argument("--policy_name", type=str, default="DQN",
+
+    parser.add_argument("--policy_name", type=str, default="TD3",
                         choices=["DQN", ])
+
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
@@ -62,7 +65,7 @@ if __name__ == "__main__":
 
     policy_type = get_policy_type(args.policy_name, offline=False)
     env_args = {"discrete": policy_type == "discrete",
-                "n_act": args.num_actions,}
+                "n_act": args.num_actions, }
     env_name = args.task
     log_dir = os.path.join(args.log_dir, env_name + '-' + args.policy_name)
     hparam_space = hparam_class(args.policy_name,
@@ -87,10 +90,10 @@ if __name__ == "__main__":
             "parameters": search_space
         }
         sweep_id = wandb.sweep(sweep_configuration, project=args.wandb_project_name)
-        wandb.agent(sweep_id=sweep_id, function=call_agent, project=args.wandb_project_name, entity="gilesluo")
+        wandb.agent(sweep_id=sweep_id, function=call_agent, project=args.wandb_project_name)
     else:
         if args.role == "agent":
-            wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.wandb_project_name, entity="gilesluo")
+            wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.wandb_project_name)
         if args.role == "run_single":
             obj = obj_class(env_name, env_args, hparam_space, device=args.device)
             config_dict = hparam_space.sample(mode="random")

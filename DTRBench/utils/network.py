@@ -425,7 +425,7 @@ class RecurrentPreprocess(nn.Module):
             "cell": cell.transpose(0, 1).detach()
         }
 
-def define_single_network(input_shape: int, output_shape: int,
+def define_single_network(input_shape: int, output_shape: int, hidden_size=256,
                           use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
                           device="cuda" if torch.cuda.is_available() else "cpu",
                           ):
@@ -437,20 +437,21 @@ def define_single_network(input_shape: int, output_shape: int,
             dueling_params = ({"hidden_sizes": (), "activation": None},
                               {"hidden_sizes": (), "activation": None})
         else:
-            dueling_params = ({"hidden_sizes": (256, 256), "activation": nn.ReLU},
-                              {"hidden_sizes": (256, 256), "activation": nn.ReLU})
+            dueling_params = ({"hidden_sizes": (hidden_size, hidden_size), "activation": nn.ReLU},
+                              {"hidden_sizes": (hidden_size, hidden_size), "activation": nn.ReLU})
     else:
         dueling_params = None
     if not use_rnn:
         net = Net(state_shape=input_shape, action_shape=output_shape,
-                  hidden_sizes=(256, 256, 256, 256) if not linear else (), activation=nn.ReLU if not linear else None,
+                  hidden_sizes=(hidden_size, hidden_size, hidden_size, hidden_size) if not linear else (),
+                  activation=nn.ReLU if not linear else None,
                   device=device, dueling_param=dueling_params, cat_num=cat_num).to(device)
     else:
         net = Recurrent(layer_num=3,
                         state_shape=input_shape,
                         action_shape=output_shape,
                         device=device,
-                        hidden_layer_size=256,
+                        hidden_layer_size=hidden_size,
                         ).to(device)
 
     return net

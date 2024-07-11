@@ -364,11 +364,10 @@ def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, **kwargs):
     env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
                            random_obs=False, random_meal=True, start_time=5 * 60,
                            missing_rate=0.0)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env
-    return wrapped_env
+    return env
 
 
 def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
@@ -382,11 +381,10 @@ def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
                            start_time=5 * 60,
                            random_obs=False, random_meal=True,
                            missing_rate=0.)
-    wrapped_env = DiscreteActionWrapper(env, n_act)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env
-    return wrapped_env
+    return env
 
 def create_SimGlucoseEnv_all4(n_act: int = 5, discrete=False, **kwargs):
     env = RandomPatientEnv(16 * 60,

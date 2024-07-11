@@ -7,7 +7,7 @@ from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     ImitationPolicy
 from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
-from DTRBench.src.offpolicyRLObj import LLM_DQN_Objective, DQNObjective, SACObjective, TD3Objective
+from DTRBench.src.offpolicyRLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams,  SACHyperParams, TD3HyperParams
 import os
@@ -28,8 +28,6 @@ def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
 
 offpolicyLOOKUP = {
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
-    # todo: rainbow
-    "sac": {"hparam": SACHyperParams, "policy": SACPolicy, "obj": SACObjective, "type": "continuous"},
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
 }
 
