@@ -222,20 +222,15 @@ class LLM_DQN_Objective(DQNObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
 
-        # test train_collector and start filling replay buffer
-        print("warm start replay buffer, this may take a while...")
-        train_collector.collect(n_step=batch_size * self.meta_param["training_num"])
-        # trainer
-
-        result = offpolicy_trainer(
+        OffpolicyTrainer(
             policy,
-            train_collector,
-            test_collector,
-            self.meta_param["epoch"],
-            self.meta_param["step_per_epoch"],
-            step_per_collect,
-            self.meta_param["test_num"],
-            batch_size,
+            max_epoch=self.meta_param["epoch"],
+            batch_size=batch_size,
+            train_collector=train_collector,
+            test_collector=test_collector,
+            step_per_epoch=self.meta_param["step_per_epoch"],
+            step_per_collect=step_per_collect,
+            episode_per_test=self.meta_param["test_num"],
             train_fn=train_fn,
             test_fn=test_fn,
             stop_fn=self.early_stop_fn,
@@ -243,8 +238,12 @@ class LLM_DQN_Objective(DQNObjective):
             logger=self.logger,
             update_per_step=update_per_step,
             save_checkpoint_fn=self.save_checkpoint_fn,
-        )
-        return result
+        ).run()
+
+
+        # load the best policy to test again
+        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
+        return policy, test_fn
 
 
 class SACObjective(RLObjective):
