@@ -9,15 +9,9 @@ from tianshou.policy import DDPGPolicy, \
 from tianshou.policy import PPOPolicy
 from tianshou.policy.modelfree.dqn import DQNPolicy
 from tianshou.trainer import OffpolicyTrainer
-from tianshou.utils.net.common import EnsembleLinear
-from tianshou.utils.net.continuous import Actor, Critic, ActorProb
-from tianshou.utils.net.discrete import Actor as discreteActor
-from tianshou.utils.net.discrete import Critic as discreteCritic
-from tianshou.utils.net.discrete import IntrinsicCuriosityModule
-
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.utils.network import define_llm_network, define_single_network, Net, RecurrentPreprocess, Recurrent
+from DTRBench.utils.network import define_llm_network, define_single_network, Actor, Critic, define_continuous_critic
 
 
 class DQNObjective(RLObjective):
@@ -355,58 +349,46 @@ class LLM_DQN_Objective(DQNObjective):
 
 class TD3Objective(RLObjective):
     # todo: linear does not work
-    def __init__(self, env_name, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
-        super().__init__(env_name, hparam_space, device, **kwargs)
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+        super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self, gamma,
                       actor_lr,
                       critic_lr,
                       n_step,
+                      obs_mode,
+
                       tau,
                       update_actor_freq,
                       policy_noise,
                       noise_clip,
                       exploration_noise,
-                      cat_num,
                       linear,
                       **kwargs, ):
 
-        # model
-        max_action = self.action_space.high[0]
-        hidden_sizes = [256, 256, 256, 256] if not linear else []
-        net_a = Net(self.state_shape, hidden_sizes=hidden_sizes, device=self.device, cat_num=cat_num)
-        actor = Actor(
-            net_a, self.action_shape, max_action=max_action, device=self.device
-        ).to(self.device)
+        cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
+                              obs_mode[list(obs_mode.keys())[0]]["stack_num"])
+        min_action, max_action = self.action_space.low[0], self.action_space.high[0]
+        net_a = define_single_network(self.state_shape, self.action_shape,
+                                      use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
+                                      use_dueling=False,)
+        actor = Actor(net_a, min_action=min_action, max_action=max_action).to(self.device)
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        net_c1 = Net(
-            self.state_shape,
-            self.action_shape,
-            hidden_sizes=hidden_sizes,
-            concat=True,
-            device=self.device,
-            cat_num=cat_num
-        )
-        net_c2 = Net(
-            self.state_shape,
-            self.action_shape,
-            hidden_sizes=hidden_sizes,
-            concat=True,
-            device=self.device,
-            cat_num=cat_num
-        )
-        critic1 = Critic(net_c1, device=self.device).to(self.device)
+
+        critic1 = define_continuous_critic(self.state_shape, self.action_shape, use_rnn=stack_num > 1, linear=linear,
+                                           device=self.device, cat_num=cat_num)
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
-        critic2 = Critic(net_c2, device=self.device).to(self.device)
+        critic2 = define_continuous_critic(self.state_shape, self.action_shape, use_rnn=stack_num > 1, linear=linear,
+                                           device=self.device, cat_num=cat_num)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
         policy = TD3Policy(
-            actor,
-            actor_optim,
-            critic1,
-            critic1_optim,
-            critic2,
-            critic2_optim,
+            actor=actor,
+            actor_optim=actor_optim,
+            critic=critic1,
+            critic_optim=critic1_optim,
+            critic2=critic2,
+            critic2_optim=critic2_optim,
             tau=tau,
             gamma=gamma,
             exploration_noise=GaussianNoise(sigma=exploration_noise),
