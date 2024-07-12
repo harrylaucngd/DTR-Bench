@@ -394,7 +394,7 @@ class TD3Objective(RLObjective):
             estimation_step=n_step,
             action_space=self.action_space,
             action_scaling=False,
-            action_bound_method=None,
+            action_bound_method="clip",
         )
         return policy
 
