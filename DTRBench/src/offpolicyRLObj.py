@@ -430,7 +430,7 @@ class TD3Objective(RLObjective):
             train_collector.collect(n_step=start_timesteps, random=True)
 
         def save_best_fn(policy):
-            torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
         OffpolicyTrainer(
             policy,
