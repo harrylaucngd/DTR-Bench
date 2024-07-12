@@ -364,10 +364,11 @@ class TD3Objective(RLObjective):
 
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
+        min_action, max_action = self.action_space.low[0], self.action_space.high[0]
         net_a = define_single_network(self.state_shape, self.action_shape,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False,)
-        actor = Actor(net_a).to(self.device)  # actor will produce [-1, 1], and td3 will scale it
+        actor = Actor(net_a, min_action=min_action, max_action=max_action).to(self.device)
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
         critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
@@ -392,7 +393,8 @@ class TD3Objective(RLObjective):
             noise_clip=noise_clip,
             estimation_step=n_step,
             action_space=self.action_space,
-            action_scaling=True,
+            action_scaling=False,
+            action_bound_method=None,
         )
         return policy
 
