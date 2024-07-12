@@ -389,6 +389,7 @@ class Actor(nn.Module):
         self.device = self.preprocess_net.device
         self.min_action = min_action
         self.max_action = max_action
+
     def forward(self, obs, state=None, info={}):
         obs = torch.as_tensor(
             obs,
@@ -397,7 +398,7 @@ class Actor(nn.Module):
         )
         obs, state = self.preprocess_net(obs, state)
         action = self.activation(obs)
-        action = action * (self.max_action - self.min_action) / 2 + (self.max_action + self.min_action) / 2
+        action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
         return action, state
 
 
@@ -494,7 +495,7 @@ def define_continuous_critic(state_shape: int, action_shape,
                   activation=nn.ReLU,
                   device=device, cat_num=1).to(device)
     critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
-                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size]*fuse_net_n_layer,
+                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
                     device=device).to(device)
 
     return critic
