@@ -382,12 +382,10 @@ class Recurrent(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, preprocess_net, min_action, max_action, activation="Tanh"):
+    def __init__(self, preprocess_net, activation="Tanh"):
         super(Actor, self).__init__()
         self.preprocess_net = preprocess_net
         self.activation = getattr(nn, activation)()
-        self.min_action = min_action
-        self.max_action = max_action
         self.device = self.preprocess_net.device
 
     def forward(self, obs, state=None, info={}):
@@ -398,7 +396,6 @@ class Actor(nn.Module):
         )
         obs, state = self.preprocess_net(obs, state)
         action = self.activation(obs)
-        action = action * (self.max_action - self.min_action) / 2 + (self.max_action + self.min_action) / 2
         return action, state
 
 
