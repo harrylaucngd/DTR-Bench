@@ -56,3 +56,4 @@ ICML result*
 
 DTRBench/run_RL/debug
 DTRBench/run_RL/wandb
+wandb/
