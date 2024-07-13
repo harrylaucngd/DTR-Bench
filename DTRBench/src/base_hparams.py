@@ -10,9 +10,11 @@ common_hparams = {
     "batch_norm": False,
     "dropout": 0,
     "target_update_freq": 3000, #
-    "update_per_step": [0.1, 1],
+    "update_per_step": [0.1, 1],  # off-policy only
     "update_actor_freq": [1, 5],
-    "step_per_collect": [6, 6*12],
+    "step_per_collect": [6, 6*12], # off-policy only
+    "onpolicy_step_per_collect": [1024, 2048], # for on-policy only
+    "repeat_per_collect": [10, 20], # for on-policy only
     "n_step": 1,
     "start_timesteps": 0,
     "gamma": 0.99,
@@ -24,6 +26,7 @@ common_hparams = {
     "eps_train_final": 0.005,
     "eps_test": 1e-9,
 }
+
 
 
 def get_common_hparams(use_rnn):

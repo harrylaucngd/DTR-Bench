@@ -8,11 +8,14 @@ from tianshou.policy import DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, C51Policy, DiscreteSACPolicy
 from tianshou.policy import PPOPolicy
 from tianshou.policy.modelfree.dqn import DQNPolicy
-from tianshou.trainer import OffpolicyTrainer
+from tianshou.trainer import OffpolicyTrainer, OnpolicyTrainer
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
+from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.utils.network import define_llm_network, define_single_network, Critic, define_continuous_critic
-from tianshou.utils.net.continuous import Actor
+from tianshou.utils.net.continuous import Actor, ActorProb
+from torch.distributions import Distribution, Independent, Normal
+
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -458,4 +461,81 @@ class TD3Objective(RLObjective):
         policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
         return policy, lambda epoch, env_step: None
 
-    # todo: add PPO objective
+class PPOObjective(RLObjective):
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+        super().__init__(env_name, env_args, hparam_space, device, **kwargs)
+
+    def define_policy(self, gamma, actor_rl, critic_lr, gae_lambda, vf_coef, ent_coef,eps_clip, value_clip, dual_clip,
+                        norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, **kwargs):
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        if list(obs_mode.keys())[0] == "cat":
+            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
+        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False,
+                                    use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
+        actor = ActorProb(net_a,  self.action_shape, unbounded=True, device=self.device, ).to(self.device)
+        optim = torch.optim.Adam(net_a.parameters(), lr=actor_rl)
+
+        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+                                           device=self.device)
+        critic_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
+        # todo: define actor critic and use one optim
+        def dist(loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
+            loc, scale = loc_scale
+            return Independent(Normal(loc, scale), 1)
+        policy: PPOPolicy = PPOPolicy(
+            actor=actor,
+            critic=critic,
+            optim=optim,
+            dist_fn=dist,
+            discount_factor=gamma,
+            gae_lambda=gae_lambda,
+            vf_coef=vf_coef,
+            ent_coef=ent_coef,
+            action_scaling=True,
+            action_bound_method='clip',
+            action_space=self.action_space,
+            eps_clip=eps_clip,
+            value_clip=value_clip,
+            dual_clip=dual_clip,
+            advantage_normalization=norm_adv,
+            recompute_advantage=recompute_adv,
+        )
+        return policy
+
+    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect,
+            update_per_step, batch_size, **kwargs):
+        def save_best_fn(policy):
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
+
+        def train_fn(epoch, env_step):
+            pass
+
+        def test_fn(epoch, env_step):
+            pass
+
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        if list(obs_mode.keys())[0] == "cat":
+            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
+        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
+        stack_num = max(stack_num, cat_num)
+
+        def save_best_fn(policy):
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
+        OnpolicyTrainer(
+            policy,
+            batch_size=batch_size,
+            train_collector=train_collector,
+            test_collector=test_collector,
+            max_epoch=self.meta_param["epoch"],
+            step_per_epoch=self.meta_param["step_per_epoch"],
+            step_per_collect=step_per_collect,
+            repeat_per_collect=repeat_per_collect,
+            episode_per_test=self.meta_param["test_num"],
+            train_fn=train_fn,
+            test_fn=test_fn,
+            stop_fn=self.early_stop_fn,
+            save_best_fn=save_best_fn,
+            logger=self.logger,
+            save_checkpoint_fn=self.save_checkpoint_fn,
+        ).run()
+        # replay buffer: `save_last_obs`

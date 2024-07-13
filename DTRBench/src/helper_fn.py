@@ -7,7 +7,7 @@ from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     ImitationPolicy
 from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
-from DTRBench.src.offpolicyRLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
+from DTRBench.src.RLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams,  SACHyperParams, TD3HyperParams
 import os
