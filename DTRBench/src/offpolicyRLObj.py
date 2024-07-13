@@ -11,8 +11,8 @@ from tianshou.policy.modelfree.dqn import DQNPolicy
 from tianshou.trainer import OffpolicyTrainer
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.utils.network import define_llm_network, define_single_network, Actor, Critic, define_continuous_critic
-
+from DTRBench.utils.network import define_llm_network, define_single_network, Critic, define_continuous_critic
+from tianshou.utils.net.continuous import Actor
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -365,10 +365,11 @@ class TD3Objective(RLObjective):
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
-        net_a = define_single_network(self.state_shape, self.action_shape,
+        net_a = define_single_network(self.state_shape, 256,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False,)
-        actor = Actor(net_a, min_action=min_action, max_action=max_action).to(self.device)
+        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
+                      preprocess_net_output_dim=256).to(self.device)
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
         critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
@@ -378,6 +379,7 @@ class TD3Objective(RLObjective):
                                            device=self.device)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
+        exploration_noise *= max_action
         policy = TD3Policy(
             actor=actor,
             actor_optim=actor_optim,
@@ -393,8 +395,8 @@ class TD3Objective(RLObjective):
             noise_clip=noise_clip,
             estimation_step=n_step,
             action_space=self.action_space,
-            action_scaling=False,
-            action_bound_method=None,
+            action_scaling=True,
+            action_bound_method='clip',
         )
         return policy
 

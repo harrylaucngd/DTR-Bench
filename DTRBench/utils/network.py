@@ -337,7 +337,7 @@ class Recurrent(nn.Module):
         self.fc1 = nn.Linear(int(np.prod(state_shape)), hidden_layer_size)
         self.fc2 = nn.Linear(hidden_layer_size, self.action_dim)
         self.use_last_step = last_step_only
-
+        self.output_dim = self.action_dim
     def forward(
             self,
             obs: Union[np.ndarray, torch.Tensor],
@@ -381,25 +381,25 @@ class Recurrent(nn.Module):
         }
 
 
-class Actor(nn.Module):
-    def __init__(self, preprocess_net, min_action, max_action, activation="Tanh"):
-        super(Actor, self).__init__()
-        self.preprocess_net = preprocess_net
-        self.activation = getattr(nn, activation)()
-        self.device = self.preprocess_net.device
-        self.min_action = min_action
-        self.max_action = max_action
-
-    def forward(self, obs, state=None, info={}):
-        obs = torch.as_tensor(
-            obs,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        obs, state = self.preprocess_net(obs, state)
-        action = self.activation(obs)
-        action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
-        return action, state
+# class Actor(nn.Module):
+#     def __init__(self, preprocess_net, min_action=-1, max_action=1, activation="Tanh"):
+#         super(Actor, self).__init__()
+#         self.preprocess_net = preprocess_net
+#         self.activation = getattr(nn, activation)()
+#         self.device = self.preprocess_net.device
+#         self.min_action = min_action
+#         self.max_action = max_action
+#
+#     def forward(self, obs, state=None, info={}):
+#         obs = torch.as_tensor(
+#             obs,
+#             device=self.device,
+#             dtype=torch.float32,
+#         )
+#         obs, state = self.preprocess_net(obs, state)
+#         action = self.activation(obs)
+#         action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
+#         return action, state
 
 
 class Critic(nn.Module):
