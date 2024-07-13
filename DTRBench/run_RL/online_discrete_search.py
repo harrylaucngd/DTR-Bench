@@ -34,7 +34,7 @@ def call_agent():
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # training-aid hyperparameters
+    # training-aid hyperparameters TODO: put llm-related params to hyperparam class
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
     parser.add_argument("--sweep_id", type=str, default=None)
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1")

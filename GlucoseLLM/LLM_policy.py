@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -154,7 +153,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # decide to explain or not
         step = batch.info["step"]
-        attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
+        attributes = ['need_obs_explain', 'need_act_explain']
         for attr in attributes:
             explain_bool = getattr(self, attr)
             if (self.exp_freq == 0) or (step % self.exp_freq != 0):

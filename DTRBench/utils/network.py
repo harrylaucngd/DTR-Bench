@@ -124,10 +124,9 @@ class LLMNet(GlucoseLLM.Model):
             temperature=1
         )
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        generated_text = generated_text[len(prompt):].strip()
-        cutoff_index = generated_text.find("<|im_end|>")
-        if cutoff_index != -1:
-            generated_text = generated_text[:cutoff_index].strip()
+        cutoff_index = generated_text.rfind("assistant/n")
+        if cutoff_index != -1:   # answer cutoff
+            generated_text = generated_text[cutoff_index + len("assistant/n"):]
         return generated_text
 
     def forward(self, series, messages, max_length=100, mode='Q'):
