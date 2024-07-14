@@ -185,7 +185,7 @@ class LLM_DQN_Objective(DQNObjective):
             **kwargs
             ):
         def save_best_fn(policy):
-            torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
+            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
         def train_fn(epoch, env_step):
             # nature DQN setting, linear decay in the first 10k steps

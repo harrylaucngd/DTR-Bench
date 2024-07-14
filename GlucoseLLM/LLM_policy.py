@@ -1,10 +1,12 @@
-from typing import Any, Literal, cast
+from dataclasses import dataclass
+from typing import Any, Generic, Literal, Self, TypeVar, cast
 
 import numpy as np
 import torch
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import BasePolicy, DQNPolicy
+from tianshou.policy.base import TLearningRateScheduler, TrainingStats
 from tianshou.data.batch import BatchProtocol
 from tianshou.data.types import (
     BatchWithReturnsProtocol,
@@ -16,6 +18,14 @@ from tianshou.data.types import (
 from DTRBench.utils.network import LLMNet
 
 from DTRBench.utils.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
+
+
+@dataclass(kw_only=True)
+class DQNTrainingStats(TrainingStats):
+    loss: float
+
+
+TDQNTrainingStats = TypeVar("TDQNTrainingStats", bound=DQNTrainingStats)
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -144,7 +154,7 @@ class LLM_DQN_Policy(DQNPolicy):
         todo: improve state indices for better locate episode_id and step
         """
         model = getattr(self, model)
-        if state is None:
+        if (state is None) or any(value==[None] for value in state.values()):
             state = Batch(obs=[], act=[], obs_exp=[], act_exp=[], summary=[])
             summ = None
         else:
@@ -153,7 +163,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # decide to explain or not
         step = batch.info["step"]
-        attributes = ['need_obs_explain', 'need_act_explain']
+        attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
         for attr in attributes:
             explain_bool = getattr(self, attr)
             if (self.exp_freq == 0) or (step % self.exp_freq != 0):
@@ -192,5 +202,29 @@ class LLM_DQN_Policy(DQNPolicy):
         # compress state batch to len 1
         state = self.compress_state(state)
 
-        result = Batch(logits=logits, act=act, state=state)
+        result = Batch(logits=logits, act=act, state=state);print(step)
         return cast(ModelOutputBatchProtocol, result)
+
+    def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
+        if self._target and self._iter % self.freq == 0:
+            self.sync_weight()
+        self.optim.zero_grad()
+        weight = batch.pop("weight", 1.0);import pdb;pdb.set_trace()
+        q = self(batch).logits
+        q = q[np.arange(len(q)), batch.act]
+        returns = to_torch_as(batch.returns.flatten(), q)
+        td_error = returns - q
+
+        if self.clip_loss_grad:
+            y = q.reshape(-1, 1)
+            t = returns.reshape(-1, 1)
+            loss = torch.nn.functional.huber_loss(y, t, reduction="mean")
+        else:
+            loss = (td_error.pow(2) * weight).mean()
+
+        batch.weight = td_error  # prio-buffer
+        loss.backward()
+        self.optim.step()
+        self._iter += 1
+
+        return DQNTrainingStats(loss=loss.item())  # type: ignore[return-value]
