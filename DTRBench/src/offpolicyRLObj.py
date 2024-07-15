@@ -135,14 +135,10 @@ class DQNObjective(RLObjective):
     
 
 class LLM_DQN_Objective(DQNObjective):
-    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, need_obs_explain, need_act_explain, need_summary, exp_freq, **kwargs):
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, llm, llm_dim, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
         self.llm = llm
         self.llm_dim = llm_dim
-        self.need_obs_explain = need_obs_explain
-        self.need_act_explain = need_act_explain
-        self.need_summary = need_summary
-        self.exp_freq = exp_freq
 
     def define_policy(self,
                       # general hp
@@ -152,6 +148,10 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step,
                       target_update_freq,
+                      need_obs_exp,
+                      need_act_exp,
+                      need_summary,
+                      exp_freq,
                       **kwargs
                       ):
         # define model
@@ -165,10 +165,10 @@ class LLM_DQN_Objective(DQNObjective):
             gamma,
             n_step,
             target_update_freq=target_update_freq,
-            need_obs_explain = self.need_obs_explain,
-            need_act_explain = self.need_act_explain,
-            need_summary = self.need_summary,
-            exp_freq = self.exp_freq,
+            need_obs_explain = need_obs_exp,
+            need_act_explain = need_act_exp,
+            need_summary = need_summary,
+            exp_freq = exp_freq,
             action_space=self.action_space,
             observation_space=self.state_space,
         )

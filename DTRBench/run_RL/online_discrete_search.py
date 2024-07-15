@@ -15,9 +15,7 @@ wandb.require("core")
 
 def call_agent():
     try:
-        obj = obj_class(env_name, env_args, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
-                    need_obs_explain = args.need_obs_explain, need_act_explain = args.need_act_explain, 
-                    need_summary = args.need_summary, exp_freq = args.exp_freq)
+        obj = obj_class(env_name, env_args, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim)
         obj.wandb_search()
     except TimeoutError as e:
         # Update the status to 'crashed' due to timeout
@@ -34,7 +32,7 @@ def call_agent():
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # training-aid hyperparameters TODO: put llm-related params to hyperparam class
+    # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
     parser.add_argument("--sweep_id", type=str, default=None)
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1")
@@ -46,10 +44,6 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
     parser.add_argument("--buffer_size", type=int, default=5e4)
     parser.add_argument("--linear", type=to_bool, default=False)
-    parser.add_argument("--need_obs_explain", type=bool, default=True)
-    parser.add_argument("--need_act_explain", type=bool, default=True)
-    parser.add_argument("--need_summary", type=bool, default=True)
-    parser.add_argument("--exp_freq", type=int, default=0)
     '''
     Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
     1. internlm/internlm2_5-7b-chat
@@ -115,9 +109,7 @@ if __name__ == "__main__":
         if args.role == "agent":
             wandb.agent(sweep_id=args.sweep_id, function=call_agent, project=args.wandb_project_name, entity="harrylaucngd-tsinghua-university")
         if args.role == "run_single":
-            obj = obj_class(env_name, env_args, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim, 
-                    need_obs_explain = args.need_obs_explain, need_act_explain = args.need_act_explain, 
-                    need_summary = args.need_summary, exp_freq = args.exp_freq)
+            obj = obj_class(env_name, env_args, hparam_space, device=args.device, llm=args.llm, llm_dim=llm_dim)
             config_dict = hparam_space.sample(mode="random")
             obj.search_once({**config_dict, **{"wandb_project_name": args.wandb_project_name}})
         else:

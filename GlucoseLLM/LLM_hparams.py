@@ -22,6 +22,10 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "eps_train_final": 0.005,
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
+        "need_obs_exp": [True, False],
+        "need_act_exp": [True, False],
+        "need_summary": [True, False],
+        "exp_freq": [4, 8, 16],
         "is_double": False,
         "use_dueling": False,
     }

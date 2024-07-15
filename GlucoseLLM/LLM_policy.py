@@ -92,6 +92,8 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_act_explain = need_act_explain
         self.need_summary = need_summary
         self.exp_freq = exp_freq
+        self.state = {}
+        self.episode = -1
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
@@ -115,33 +117,12 @@ class LLM_DQN_Policy(DQNPolicy):
             return target_q[np.arange(len(result.act)), result.act]
         else:  # Nature DQN, over estimate
             return target_q.max(dim=1)[0]
-    
-    def compress_state(self, state):
-        separator = "|||"
-        compressed_state = {
-            'obs': [separator.join(map(str, state.obs))],
-            'act': [separator.join(map(str, state.act))],
-            'obs_exp': [separator.join(map(str, state.obs_exp))],
-            'act_exp': [separator.join(map(str, state.act_exp))],
-            'summary': [separator.join(map(str, state.summary))],
-        }
-        return compressed_state
+        
+    def get_state(self):
+        pass
 
-    def extract_state(self, compressed_state):
-        separator = "|||"
-        extracted_state = Batch(
-            obs=compressed_state['obs'][0].split(separator),
-            act=compressed_state['act'][0].split(separator),
-            obs_exp=compressed_state['obs_exp'][0].split(separator),
-            act_exp=compressed_state['act_exp'][0].split(separator),
-            summary=compressed_state['summary'][0].split(separator),
-        )
-
-        # Convert numerical strings back to their respective types
-        extracted_state.obs = [eval(i) if i.replace('.','',1).isdigit() else i for i in extracted_state.obs]
-        extracted_state.act = [eval(i) if i.replace('.','',1).isdigit() else i for i in extracted_state.act]
-
-        return extracted_state
+    def insert_state(self, curr_state, episode, step):
+        pass
 
     def forward(
         self,
@@ -154,15 +135,13 @@ class LLM_DQN_Policy(DQNPolicy):
         todo: improve state indices for better locate episode_id and step
         """
         model = getattr(self, model)
-        if (state is None) or any(value==[None] for value in state.values()):
-            state = Batch(obs=[], act=[], obs_exp=[], act_exp=[], summary=[])
-            summ = None
-        else:
-            state = self.extract_state(state)
-            summ = state.summary[-1]
+        states = self.get_state(self)
+        summ = None if any(value == [] for value in states.values()) else states["summary"][-1]
 
         # decide to explain or not
         step = batch.info["step"]
+        if step == 0:
+            self.episode += 1
         attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
         for attr in attributes:
             explain_bool = getattr(self, attr)
@@ -175,34 +154,32 @@ class LLM_DQN_Policy(DQNPolicy):
         # obs and obs explanation
         obs = batch.obs
         obs_next = obs.obs if hasattr(obs, "obs") else obs
-        state.obs = np.append(state.obs, obs_next)
-        conversation = obs_prompt_reprogramming(state.obs, state.act, state.obs_exp)
+        states["obs"] = np.append(states["obs"], obs_next)
+        conversation = obs_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"])
         obs_explain = model.explain_obs(conversation, summ, mode='str') if self.need_obs_explain else ""
-        state.obs_exp = np.append(state.obs_exp, obs_explain)
+        states["obs_exp"] = np.append(states["obs_exp"], obs_explain)
 
         # Q value prediction
-        series, conversation = q_prompt_reprogramming(state.obs, state.act, state.obs_exp, state.act_exp)
+        series, conversation = q_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"], states["act_exp"])
         logits = model.q_pred(series, conversation, summ, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
-        state.act = np.append(state.act, act)
+        states["act"] = np.append(states["act"], act)
         
         # act explanation
-        conversation = act_prompt_reprogramming(state.obs, state.act, state.act_exp)
+        conversation = act_prompt_reprogramming(states["obs"], states["act"], states["act_exp"])
         act_explain = model.explain_act(conversation, summ, mode='str') if self.need_act_explain else ""
-        state.act_exp = np.append(state.act_exp, act_explain)
+        states["act_exp"] = np.append(states["act_exp"], act_explain)
 
         # update summary
-        conversation = summary_reprogramming(state.obs, state.act, state.summary)
+        conversation = summary_reprogramming(states["obs"], states["act"], states["summary"])
         summary = model.summarize(conversation, mode='str') if self.need_summary else ""
-        state.summary = np.append(state.summary, summary)
+        states["summary"] = np.append(states["summary"], summary)
 
-        # compress state batch to len 1
-        state = self.compress_state(state)
-
-        result = Batch(logits=logits, act=act, state=state);print(step)
+        self.insert_state(self, states, self.episode, step)
+        result = Batch(logits=logits, act=act, state=None)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
