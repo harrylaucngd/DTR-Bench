@@ -135,11 +135,13 @@ class SinglePatientEnv(gymnasium.Env):
                          }
         self._action_space = None  # Backing attribute for lazy loading
         self._obs_space = None  # Backing attribute for lazy loading
+        self.ep_id = -1 # episode id
 
     def reset(self, seed: int = None, **kwargs):
         self.seed(seed)
         self.t = 0
         self.step_counter = 0
+        self.ep_id += 1
         '''
         patient_name must be 'adolescent#001' to 'adolescent#010',
         or 'adult#001' to 'adult#010', or 'child#001' to 'child#010'
@@ -159,7 +161,7 @@ class SinglePatientEnv(gymnasium.Env):
         obs = self._state2obs(state, random_obs=self.random_obs, enable_missing=False)
         self.last_bg = obs
         self.last_drug = 0
-        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0}
+        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0, "episode_id": self.ep_id}
         info.pop("patient_state")
         info.update(all_info)
         return np.array([float(obs), self.last_drug], dtype=np.float32), info
@@ -195,7 +197,8 @@ class SinglePatientEnv(gymnasium.Env):
         last_drug = self.last_drug
         self.last_drug = float(action)
         # reward = rew
-        all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter}
+        all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter,
+                    "episode_id": self.ep_id}
         info.pop("patient_state")
         info.update(all_info)
         return (np.array([float(obs), float(last_drug)], dtype=np.float32),
