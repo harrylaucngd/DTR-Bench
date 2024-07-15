@@ -383,6 +383,8 @@ class TD3Objective(RLObjective):
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
         exploration_noise *= max_action
+        policy_noise *= max_action
+        noise_clip *= max_action
         policy = TD3Policy(
             actor=actor,
             actor_optim=actor_optim,

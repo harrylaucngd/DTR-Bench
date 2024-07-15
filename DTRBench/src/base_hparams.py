@@ -14,11 +14,11 @@ common_hparams = {
     "update_actor_freq": [1, 5],
     "step_per_collect": [6, 6*12], # off-policy only
     "onpolicy_step_per_collect": [1024, 2048], # for on-policy only
-    "repeat_per_collect": [10, 20], # for on-policy only
+    "repeat_per_collect": [10,], # for on-policy only
     "n_step": 1,
     "start_timesteps": 0,
     "gamma": 0.99,
-    "tau": 0.001,
+    "tau": 0.005,
     "exploration_noise": [0.1, 0.5],
 
     # epsilon-greedy exploration
