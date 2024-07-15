@@ -9,24 +9,23 @@ common_hparams = {
                           "cat_num": 1}}],
     "batch_norm": False,
     "dropout": 0,
-    "target_update_freq": 3000, #
+    "target_update_freq": 3000,  #
     "update_per_step": [0.1, 1],  # off-policy only
     "update_actor_freq": [1, 5],
-    "step_per_collect": [6, 6*12], # off-policy only
-    "onpolicy_step_per_collect": [1024, 2048], # for on-policy only
-    "repeat_per_collect": [10,], # for on-policy only
+    "step_per_collect": [6, 6 * 12],  # off-policy only
+    "onpolicy_step_per_collect": [1024, 2048],  # for on-policy only
+    "repeat_per_collect": [10, ],  # for on-policy only
     "n_step": 1,
     "start_timesteps": 0,
     "gamma": 0.99,
     "tau": 0.005,
-    "exploration_noise": [0.1, 0.5],
+    "exploration_noise": [0.1, 0.2,],
 
     # epsilon-greedy exploration
     "eps_train": 0.99,
     "eps_train_final": 0.005,
     "eps_test": 1e-9,
 }
-
 
 
 def get_common_hparams(use_rnn):

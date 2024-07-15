@@ -352,7 +352,6 @@ class TD3Objective(RLObjective):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self, gamma,
-                      actor_lr,
                       critic_lr,
                       n_step,
                       obs_mode,
@@ -364,7 +363,7 @@ class TD3Objective(RLObjective):
                       exploration_noise,
                       linear,
                       **kwargs, ):
-
+        actor_lr = critic_lr * 0.1
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
@@ -411,6 +410,9 @@ class TD3Objective(RLObjective):
             update_per_step,
             batch_size,
             start_timesteps,
+
+            # exploration_noise,
+            # exploration_noise_final,
             **kwargs):
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
@@ -438,6 +440,19 @@ class TD3Objective(RLObjective):
         if start_timesteps > 0:
             train_collector.collect(n_step=start_timesteps, random=True)
 
+        # def train_fn(epoch, env_step):
+        #     # nature DQN setting, linear decay in the first 10k steps
+        #     if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
+        #         eps = exploration_noise - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
+        #               (exploration_noise - exploration_noise_final)
+        #     else:
+        #         eps = eps_train_final
+        #     policy.set_exp_noise(eps)
+        #     if env_step % 1000 == 0:
+        #         self.logger.write("train/env_step", env_step, {"train/eps": eps})
+        #
+        # def test_fn(epoch, env_step):
+        #     policy.set_eps(eps_test)
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
