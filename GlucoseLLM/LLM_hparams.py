@@ -25,7 +25,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "need_obs_exp": [True, False],
         "need_act_exp": [True, False],
         "need_summary": [True, False],
-        "exp_freq": [4, 8, 16],
+        "exp_freq": 0,#[4, 8, 16],
         "is_double": False,
         "use_dueling": False,
     }

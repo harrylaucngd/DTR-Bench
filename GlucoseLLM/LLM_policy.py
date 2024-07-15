@@ -119,10 +119,32 @@ class LLM_DQN_Policy(DQNPolicy):
             return target_q.max(dim=1)[0]
         
     def get_state(self):
-        pass
+        if self.state == {}:
+            return {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
+
+        newest_episode_id = max(self.state.keys())
+        steps = self.state.get(newest_episode_id, {})
+
+        if not steps:
+            return {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
+
+        states = {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
+
+        for step_id in sorted(steps.keys()):
+            step_data = steps[step_id]
+            states["obs"].append(step_data.get("obs", None))
+            states["act"].append(step_data.get("act", None))
+            states["obs_exp"].append(step_data.get("obs_exp", None))
+            states["act_exp"].append(step_data.get("act_exp", None))
+            states["summary"].append(step_data.get("summary", None))
+
+        return states
 
     def insert_state(self, curr_state, episode, step):
-        pass
+        if episode not in self.state:
+            self.state[episode] = {}
+
+        self.state[episode][step] = curr_state
 
     def forward(
         self,
@@ -135,13 +157,15 @@ class LLM_DQN_Policy(DQNPolicy):
         todo: improve state indices for better locate episode_id and step
         """
         model = getattr(self, model)
-        states = self.get_state(self)
-        summ = None if any(value == [] for value in states.values()) else states["summary"][-1]
+        states = self.get_state()
+        curr_state = {}
+        summ = None if states["summary"]==[] else states["summary"][-1]
 
         # decide to explain or not
-        step = batch.info["step"]
+        step = batch.info["step"][0]
         if step == 0:
             self.episode += 1
+            states = {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
         attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
         for attr in attributes:
             explain_bool = getattr(self, attr)
@@ -154,10 +178,12 @@ class LLM_DQN_Policy(DQNPolicy):
         # obs and obs explanation
         obs = batch.obs
         obs_next = obs.obs if hasattr(obs, "obs") else obs
-        states["obs"] = np.append(states["obs"], obs_next)
+        states["obs"] = np.append(states["obs"], obs_next[0][0])
+        curr_state["obs"] = obs_next[0][0]
         conversation = obs_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"])
         obs_explain = model.explain_obs(conversation, summ, mode='str') if self.need_obs_explain else ""
         states["obs_exp"] = np.append(states["obs_exp"], obs_explain)
+        curr_state["obs_exp"] = obs_explain
 
         # Q value prediction
         series, conversation = q_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"], states["act_exp"])
@@ -166,20 +192,23 @@ class LLM_DQN_Policy(DQNPolicy):
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
-        states["act"] = np.append(states["act"], act)
+        states["act"] = np.append(states["act"], act[0])
+        curr_state["act"] = act[0]
         
         # act explanation
         conversation = act_prompt_reprogramming(states["obs"], states["act"], states["act_exp"])
         act_explain = model.explain_act(conversation, summ, mode='str') if self.need_act_explain else ""
         states["act_exp"] = np.append(states["act_exp"], act_explain)
+        curr_state["act_exp"] = act_explain
 
         # update summary
         conversation = summary_reprogramming(states["obs"], states["act"], states["summary"])
         summary = model.summarize(conversation, mode='str') if self.need_summary else ""
         states["summary"] = np.append(states["summary"], summary)
+        curr_state["summary"] = summary
 
-        self.insert_state(self, states, self.episode, step)
-        result = Batch(logits=logits, act=act, state=None)
+        self.insert_state(curr_state, self.episode, step)
+        result = Batch(logits=logits, act=act, state=None);print(step)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
