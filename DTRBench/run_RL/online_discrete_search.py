@@ -38,20 +38,20 @@ def parse_args():
     parser.add_argument("--sweep_id", type=str, default="wrr1dlgt", help="sweep id for wandb,"
                                                                          " only used in agent mode")
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
-                        help="remeber to change this for different tasks! "
+                        help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=50)
+    parser.add_argument("--test_num", type=int, default=10)
     parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
-    parser.add_argument("--buffer_size", type=int, default=5e4)
+    parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
 
     parser.add_argument("--policy_name", type=str, default="TD3",  # Change this for different sweep!
                         choices=["DQN", "TD3"],
-                        help="remeber to change this for different tasks! "
+                        help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
