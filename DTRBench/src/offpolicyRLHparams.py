@@ -195,13 +195,13 @@ class SACHyperParams(OffPolicyRLHyperParameterSpace):
 class TD3HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("td3",)
     _policy_hparams = {
-        "actor_lr": common_hparams["lr"],
+        # "actor_lr": common_hparams["lr"],  # manually set to 0.1*critic_lr
         "critic_lr": common_hparams["lr"],
         "n_step": common_hparams["n_step"],
         "exploration_noise": common_hparams["exploration_noise"],
         "tau": common_hparams["tau"],
         "start_timesteps": common_hparams["start_timesteps"],
         "update_actor_freq": common_hparams["update_actor_freq"],
-        "policy_noise": 0.2,
-        "noise_clip": 0.5,
+        "policy_noise": 0.05,
+        "noise_clip": 0.1,
     }

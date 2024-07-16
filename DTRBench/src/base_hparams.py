@@ -17,15 +17,14 @@ common_hparams = {
     "n_step": 1,
     "start_timesteps": 0,
     "gamma": 0.99,
-    "tau": 0.001,
-    "exploration_noise": [0.1, 0.5],
+    "tau": 0.005,
+    "exploration_noise": [0.1, 0.2,],
 
     # epsilon-greedy exploration
     "eps_train": 0.99,
     "eps_train_final": 0.005,
     "eps_test": 0.001,
 }
-
 
 
 def get_common_hparams(use_rnn):
