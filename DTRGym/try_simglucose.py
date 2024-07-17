@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import time
 from DTRBench.src.collector import GlucoseCollector
-from DTRBench.src.baseline_policy import ConstantPolicy, RandomPolicy
+from DTRBench.src.naive_baselines import ConstantPolicy, RandomPolicy
 from DTRGym.base import make_env
 import warnings
 

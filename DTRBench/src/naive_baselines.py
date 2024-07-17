@@ -1,21 +1,18 @@
-import numpy as np
-import os
-from tianshou.data import Batch
 import gymnasium as gym
-from pathlib import Path
-import pandas as pd
-from tianshou.policy import BasePolicy
 from typing import Any, Generic, Literal, Self, TypeVar, cast
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
-from tianshou.data.batch import BatchProtocol
 from tianshou.data.types import (
     BatchWithReturnsProtocol,
     ModelOutputBatchProtocol,
     ObsBatchProtocol,
     RolloutBatchProtocol,
 )
+import numpy as np
+from tianshou.policy.base import BasePolicy
 from tianshou.policy.base import TTrainingStats
+from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
+from DTRBench.src.base_hparams import common_hparams
 
 
 class RandomPolicy(BasePolicy):
@@ -92,24 +89,27 @@ class PulsePolicy(BasePolicy):
         raise NotImplementedError("PulsePolicy does not support learning.")
 
 
+class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
+    _meta_hparams = [
+        "test_num",  # number of test envs
+    ]
+
+    # general hyperparameter search space
+    _general_hparams = {
+        # general parameters
+        "seed": common_hparams["seed"],
+        "policy_name": ["zero_drug", "constant0.02", "random0.1", "random0.5", "pulse30-0.1", "pulse60-0.2"],
+        "env_name": ["SimGlucoseEnv-adult1", "SimGlucoseEnv-adult4", "SimGlucoseEnv-all4"]
+    }
+    # policy hyperparameter search space
+    _policy_hparams = {
+    }
+    _supported_algos = ("zero_drug", "constant0.02", "random0.1", "random0.5", "pulse30-0.1", "pulse60-0.2")
+
+    def __init__(self, test_num):
+        self.test_num = test_num
+
+
 # Example usage
 if __name__ == "__main__":
-    # Define a continuous action space
-    action_space_box = gym.spaces.Box(low=np.array([-1.0, -1.0]),
-                                      high=np.array([1.0, 1.0]),
-                                      dtype=np.float32)
-
-    # Define a discrete action space
-    action_space_discrete = gym.spaces.Discrete(5)
-
-    # Test the policies with a continuous action space
-    print("Testing with a continuous action space:")
-    demo_run_policy(RandomPolicy(action_space_box), action_space_box)
-    demo_run_policy(MinPolicy(action_space_box), action_space_box)
-    demo_run_policy(MaxPolicy(action_space_box), action_space_box)
-
-    # Test the policies with a discrete action space
-    print("\nTesting with a discrete action space:")
-    demo_run_policy(RandomPolicy(action_space_discrete), action_space_discrete)
-    demo_run_policy(MinPolicy(action_space_discrete), action_space_discrete)
-    demo_run_policy(MaxPolicy(action_space_discrete), action_space_discrete)
+    pass

@@ -1,6 +1,5 @@
 import torch
 from tianshou.policy import BasePolicy
-from DTRBench.src.baseline_policy import RandomPolicy
 
 from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, DiscreteSACPolicy, DiscreteBCQPolicy, DiscreteCQLPolicy, BCQPolicy, CQLPolicy, \
@@ -9,9 +8,8 @@ from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
 from DTRBench.src.RLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
-from DTRBench.src.offpolicyRLHparams import DQNHyperParams,  SACHyperParams, TD3HyperParams
-import os
-import shutil
+from DTRBench.src.offpolicyRLHparams import DQNHyperParams, SACHyperParams, TD3HyperParams
+from DTRBench.src.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
 
 
 def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
@@ -31,8 +29,13 @@ offpolicyLOOKUP = {
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
 }
 
-BASELINE_LOOKUP = {"random": {"policy": RandomPolicy},
-                   }
+baselineLOOKUP = {"zero_drug": {"policy": ConstantPolicy, "policy_args": {"dose": 0}},
+                  "constant0.02": {"policy": ConstantPolicy, "policy_args": {"dose": 0.02}},
+                  "random0.1": {"policy": RandomPolicy, "policy_args": {"min_act": 0, "max_act": 0.1}},
+                  "random0.5": {"policy": RandomPolicy, "policy_args": {"min_act": 0, "max_act": 0.5}},
+                  "pulse30-0.1": {"policy": PulsePolicy, "policy_args": {"dose": 0.1, "interval": 6}},
+                  "pulse60-0.2": {"policy": PulsePolicy, "policy_args": {"dose": 0.2, "interval": 12}}}
+
 
 # todo: add onpolicy
 # onpolicyLOOKUP = {
@@ -94,7 +97,3 @@ def get_policy_type(algo_name: str, offline: bool) -> str:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
         return offpolicyLOOKUP[algo_name]["type"]
-
-
-def get_baseline_policy_class(algo_name: str) -> BasePolicy:
-    return BASELINE_LOOKUP[algo_name]["policy"]

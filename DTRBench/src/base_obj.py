@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 import wandb
-from tianshou.data import Collector
+from DTRBench.src.collector import GlucoseCollector as Collector
 from dataclasses import asdict
 from tianshou.policy.base import BasePolicy
 from DTRBench.utils.wandb import WandbLogger
@@ -13,7 +13,7 @@ from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 
 
 class RLObjective:
-    def __init__(self, env_name, env_args:dict, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
+    def __init__(self, env_name, env_args: dict, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
         # define high level parameters
         self.env_name = env_name
         self.env_args = env_args
@@ -27,8 +27,7 @@ class RLObjective:
     def prepare_env(self, seed, env_name, **env_kwargs):
         # prepare env
         self.env, self.train_envs, self.test_envs = make_env(env_name, int(seed),
-                                                             self.meta_param["training_num"], 1,
-                                                             num_actions=self.meta_param["num_actions"], **env_kwargs)
+                                                             self.meta_param["training_num"], 1, **env_kwargs)
         state_shape = self.env.observation_space.shape or self.env.observation_space.n
         self.state_space = self.env.observation_space
         action_shape = self.env.action_space.shape or self.env.action_space.n
@@ -74,12 +73,12 @@ class RLObjective:
         # test on all envs
         self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
-    def test_all_patients(self, policy, test_fn,  seed, logger, n_episode=20):
+    def test_all_patients(self, policy, test_fn, seed, logger, n_episode=20):
         for patient_name in tqdm(["adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004",
-                             "adult#001", "adult#002", "adult#003", "adult#004",
-                             "child#001", "child#002", "child#003", "child#004", "child#005"], desc="final_testing"):
-            self.prepare_env(seed, "SimGlucoseEnv-single-patient", patient_name=patient_name,
-                             discrete=self.env_args["discrete"], n_act=self.env_args["n_act"])
+                                  "adult#001", "adult#002", "adult#003", "adult#004",
+                                  "child#001", "child#002", "child#003", "child#004", "child#005"],
+                                 desc="final_testing"):
+            self.prepare_env(seed, "SimGlucoseEnv-single-patient", patient_name=patient_name, **self.env_args)
             test_collectors = Collector(policy, self.test_envs, exploration_noise=True)
             result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
             result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test/{patient_name}")

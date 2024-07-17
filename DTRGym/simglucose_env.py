@@ -163,7 +163,7 @@ class SinglePatientEnv(gymnasium.Env):
         obs = self._state2obs(state, random_obs=self.random_obs, enable_missing=False)
         self.bg_history = [float(obs)]
         self.drug_history = [0]
-        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0, "episode_id": self.episode_id}
+        all_info = {"action": 0, "instantaneous_reward": 0, "step": 0, "episode_id": self.episode_id}
         info.pop("patient_state")
         all_info.update(info)
 
@@ -206,7 +206,7 @@ class SinglePatientEnv(gymnasium.Env):
         self.bg_history.append(float(obs))
         self.drug_history.append(float(action))
 
-        all_info = {"action": action, "instantaneous_reward": float(reward), "step": self.step_counter,
+        all_info = {"action": float(action), "instantaneous_reward": float(reward), "step": self.step_counter,
                     "episode_id": self.episode_id}
         info.pop("patient_state")
         all_info.update(info)

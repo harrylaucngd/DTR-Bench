@@ -17,7 +17,7 @@ from tianshou.utils.net.continuous import Actor, ActorProb
 from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
-from DTRBench.src.baseline_policy import ConstantPolicy, RandomPolicy
+from DTRBench.src.naive_baselines import ConstantPolicy, RandomPolicy
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -103,7 +103,7 @@ class DQNObjective(RLObjective):
                                          action_space=self.action_space)
             warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
             warmup_collector.collect(n_step=start_timesteps)
-            buffer = warmup_collector.buffer
+
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=True)
