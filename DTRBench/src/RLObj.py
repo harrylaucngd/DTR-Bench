@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import torch
-from tianshou.data import Collector, VectorReplayBuffer, ReplayBuffer
+from tianshou.data import VectorReplayBuffer, ReplayBuffer
 from tianshou.exploration import GaussianNoise
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy
 from tianshou.policy import DDPGPolicy, \
@@ -16,7 +16,8 @@ from DTRBench.utils.network import define_llm_network, define_single_network, Cr
 from tianshou.utils.net.continuous import Actor, ActorProb
 from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
-
+from DTRBench.src.collector import GlucoseCollector as Collector
+from DTRBench.src.baseline_policy import ConstantPolicy, RandomPolicy
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -38,8 +39,6 @@ class DQNObjective(RLObjective):
                       ):
         # define model
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
@@ -60,10 +59,10 @@ class DQNObjective(RLObjective):
             eps_test,
             eps_train,
             eps_train_final,
-            obs_mode,
             step_per_collect,
             update_per_step,
             batch_size,
+            start_timesteps,
             **kwargs
             ):
         def save_best_fn(policy):
@@ -82,11 +81,6 @@ class DQNObjective(RLObjective):
 
         def test_fn(epoch, env_step):
             policy.set_eps(eps_test)
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1 # cat is the deprecated version of cur, we will use cur instead
-        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
-        stack_num = max(stack_num, cat_num)
 
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
@@ -96,18 +90,25 @@ class DQNObjective(RLObjective):
                 buffer_num=len(self.train_envs),
                 ignore_obs_next=False,
                 save_only_last_obs=False,
-                stack_num=stack_num
+                stack_num=1  # stack is implemented in the env
             )
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"],
                                   ignore_obs_next=False,
                                   save_only_last_obs=False,
-                                  stack_num=stack_num)
-
+                                  stack_num=1)
+        if start_timesteps > 0:
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
+                                         action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
+            buffer = warmup_collector.buffer
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=True)
 
+        print("start training!")
         OffpolicyTrainer(
             policy,
             max_epoch=self.meta_param["epoch"],
@@ -406,7 +407,6 @@ class TD3Objective(RLObjective):
         return policy
 
     def run(self, policy,
-            obs_mode,
             step_per_collect,
             update_per_step,
             batch_size,
@@ -415,10 +415,6 @@ class TD3Objective(RLObjective):
             # exploration_noise,
             # exploration_noise_final,
             **kwargs):
-        cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
-                              obs_mode[list(obs_mode.keys())[0]]["stack_num"])
-        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
-        stack_num = max(stack_num, cat_num)
 
         # collector
         if self.meta_param["training_num"] > 1:
@@ -427,20 +423,22 @@ class TD3Objective(RLObjective):
                 buffer_num=len(self.train_envs),
                 ignore_obs_next=False,
                 save_only_last_obs=False,
-                stack_num=stack_num
+                stack_num=1
             )
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"],
                                   ignore_obs_next=False,
                                   save_only_last_obs=False,
-                                  stack_num=stack_num)
+                                  stack_num=1)
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
+            # todo: collect with random
             train_collector.collect(n_step=start_timesteps, random=True)
 
+        train_collector.collect(n_step=1000, random=True)
         # def train_fn(epoch, env_step):
         #     # nature DQN setting, linear decay in the first 10k steps
         #     if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:

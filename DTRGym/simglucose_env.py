@@ -107,6 +107,7 @@ class SinglePatientEnv(gymnasium.Env):
 
     def __init__(self, patient_name: str,
                  max_t: int = 24 * 60,
+                 obs_window: int = 48,
                  reward_fn=risk_reward_fn,
                  random_init_bg: bool = False,
                  random_obs: bool = False,
@@ -127,6 +128,8 @@ class SinglePatientEnv(gymnasium.Env):
         self.sample_time = sample_time
         self.start_time = start_time
         self.last_obs = None
+        self.obs_window = obs_window
+        self.episode_id = -1
         # pump_upper_act = self.pump_params[self.pump_params["Name"] == self.INSULIN_PUMP_HARDWARE]["max_basal"].values
         self.env_info = {'action_type': 'continuous', 'reward_range': (-np.inf, np.inf),
                          "state_key": ["Continuous Glucose Monitoring", "Blood Glucose", "Risk"],
@@ -147,7 +150,7 @@ class SinglePatientEnv(gymnasium.Env):
         '''
         self.terminated = False
         self.truncated = False
-
+        self.episode_id += 1
         if self.patient_name not in self.patient_list:
             raise ValueError(f"patient_name must be in {self.patient_list}")
 
@@ -158,12 +161,19 @@ class SinglePatientEnv(gymnasium.Env):
 
         state = self._get_state(obs[0], bg, meal)
         obs = self._state2obs(state, random_obs=self.random_obs, enable_missing=False)
-        self.last_bg = obs
-        self.last_drug = 0
-        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0}
+        self.bg_history = [float(obs)]
+        self.drug_history = [0]
+        all_info = {"action": np.zeros(shape=(1,)), "instantaneous_reward": 0, "step": 0, "episode_id": self.episode_id}
         info.pop("patient_state")
         all_info.update(info)
-        return np.array([float(obs), self.last_drug], dtype=np.float32), info
+
+        bg = np.zeros([self.obs_window], dtype=np.float32)
+        act = np.zeros([self.obs_window], dtype=np.float32)
+        bg[-len(self.bg_history):] = np.array(self.bg_history) * 0.01 # scale bg to [0, 6]
+        bg[bg == 0] = -1
+        act[-len(self.drug_history):] = self.drug_history
+        obs = np.stack([bg, act], axis=1)
+        return obs, all_info
 
     def step(self, action):
         if self.terminated or self.truncated:
@@ -189,18 +199,26 @@ class SinglePatientEnv(gymnasium.Env):
             self.terminated = True
             self.truncated = False
 
-        reward = self.reward_fn(bg_current=self.last_bg, bg_next=bg_next,
+        reward = self.reward_fn(bg_current=self.bg_history[-1], bg_next=bg_next,
                                 terminated=self.terminated, truncated=self.truncated,
                                 insulin=action)
-        self.last_bg = bg_next
-        last_drug = self.last_drug
-        self.last_drug = float(action)
-        # reward = rew
-        all_info = {"action": action, "instantaneous_reward": reward, "step": self.step_counter}
+
+        self.bg_history.append(float(obs))
+        self.drug_history.append(float(action))
+
+        all_info = {"action": action, "instantaneous_reward": float(reward), "step": self.step_counter,
+                    "episode_id": self.episode_id}
         info.pop("patient_state")
         all_info.update(info)
-        return (np.array([float(obs), float(last_drug)], dtype=np.float32),
-                reward, self.terminated, self.truncated, info)
+
+        # get rnn style obs
+        bg = np.zeros([self.obs_window], dtype=np.float32)
+        act = np.zeros([self.obs_window], dtype=np.float32)
+        bg[-len(self.bg_history):] = np.array(self.bg_history[-self.obs_window:]) * 0.01  # scale bg to [0, 6]
+        bg[bg == 0] = -1
+        act[-len(self.drug_history):] = self.drug_history[-self.obs_window:]
+        obs = np.stack([bg, act], axis=1)
+        return obs, reward, self.terminated, self.truncated, all_info
 
     def seed(self, seed):
         self.np_random, seed1 = seeding.np_random(seed=seed)
@@ -280,7 +298,7 @@ class SinglePatientEnv(gymnasium.Env):
     @property
     def observation_space(self):
         if self._obs_space is None:
-            self._obs_space = spaces.Box(low=np.array([54, self.action_space.low[0]]),
+            self._obs_space = spaces.Box(low=np.array([10, self.action_space.low[0]]),
                                          high=np.array([600, self.action_space.high[0]]), dtype=np.float32)
         return self._obs_space
 
@@ -383,9 +401,9 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
     return env
 
 
-def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, **kwargs):
-    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
-                           random_obs=False, random_meal=True, start_time=5 * 60,
+def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, obs_window=48, **kwargs):
+    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=False,
+                           random_obs=False, random_meal=False, start_time=5 * 60, obs_window=obs_window,
                            missing_rate=0.0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
