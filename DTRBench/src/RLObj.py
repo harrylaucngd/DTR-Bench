@@ -14,6 +14,7 @@ from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.utils.network import define_llm_network, define_single_network, Critic, define_continuous_critic
 from tianshou.utils.net.continuous import Actor, ActorProb
+from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
 
 
@@ -105,7 +106,7 @@ class DQNObjective(RLObjective):
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=True)
 
         OffpolicyTrainer(
             policy,
@@ -367,7 +368,7 @@ class TD3Objective(RLObjective):
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
-        net_a = define_single_network(self.state_shape, 256,
+        net_a = define_single_network(self.state_shape, 256, num_layer=3,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False,)
         actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
@@ -482,19 +483,18 @@ class PPOObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
-    def define_policy(self, gamma, actor_rl, critic_lr, gae_lambda, vf_coef, ent_coef,eps_clip, value_clip, dual_clip,
-                        norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, **kwargs):
+    def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
+                        norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
         if list(obs_mode.keys())[0] == "cat":
             cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
-        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False,
+        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3,
                                     use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
         actor = ActorProb(net_a,  self.action_shape, unbounded=True, device=self.device, ).to(self.device)
-        optim = torch.optim.Adam(net_a.parameters(), lr=actor_rl)
-
         critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
                                            device=self.device)
-        critic_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
+        actor_critic = ActorCritic(actor, critic)
+        optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
         # todo: define actor critic and use one optim
         def dist(loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
@@ -521,9 +521,6 @@ class PPOObjective(RLObjective):
 
     def run(self, policy, obs_mode, step_per_collect, repeat_per_collect,
             update_per_step, batch_size, **kwargs):
-        def save_best_fn(policy):
-            torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
-
         def train_fn(epoch, env_step):
             pass
 

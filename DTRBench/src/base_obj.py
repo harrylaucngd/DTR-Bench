@@ -80,7 +80,7 @@ class RLObjective:
                              "child#001", "child#002", "child#003", "child#004", "child#005"], desc="final_testing"):
             self.prepare_env(seed, "SimGlucoseEnv-single-patient", patient_name=patient_name,
                              discrete=self.env_args["discrete"], n_act=self.env_args["n_act"])
-            test_collectors = Collector(policy, self.test_envs, exploration_noise=False)
+            test_collectors = Collector(policy, self.test_envs, exploration_noise=True)
             result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
             result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test/{patient_name}")
             logger.write("this arg doesn't matter", 0, result_dict)
