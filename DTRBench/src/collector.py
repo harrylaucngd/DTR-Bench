@@ -2,7 +2,7 @@ import time
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, cast, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -10,39 +10,81 @@ import torch
 
 from tianshou.data import (
     Batch,
-    CachedReplayBuffer,
-    PrioritizedReplayBuffer,
     ReplayBuffer,
-    ReplayBufferManager,
     SequenceSummaryStats,
-    VectorReplayBuffer,
     to_numpy,
 )
-from tianshou.data.collector import Collector, CollectStats
+from tianshou.data.collector import Collector, CollectStats, CollectStatsBase
 from tianshou.data.batch import alloc_by_keys_diff
 from tianshou.data.types import RolloutBatchProtocol
 from tianshou.env import BaseVectorEnv, DummyVectorEnv
 from tianshou.policy import BasePolicy
-from tianshou.utils.print import DataclassPPrintMixin
+import copy
+
+
+def get_env_result(data: Batch) -> dict[str, Any]:
+    bg = data.obs[:, 0] * 100
+    bg_normal = np.logical_and(70 < bg, 140 > bg).mean()
+    bg_hypo = (bg < 70).mean()
+    bg_hyper = (bg > 180).mean()
+
+    action = data.act[:]
+
+    return {"bg_normal": bg_normal,
+            "bg_hypo": bg_hypo,
+            "bg_hyper": bg_hyper,
+            "drug_mean": action.mean(),
+            "drug_max": action.max(),
+            "mortality": (data.terminated == True).any()}
+
+
+@dataclass(kw_only=True)
+class CollectStatsGlucose(CollectStatsBase):
+    """A data structure for storing the statistics of rollouts."""
+
+    collect_time: float = 0.0
+    """The time for collecting transitions."""
+    collect_speed: float = 0.0
+    """The speed of collecting (env_step per second)."""
+    returns: np.ndarray
+    """The collected episode returns."""
+    returns_stat: SequenceSummaryStats | None  # can be None if no episode ends during collect step
+    """Stats of the collected returns."""
+    lens: np.ndarray
+    """The collected episode lengths."""
+    lens_stat: SequenceSummaryStats | None  # can be None if no episode ends during collect step
+    """Stats of the collected episode lengths."""
+    bg_normal: SequenceSummaryStats
+    """The percentage of normal blood glucose levels."""
+    bg_hypo: SequenceSummaryStats
+    """The percentage of hypoglycemic blood glucose levels."""
+    bg_hyper: SequenceSummaryStats
+    """The percentage of hyperglycemic blood glucose levels."""
+    drug_mean: SequenceSummaryStats
+    """The mean drug dose."""
+    drug_max: SequenceSummaryStats
+    """The maximum drug dose."""
+    mortality: float = 0.0
 
 
 class GlucoseCollector(Collector):
     """ Same Collector but including more visualizations to loggers for the Glucose environment. """
 
     def __init__(self, policy: BasePolicy, env: gym.Env | BaseVectorEnv, buffer: ReplayBuffer | None = None,
-                 preprocess_fn: Callable[..., RolloutBatchProtocol] | None = None, exploration_noise: bool = False) -> None:
+                 preprocess_fn: Callable[..., RolloutBatchProtocol] | None = None,
+                 exploration_noise: bool = False) -> None:
 
         super().__init__(policy, env, buffer, preprocess_fn, exploration_noise)
 
     def collect(
-        self,
-        n_step: int | None = None,
-        n_episode: int | None = None,
-        random: bool = False,
-        render: float | None = None,
-        no_grad: bool = True,
-        gym_reset_kwargs: dict[str, Any] | None = None,
-    ) -> CollectStats:
+            self,
+            n_step: int | None = None,
+            n_episode: int | None = None,
+            random: bool = False,
+            render: float | None = None,
+            no_grad: bool = True,
+            gym_reset_kwargs: dict[str, Any] | None = None,
+    ) -> CollectStatsGlucose:
         """
         Apart from what is provided in tianshou, return collected obs, actions, reward as time series
         """
@@ -121,6 +163,13 @@ class GlucoseCollector(Collector):
             )
             done = np.logical_or(terminated, truncated)
 
+            if len(self.data.obs.shape) == 3:
+                data = copy.deepcopy(self.data)
+                data.obs = data.obs[:, -1, :]
+                episode_data.append(data)  # WARNING: not checked when num_env > 1
+            else:
+                episode_data.append(self.data)
+
             self.data.update(
                 obs_next=obs_next,
                 rew=rew,
@@ -129,6 +178,7 @@ class GlucoseCollector(Collector):
                 done=done,
                 info=info,
             )
+
             if self.preprocess_fn:
                 self.data.update(
                     self.preprocess_fn(
@@ -141,7 +191,7 @@ class GlucoseCollector(Collector):
                         act=self.data.act,
                     ),
                 )
-            episode_data.append(self.data)  # WARNING: not checked when num_env > 1
+
             if render:
                 self.env.render()
                 if render > 0 and not np.isclose(render, 0):
@@ -166,7 +216,7 @@ class GlucoseCollector(Collector):
                 for i in env_ind_local:
                     self._reset_state(i)
 
-                all_episode_data.append(Batch.cat(episode_data))
+                all_episode_data.append(Batch(**get_env_result(Batch.cat(episode_data))))
                 episode_data = []
 
                 # remove surplus env id from ready_env_ids
@@ -183,7 +233,7 @@ class GlucoseCollector(Collector):
 
             if (n_step and step_count >= n_step) or (n_episode and episode_count >= n_episode):
                 if episode_data:
-                    all_episode_data.append(Batch.cat(episode_data))
+                    all_episode_data.append(Batch(**get_env_result(Batch.cat(episode_data))))
                 break
 
         # generate statistics
@@ -207,7 +257,7 @@ class GlucoseCollector(Collector):
             self.data = cast(RolloutBatchProtocol, data)
             self.reset_env()
 
-        return CollectStats(
+        return CollectStatsGlucose(
             n_collected_episodes=episode_count,
             n_collected_steps=step_count,
             collect_time=collect_time,
@@ -220,4 +270,10 @@ class GlucoseCollector(Collector):
             lens_stat=SequenceSummaryStats.from_sequence(episode_lens)
             if len(episode_lens) > 0
             else None,
+            bg_normal=SequenceSummaryStats.from_sequence(np.array([data.bg_normal for data in all_episode_data])),
+            bg_hypo=SequenceSummaryStats.from_sequence(np.array([data.bg_hypo for data in all_episode_data])),
+            bg_hyper=SequenceSummaryStats.from_sequence(np.array([data.bg_hyper for data in all_episode_data])),
+            drug_mean=SequenceSummaryStats.from_sequence(np.array([data.drug_mean for data in all_episode_data])),
+            drug_max=SequenceSummaryStats.from_sequence(np.array([data.drug_max for data in all_episode_data])),
+            mortality=np.array([data.mortality for data in all_episode_data]).mean()
         )

@@ -1,6 +1,6 @@
 import torch
 from tianshou.policy import BasePolicy
-from DTRBench.src.baseline_policy import RandomPolicy, MaxPolicy, MinPolicy
+from DTRBench.src.baseline_policy import RandomPolicy
 
 from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, DiscreteSACPolicy, DiscreteBCQPolicy, DiscreteCQLPolicy, BCQPolicy, CQLPolicy, \
@@ -32,8 +32,6 @@ offpolicyLOOKUP = {
 }
 
 BASELINE_LOOKUP = {"random": {"policy": RandomPolicy},
-                   "max": {"policy": MaxPolicy},
-                   "min": {"policy": MinPolicy}
                    }
 
 # todo: add onpolicy

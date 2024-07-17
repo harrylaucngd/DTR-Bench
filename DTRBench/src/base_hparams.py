@@ -7,10 +7,10 @@ common_hparams = {
     "seed": [2732, 9845, 3264, 4859, 9225, 7891, 4373, 5874, 6744, 3468],
     "lr": [1e-3, 1e-4],
     "batch_size": 256,
-    "obs_mode": [{"stack": {"stack_num": 24,
+    "obs_mode": [{"stack": {"stack_num": 48,
                             "cat_num": 1}},
-                 {"cur": {"stack_num": 1,
-                          "cat_num": 1}}],
+                 {"cat": {"stack_num": 1,
+                          "cat_num": 48}}],
     "batch_norm": False,
     "dropout": 0,
     "target_update_freq": 500, #

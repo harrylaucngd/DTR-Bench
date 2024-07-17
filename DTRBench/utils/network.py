@@ -294,8 +294,7 @@ class Net(nn.Module):
             dtype=torch.float32,
         )
         if obs.ndim == 3:
-            obs = obs[:, -1, :]  # only use the last observation. ATTENTION: this is a temporary solution.
-            # If cat_num > 1, this will not work!!!!
+            obs = obs.view(obs.shape[0], -1)  # cat. ATTENTION: this is a temporary solution.
         logits = self.model(obs)
         bsz = logits.shape[0]
         if self.use_dueling:  # Dueling DQN

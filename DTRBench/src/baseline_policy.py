@@ -24,12 +24,18 @@ class RandomPolicy(BasePolicy):
         self.min_act = min_act
         self.max_act = max_act
         assert self.min_act < self.max_act
+        if isinstance(self.action_space, gym.spaces.Box):
+            self.act_shape = self.action_space.shape
+        elif isinstance(self.action_space, gym.spaces.Discrete):
+            self.act_shape = (1,)
+        else:
+            raise NotImplementedError(f"Action space {self.action_space} not supported.")
 
     def forward(self, batch, state=None, **kwargs, ):
         batch_size = batch.obs.shape[0]
 
         act = np.random.rand(batch_size, *self.act_shape)
-        act = act * (self.max_act - self.min_act) + self.act_min
+        act = act * (self.max_act - self.min_act) + self.min_act
         result = Batch(act=act, state=None)
         return cast(ModelOutputBatchProtocol, result)
 
