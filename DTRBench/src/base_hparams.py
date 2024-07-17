@@ -7,10 +7,11 @@ common_hparams = {
     "seed": [2732, 9845, 3264, 4859, 9225, 7891, 4373, 5874, 6744, 3468],
     "lr": [1e-3, 1e-4],
     "batch_size": 256,
-    "obs_mode": [{"stack": {"stack_num": 48,
-                            "cat_num": 1}},
+    "obs_mode":
+        # {"stack": {"stack_num": 48,
+        #                     "cat_num": 1}},
                  {"cat": {"stack_num": 1,
-                          "cat_num": 48}}],
+                          "cat_num": 48}},
     "batch_norm": False,
     "dropout": 0,
     "target_update_freq": 500, #
@@ -20,7 +21,7 @@ common_hparams = {
     "onpolicy_step_per_collect": [1024, 2048], # for on-policy only
     "repeat_per_collect": [10, 20], # for on-policy only
     "n_step": 1,
-    "start_timesteps": 0,
+    "start_timesteps": 20,
     "gamma": 0.99,
     "tau": 0.005,
     "exploration_noise": [0.1, 0.2,],

@@ -23,21 +23,32 @@ class RandomPolicy(BasePolicy):
         super().__init__(action_space=action_space)
         self.min_act = min_act
         self.max_act = max_act
+
         assert self.min_act < self.max_act
         if isinstance(self.action_space, gym.spaces.Box):
             self.act_shape = self.action_space.shape
+            self.env_type = "continuous"
         elif isinstance(self.action_space, gym.spaces.Discrete):
             self.act_shape = (1,)
+            self.env_type = "discrete"
         else:
             raise NotImplementedError(f"Action space {self.action_space} not supported.")
 
     def forward(self, batch, state=None, **kwargs, ):
         batch_size = batch.obs.shape[0]
+        if self.env_type == "continuous":
+            act = np.random.rand(batch_size, *self.act_shape)
+            act = act * (self.max_act - self.min_act) + self.min_act
+            result = Batch(act=act, state=None)
+            return cast(ModelOutputBatchProtocol, result)
 
-        act = np.random.rand(batch_size, *self.act_shape)
-        act = act * (self.max_act - self.min_act) + self.min_act
-        result = Batch(act=act, state=None)
-        return cast(ModelOutputBatchProtocol, result)
+        elif self.env_type == "discrete":
+            act = np.random.randint(low=self.min_act, high=self.max_act, size=(batch_size, 1))
+            result = Batch(act=act, state=None)
+            return cast(ModelOutputBatchProtocol, result)
+
+        else:
+            raise NotImplementedError(f"Action space {self.action_space} not supported.")
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
         raise NotImplementedError("RandomPolicy does not support learning.")

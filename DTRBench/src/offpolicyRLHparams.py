@@ -26,6 +26,7 @@ class OffPolicyRLHyperParameterSpace:
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
         "obs_mode": common_hparams["obs_mode"],
+        "start_timesteps": common_hparams["start_timesteps"],
     }
     # policy hyperparameter search space
     _policy_hparams = {

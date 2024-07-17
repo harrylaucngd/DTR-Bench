@@ -28,14 +28,14 @@ def get_env_result(data: Batch) -> dict[str, Any]:
     bg_hypo = (bg < 70).mean()
     bg_hyper = (bg > 180).mean()
 
-    action = data.act[:]
+    action = data.info["action"]
 
     return {"bg_normal": bg_normal,
             "bg_hypo": bg_hypo,
             "bg_hyper": bg_hyper,
             "drug_mean": action.mean(),
             "drug_max": action.max(),
-            "mortality": (data.terminated == True).any()}
+            "mortality": np.array(data.terminated == True).any()}
 
 
 @dataclass(kw_only=True)
