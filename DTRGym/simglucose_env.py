@@ -383,8 +383,8 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 
 def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, **kwargs):
-    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
-                           random_obs=False, random_meal=True, start_time=5 * 60,
+    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=False,
+                           random_obs=False, random_meal=False, start_time=5 * 60,
                            missing_rate=0.0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)

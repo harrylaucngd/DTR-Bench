@@ -6,40 +6,28 @@ from DTRBench.utils.misc import set_global_seed
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+from DTRBench.src.collector import GlucoseCollector
+from DTRBench.src.baseline_policy import ConstantPolicy
 set_global_seed(0)
 import warnings
+
 warnings.filterwarnings("ignore")
 
-simulation_time = 24*60
-n_act  = 11
-env = RandomPatientEnv(simulation_time,
+simulation_time = 24 * 60
+n_act = 11
+env = RandomPatientEnv(candidates=["adolescent#001"],
+                       max_t=simulation_time,
                        sample_time=1,
                        start_time=0,
-                       candidates=["adolescent#001"],
                        random_init_bg=False,
                        random_obs=False, random_meal=True,
                        missing_rate=0)
-env.reset(0)
+policy = ConstantPolicy(dose=0.01, action_space=env.action_space)
+collector = GlucoseCollector(policy, env, None)
 step = 0
 print(env.patient_name)
 done = False
 df1 = []
 start = time.time()
-for step in range(simulation_time):
-    if step % 30 == 0:
-        action = 0.5
-    else:
-        action = 0
-    obs, reward, terminated, truncated, info = env.step(action)
-    done = terminated or truncated
-    df1.append({"obs": obs, "meal": info["meal"], "time": info["time"], "reward": reward, "action": action})
-    if done:
-        print("truncated" if truncated else "terminated")
-        break
-    print(f"Step: {step} obs: {obs}, meal: {info['meal']}, time: {info['time']}")
-df1 = pd.DataFrame(df1)
-print(f"Time taken: {time.time() - start}")
-# plt.plot(df1["obs"])
-plt.plot(df1["reward"])
-# plt.plot(df1["action"])
-plt.show()
+collector.collect(n_episode=2)
+end = time.time()
