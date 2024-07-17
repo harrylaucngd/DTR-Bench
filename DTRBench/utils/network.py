@@ -98,7 +98,7 @@ class LLMNet(GlucoseLLM.Model):
             for dim in action_shape:
                 self.num_actions *= dim
         configs.pred_len = self.num_actions
-        configs.seq_len = state_shape
+        configs.seq_len = state_shape   # TODO: need padding
         configs.llm_model = llm
         configs.llm_dim = llm_dim
         super().__init__(configs, need_llm=need_llm)
@@ -132,12 +132,18 @@ class LLMNet(GlucoseLLM.Model):
     def forward(self, series, messages, max_length=100, mode='Q'):
         logits, state = None, None
         # prompt = messages.to_str()
-        prompt = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
+        prompts = []
+        if isinstance(messages, str):
+            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
+        else:
+            for message in messages:
+                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
+                prompts.append(prompt)
         if mode == 'Q':
-            logits, state = self.forward_Q(series, prompt)
+            logits, state = self.forward_Q(series, prompts)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(prompt, max_length=max_length)
+            llm_output = self.forward_text(prompts, max_length=max_length)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -163,15 +169,18 @@ class LLMNet(GlucoseLLM.Model):
         _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
         return response
     
-    def q_pred(self, series, conversation, summary, mode='Q'):
-        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
-        prompt.insert_component("system", Q_prompt, 0)
-        if summary is None:
-            prompt.append_content(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
-        else:
-            prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+    def q_pred(self, series, conversations, summaries, mode='Q'):
+        prompts = []
+        for conversation, summary in zip(conversations, summaries):
+            prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
+            prompt.insert_component("system", Q_prompt, 0)
+            if summary is None:
+                prompt.append_content(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+            else:
+                prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
+            prompts.append(prompt)
         series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
-        q_list, _, _ = self.forward(series, prompt, max_length=256, mode=mode)
+        q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
         return q_list
     
     def explain_act(self, conversation, summary, mode='str'):

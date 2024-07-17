@@ -94,7 +94,6 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_summary = need_summary
         self.exp_freq = exp_freq
         self.state = {}
-        self.episode = -1
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
@@ -106,51 +105,40 @@ class LLM_DQN_Policy(DQNPolicy):
             attr_obj = getattr(self.model, attr)
             old_attr_obj.load_state_dict(attr_obj.state_dict())
 
-    def get_state(self, ep_ids: Union[Sequence[int]], steps: Union[Sequence[int]]):
-        if isinstance(ep_ids, int):
-            assert isinstance(steps, int), "step should be an integer when episode is an integer"
-            ep_ids = [ep_ids]
-            steps = [steps]
-        else:
-            assert isinstance(steps, Sequence), "step should be a list when episode is a list"
-            assert len(ep_ids) == len(steps), "episode and step should have the same length"
-
-        states = Batch(**{"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []})
-
-        if self.state == {}:
-            return states
-
-        for ep_id, step in zip(ep_ids, steps):
-            ep_data = self.state.get(ep_id, states)  #todo: may need to skip step=0
-            states["obs"].append(ep_data[:step].get("obs", None))
-            states["act"].append(ep_data[:step].get("act", None))
-            states["obs_exp"].append(ep_data[:step].get("obs_exp", None))
-            states["act_exp"].append(ep_data[:step].get("act_exp", None))
-            states["summary"].append(ep_data[:step].get("summary", None))
+    def get_state(self, epi_ids, steps):
+        """Get history states for given episodes and steps."""
+        states = []
+        for ep, st in zip(epi_ids, steps):
+            state = {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
+            if ep in self.state and st > 0:
+                for s in range(st):
+                    if s in self.state[ep]:
+                        state["obs"].append(self.state[ep][s]["obs"])
+                        state["act"].append(self.state[ep][s]["act"])
+                        state["obs_exp"].append(self.state[ep][s]["obs_exp"])
+                        state["act_exp"].append(self.state[ep][s]["act_exp"])
+                        state["summary"].append(self.state[ep][s]["summary"])
+            states.append(state)
         return states
 
-    def is_learn(self, episode: Union[int, Sequence[int]], step: Union[int, Sequence[int]]):
-        if isinstance(episode, int):
-            assert isinstance(step, int), "step should be an integer when episode is an integer"
-            episode = [episode]
-            step = [step]
-        else:
-            assert isinstance(step, Sequence), "step should be a list when episode is a list"
-            assert len(episode) == len(step), "episode and step should have the same length"
-
-        for ep, st in zip(episode, step):
+    def is_learn(self, epi_ids, steps):
+        """Check if the current forward is in the learning process."""
+        for ep, st in zip(epi_ids, steps):
             if ep not in self.state:
                 return False
             if st not in self.state[ep]:
                 return False
         return True
 
-    def insert_state(self, curr_state: Batch, episode: int, step: int):
-        if episode not in self.state:
-            self.state[episode] = curr_state
-        else:
-            assert step == len(self.state[episode]), "step should be the next step"
-            self.state[episode] = Batch.cat([self.state[episode], curr_state])
+    def insert_state(self, curr_states, epi_ids, steps):
+        """Insert current states to self.state if not in learning process."""
+        for ep, st, curr_state in zip(epi_ids, steps, curr_states):
+            if ep not in self.state:
+                assert ep == len(self.state[ep]), "Episode should be the next episode"
+                assert st == 0, "Step should be zero in a new episode"
+            else:
+                assert st == len(self.state[ep]), "Step should be the next step"
+            self.state[ep][st] = curr_state
 
     def forward(
             self,
@@ -166,69 +154,80 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # get state
         epi_ids, steps = batch.info["episode_id"], batch.info["step"]
-        states = self.get_state(epi_ids)
-        curr_state = {}
-        summ = None if states["summary"] == [] else states["summary"][-1]
+        assert len(epi_ids)==len(steps), "Inequal lengths of epi_ids and steps!"
+        batch_size = len(epi_ids)
+        _is_learn = self.is_learn(epi_ids, steps)
+        states = self.get_state(epi_ids, steps)
+        curr_states, summ = [{"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []} for _ in epi_ids], []
+        for i in range(batch_size):
+            try:
+                summ.append(states[i]["summary"][-1])
+            except IndexError:
+                summ.append(None)
 
         # decide to explain or not
-        step = batch.info["step"][0]
-        if step == 0:
-            self.episode += 1
-            states = {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
-        attributes = ['need_obs_explain', 'need_act_explain', 'need_summary']
-        for attr in attributes:
-            explain_bool = getattr(self, attr)
+        need_obs_explain, need_act_explain, need_summary = [], [], []
+        for step in steps:
             if (self.exp_freq == 0) or (step % self.exp_freq != 0):
-                explain_bool = False
+                need_obs_explain.append(False)
+                need_act_explain.append(False)
+                need_summary.append(False)
             elif step % self.exp_freq == 0:
-                explain_bool = True
-            setattr(self, attr, explain_bool)
+                need_obs_explain.append(True)
+                need_act_explain.append(True)
+                need_summary.append(True)
 
         # obs and obs explanation
         obs = batch.obs
-        obs_next = obs.obs if hasattr(obs, "obs") else obs
-        states["obs"] = np.append(states["obs"], obs_next[0][0])
-        curr_state["obs"] = obs_next[0][0]
-        conversation = obs_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"])
-        obs_explain = model.explain_obs(conversation, summ, mode='str') if self.need_obs_explain else ""
-        states["obs_exp"] = np.append(states["obs_exp"], obs_explain)
-        curr_state["obs_exp"] = obs_explain
+        obs_next = obs.obs[:, 0] if hasattr(obs, "obs") else obs[:, 0]
+        for i in range(batch_size):
+            states[i]["obs"] = np.append(states[i]["obs"], obs_next[i])
+            curr_states[i]["obs"] = obs_next[i]
+            if not _is_learn:
+                conversation = obs_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"])
+                obs_explain = model.explain_obs(conversation, summ[i], mode='str') if need_obs_explain[i] else ""
+                states[i]["obs_exp"] = np.append(states[i]["obs_exp"], obs_explain)
+                curr_states[i]["obs_exp"] = obs_explain
 
         # Q value prediction
-        series, conversation = q_prompt_reprogramming(states["obs"], states["act"], states["obs_exp"],
-                                                      states["act_exp"])
+        series, conversation = [], []
+        for i in range(batch_size):
+            ser, con = q_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"],
+                                                        states[i]["act_exp"])
+            series.append(ser)
+            conversation.append(con)
+        conversation = torch.stack(series)
         logits = model.q_pred(series, conversation, summ, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
-        states["act"] = np.append(states["act"], act[0])
-        curr_state["act"] = act[0]
+        for i in range(batch_size):
+            states["act"] = np.append(states[i]["act"], act[i])
+            curr_states[i]["act"] = act[i]
 
-        # act explanation
-        conversation = act_prompt_reprogramming(states["obs"], states["act"], states["act_exp"])
-        act_explain = model.explain_act(conversation, summ, mode='str') if self.need_act_explain else ""
-        states["act_exp"] = np.append(states["act_exp"], act_explain)
-        curr_state["act_exp"] = act_explain
+        # act explanation and update summary
+        for i in range(batch_size):
+            if not _is_learn:
+                conversation = act_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["act_exp"])
+                act_explain = model.explain_act(conversation, summ[i], mode='str') if need_act_explain[i] else ""
+                states[i]["act_exp"] = np.append(states[i]["act_exp"], act_explain)
+                curr_states[i]["act_exp"] = act_explain
 
-        # update summary
-        conversation = summary_reprogramming(states["obs"], states["act"], states["summary"])
-        summary = model.summarize(conversation, mode='str') if self.need_summary else ""
-        states["summary"] = np.append(states["summary"], summary)
-        curr_state["summary"] = summary
+                conversation = summary_reprogramming(states[i]["obs"], states[i]["act"], states[i]["summary"])
+                summary = model.summarize(conversation, mode='str') if need_summary[i] else ""
+                states[i]["summary"] = np.append(states[i]["summary"], summary)
+                curr_states[i]["summary"] = summary
 
-        self.insert_state(Batch(**curr_state), self.episode, step)
-        result = Batch(logits=logits, act=act, state=None)
-        print(step)
+        self.insert_state(curr_states, epi_ids, steps)
+        result = Batch(logits=logits, act=act, state=state);print(steps)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
         if self._target and self._iter % self.freq == 0:
             self.sync_weight()
         self.optim.zero_grad()
-        weight = batch.pop("weight", 1.0);
-        import pdb;
-        pdb.set_trace()
+        weight = batch.pop("weight", 1.0)
         q = self(batch).logits
         q = q[np.arange(len(q)), batch.act]
         returns = to_torch_as(batch.returns.flatten(), q)

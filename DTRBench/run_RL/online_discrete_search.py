@@ -54,7 +54,7 @@ def parse_args():
     '''
     parser.add_argument("--llm", type=str, default="Qwen2-1.5B-Instruct",
                         choices=["internlm2_5-7b-chat", "Phi-3-small-128k-instruct", "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"])
-    parser.add_argument("--policy_name", type=str, default="DQN",
+    parser.add_argument("--policy_name", type=str, default="LLM-DQN",
                         choices=["LLM-DQN", "LLM-DDQN", "DQN", "DDQN", "SAC", "TD3"])
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
