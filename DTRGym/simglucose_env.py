@@ -32,29 +32,30 @@ def hash_seed(seed):
 
 def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # insulin is in U/min
-    if terminated:
-        reward = -100
-    # elif truncated:
-    #     reward = 100
+    # if terminated:
+    #     reward = -100
+    # # elif truncated:
+    # #     reward = 100
+    # else:
+
+    if 70 < bg_next < 140:
+        risk_reward = 1
     else:
+        _, _, risk = risk_index([bg_next], 1)
+        risk_reward = -0.1 * risk
 
-        if 70 < bg_next < 140:
-            risk_reward = 1
-        else:
-            _, _, risk = risk_index([bg_next], 1)
-            risk_reward = -0.1 * risk
+    # delta_bg = bg_next - bg_current
+    # if delta_bg < 30:
+    #     delta_reward = 0
+    # elif delta_bg < 60:
+    #     delta_reward = -1 / 30 * (delta_bg - 30)
+    # else:
+    #     delta_reward = -1
 
-        delta_bg = bg_next - bg_current
-        if delta_bg < 30:
-            delta_reward = 0
-        elif delta_bg < 60:
-            delta_reward = -1 / 30 * (delta_bg - 30)
-        else:
-            delta_reward = -1
+    insulin_penalty = - 4 * np.log10(insulin + 1)
 
-        insulin_penalty = - 4 * np.log10(insulin + 1)
-
-        reward = risk_reward + delta_reward + insulin_penalty
+    # reward = risk_reward + delta_reward + insulin_penalty
+    reward = risk_reward + insulin_penalty
 
     return reward
 
@@ -184,7 +185,7 @@ class SinglePatientEnv(gymnasium.Env):
         if self.t >= self.max_t:
             self.terminated = False
             self.truncated = True
-        if not (54 < bg_next < 600):  # we define the lower bound of bg to be 54 since <54 is severe hypoglycemia
+        if not (10 < bg_next < 600):  # we define the lower bound of bg to be 54 since <54 is severe hypoglycemia
             self.terminated = True
             self.truncated = False
 
