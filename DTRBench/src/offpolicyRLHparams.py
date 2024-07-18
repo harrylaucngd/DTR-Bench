@@ -167,32 +167,6 @@ class DQNHyperParams(OffPolicyRLHyperParameterSpace):
     }
 
 
-# todo: add rainbow
-# todo: add cat and rnn version of the following policies
-
-
-class C51HyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("c51", "c51-rnn")
-    _policy_hparams = {"lr": common_hparams["lr"],
-                       "num_atoms": 51,
-                       "v_min": -20,
-                       "v_max": 20,
-                       "estimation_step": common_hparams["n_step"],
-                       "target_update_freq": common_hparams["target_update_freq"], }
-
-
-class SACHyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("sac", "discrete-sac", "discrete-sac-rnn")
-    _policy_hparams = {
-        "actor_lr": common_hparams["lr"],
-        "critic_lr": common_hparams["lr"],
-        "alpha": [0.05, 0.1, 0.2],
-        "n_step": common_hparams["n_step"],
-        "tau": common_hparams["tau"],
-        "start_timesteps": common_hparams["start_timesteps"],
-    }
-
-
 class TD3HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("td3",)
     _policy_hparams = {

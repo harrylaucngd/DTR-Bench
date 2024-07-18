@@ -3,11 +3,15 @@ import argparse
 from GlucoseLLM.models import GlucoseLLM
 from typing import (
     Any,
+    Callable,
     Dict,
+    List,
+    Optional,
     Sequence,
     Tuple,
     Type,
     Union,
+    no_type_check,
 )
 import torch
 from torch import nn
@@ -25,6 +29,7 @@ llm_context_window = {
 
 
 class LLMNet(GlucoseLLM.Model):
+    # todo: overwrite by merge. Pls check the code
     def __init__(
             self,
             configs: argparse.Namespace,

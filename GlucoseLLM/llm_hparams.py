@@ -81,13 +81,21 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "cat_num": common_hparams["cat_num"],
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_test"],
-        "eps_train_final": 0.005,
+        "eps_train_final": 0.001,
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
         "is_double": False,
         "use_dueling": False,
+
+        # prompt
         "obs_exp_prompt": obs_exp_prompt,
         "Q_prompt": Q_prompt,
         "act_exp_prompt": act_exp_prompt,
         "summary_prompt": summary_prompt,
+
+        # prompt hparam
+        "need_obs_exp": [True, False],
+        "need_act_exp": [True, False],
+        "need_summary": [True, False],
+        "exp_freq": [0, 12, 24, 36],
     }

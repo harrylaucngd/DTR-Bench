@@ -48,7 +48,6 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
-
     parser.add_argument("--policy_name", type=str, default="DQN",  # Change this for different sweep!
                         choices=["DQN", "TD3"],
                         help="remember to change this for different tasks! "

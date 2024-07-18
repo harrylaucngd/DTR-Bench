@@ -17,6 +17,13 @@ model_hf = {
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
 }
 
+llm_context_window = {
+    "internlm2_5-7b-chat": 32768,
+    "Phi-3-small-128k-instruct": 131072,
+    "Yi-1.5-9b-Chat": 4096,
+    "Qwen2-1.5B-Instruct": 32768,
+}
+
 
 class FlattenHead(nn.Module):
     def __init__(self, n_vars, nf, target_window, head_dropout=0):
@@ -113,9 +120,6 @@ class Model(nn.Module):
         self.output_projection_old = FlattenHead(configs.enc_in, self.head_nf, self.pred_len,
                                                  head_dropout=configs.dropout)
 
-        self.normalize_layers = Normalize(configs.enc_in, affine=False)
-        self.normalize_layers_old = Normalize(configs.enc_in, affine=False)
-
         self.active_branch = "model"
 
     def forward(self, x_enc, prompt):
@@ -123,19 +127,7 @@ class Model(nn.Module):
         return dec_out[:, -self.pred_len:, :]
 
     def forecast(self, x_enc, prompt):
-        if self.active_branch == "model":
-            x_enc = self.normalize_layers(x_enc, 'norm')
-        elif self.active_branch == "model_old":
-            x_enc = self.normalize_layers_old(x_enc, 'norm')
-        else:
-            raise ValueError("Not supported branch!")
-
-        B, T, N = x_enc.size()
-        x_enc = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
-
-        x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
-
-        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
+        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=llm_context_window[self.llm]).input_ids
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
         if self.active_branch == "model":
@@ -155,6 +147,7 @@ class Model(nn.Module):
         else:
             raise ValueError("Not supported branch!")
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+        # llama_enc_out = torch.cat([torch.cat([prompt_embeddings, enc_out[0, :, :].unsqueeze(0)], dim=1), enc_out[1, :, :].unsqueeze(0)], dim=1)
         dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
 
@@ -168,23 +161,7 @@ class Model(nn.Module):
             dec_out = self.output_projection_old(dec_out[:, :, :, -self.patch_nums:])
         dec_out = dec_out.permute(0, 2, 1).contiguous()
 
-        if self.active_branch == "model":
-            dec_out = self.normalize_layers(dec_out, 'denorm')
-        elif self.active_branch == "model_old":
-            dec_out = self.normalize_layers_old(dec_out, 'denorm')
-        else:
-            raise ValueError("Not supported branch!")
-
         return dec_out
-
-    def calcute_lags(self, x_enc):
-        q_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
-        k_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
-        res = q_fft * torch.conj(k_fft)
-        corr = torch.fft.irfft(res, dim=-1)
-        mean_value = torch.mean(corr, dim=1)
-        _, lags = torch.topk(mean_value, self.top_k, dim=-1)
-        return lags
 
 
 class ReprogrammingLayer(nn.Module):
