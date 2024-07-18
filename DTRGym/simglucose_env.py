@@ -42,7 +42,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
         risk_reward = 1
     else:
         _, _, risk = risk_index([bg_next], 1)
-        risk_reward = -0.1 * risk
+        risk_reward = -0.05 * risk
 
     # delta_bg = bg_next - bg_current
     # if delta_bg < 30:
@@ -52,7 +52,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # else:
     #     delta_reward = -1
 
-    insulin_penalty = - 4 * np.log10(insulin + 1)
+    insulin_penalty = - (insulin * 5)**2
 
     # reward = risk_reward + delta_reward + insulin_penalty
     reward = risk_reward + insulin_penalty
@@ -61,30 +61,32 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
 
 
 def TIR_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
-    if terminated:
-        reward = -100
+    # if terminated:
+    #     reward = -100
     # elif truncated:
     #     reward = 100
-    else:
+    # else:
         # bg reward
-        if 70 < bg_next < 180:
-            bg_reward = 1
-        elif 54 < bg_next < 70 or 180 < bg_next < 250:
-            bg_reward = -1
-        else:
-            bg_reward = -2
-        # delta reward
-        delta_bg = bg_next - bg_current
-        if delta_bg < 30:
-            delta_reward = 0
-        elif delta_bg < 60:
-            delta_reward = -1 / 30 * (delta_bg - 30)
-        else:
-            delta_reward = -1
+    if 100 < bg_next < 140:
+        bg_reward = 1
+    elif 70 < bg_next < 100 or 140 < bg_next < 180:
+        bg_reward = - 0.5
+    elif 54 < bg_next < 70 or 180 < bg_next < 250:
+        bg_reward = -1
+    else:
+        bg_reward = -5
+    # # delta reward
+    # delta_bg = bg_next - bg_current
+    # if delta_bg < 30:
+    #     delta_reward = 0
+    # elif delta_bg < 60:
+    #     delta_reward = -1 / 30 * (delta_bg - 30)
+    # else:
+    #     delta_reward = -1
 
-        insulin_penalty = -0.4 * np.log10(insulin + 1)
-
-        reward = bg_reward + delta_reward + insulin_penalty
+    insulin_penalty = - (insulin * 5)**2
+    #
+    reward = bg_reward + insulin_penalty
 
     return reward
 
@@ -393,7 +395,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
         sample_time=1,
         start_time=5 * 60,
         random_init_bg=True,
-        random_obs=False, random_meal=True,
+        random_obs=True, random_meal=True,
         missing_rate=0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -401,9 +403,9 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
     return env
 
 
-def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, obs_window=48, **kwargs):
-    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=False,
-                           random_obs=False, random_meal=False, start_time=5 * 60, obs_window=obs_window,
+def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=48, **kwargs):
+    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
+                           random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
                            missing_rate=0.0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -411,7 +413,7 @@ def create_SimGlucoseEnv_adult1(n_act: int = 5, discrete=False, obs_window=48, *
     return env
 
 
-def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
+def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
     env = RandomPatientEnv(candidates=["adult#001",
                                        "adult#002",
                                        "adult#003",
@@ -420,7 +422,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
                            sample_time=1,
                            random_init_bg=True,
                            start_time=5 * 60,
-                           random_obs=False, random_meal=True,
+                           random_obs=True, random_meal=True,
                            missing_rate=0.)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -428,7 +430,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 5, discrete=False, **kwargs):
     return env
 
 
-def create_SimGlucoseEnv_all4(n_act: int = 5, discrete=False, **kwargs):
+def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
     env = RandomPatientEnv(candidates=["adult#001",
                                        "adult#002",
                                        "adult#003",
@@ -447,7 +449,7 @@ def create_SimGlucoseEnv_all4(n_act: int = 5, discrete=False, **kwargs):
                            sample_time=1,
                            random_init_bg=True,
                            start_time=5 * 60,
-                           random_obs=False, random_meal=True,
+                           random_obs=True, random_meal=True,
                            missing_rate=0.)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)

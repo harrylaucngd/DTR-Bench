@@ -24,7 +24,7 @@ import copy
 
 def get_env_result(data: Batch) -> dict[str, Any]:
     bg = data.obs[:, 0] * 100
-    bg_normal = np.logical_and(70 < bg, 140 > bg).mean()
+    bg_normal = np.logical_and(70 < bg, 180 > bg).mean()
     bg_hypo = (bg < 70).mean()
     bg_hyper = (bg > 180).mean()
 
@@ -34,7 +34,6 @@ def get_env_result(data: Batch) -> dict[str, Any]:
             "bg_hypo": bg_hypo,
             "bg_hyper": bg_hyper,
             "drug_mean": action.mean(),
-            "drug_max": action.max(),
             "mortality": np.array(data.terminated == True).any()}
 
 
@@ -54,17 +53,15 @@ class CollectStatsGlucose(CollectStatsBase):
     """The collected episode lengths."""
     lens_stat: SequenceSummaryStats | None  # can be None if no episode ends during collect step
     """Stats of the collected episode lengths."""
-    bg_normal: SequenceSummaryStats
+    bg_normal: float
     """The percentage of normal blood glucose levels."""
-    bg_hypo: SequenceSummaryStats
+    bg_hypo: float
     """The percentage of hypoglycemic blood glucose levels."""
-    bg_hyper: SequenceSummaryStats
+    bg_hyper: float
     """The percentage of hyperglycemic blood glucose levels."""
-    drug_mean: SequenceSummaryStats
+    drug_mean: float
     """The mean drug dose."""
-    drug_max: SequenceSummaryStats
-    """The maximum drug dose."""
-    mortality: float = 0.0
+    mortality: float
 
 
 class GlucoseCollector(Collector):
@@ -270,10 +267,9 @@ class GlucoseCollector(Collector):
             lens_stat=SequenceSummaryStats.from_sequence(episode_lens)
             if len(episode_lens) > 0
             else None,
-            bg_normal=SequenceSummaryStats.from_sequence(np.array([data.bg_normal for data in all_episode_data])),
-            bg_hypo=SequenceSummaryStats.from_sequence(np.array([data.bg_hypo for data in all_episode_data])),
-            bg_hyper=SequenceSummaryStats.from_sequence(np.array([data.bg_hyper for data in all_episode_data])),
-            drug_mean=SequenceSummaryStats.from_sequence(np.array([data.drug_mean for data in all_episode_data])),
-            drug_max=SequenceSummaryStats.from_sequence(np.array([data.drug_max for data in all_episode_data])),
-            mortality=np.array([data.mortality for data in all_episode_data]).mean()
+            bg_normal=float(np.array([data.bg_normal for data in all_episode_data]).mean()),
+            bg_hypo=float(np.array([data.bg_hypo for data in all_episode_data]).mean()),
+            bg_hyper=float(np.array([data.bg_hyper for data in all_episode_data]).mean()),
+            drug_mean=float(np.array([data.drug_mean for data in all_episode_data]).mean()),
+            mortality=float(np.array([data.mortality for data in all_episode_data]).mean())
         )
