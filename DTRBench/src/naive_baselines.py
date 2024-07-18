@@ -91,7 +91,6 @@ class PulsePolicy(BasePolicy):
 
 class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
     _meta_hparams = [
-        "test_num",  # number of test envs
     ]
 
     # general hyperparameter search space
@@ -106,8 +105,8 @@ class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
     }
     _supported_algos = ("zero_drug", "constant0.02", "random0.1", "random0.5", "pulse30-0.1", "pulse60-0.2")
 
-    def __init__(self, test_num):
-        self.test_num = test_num
+    def __init__(self):
+        pass
 
 
 # Example usage

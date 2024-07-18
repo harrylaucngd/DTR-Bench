@@ -321,6 +321,7 @@ class Recurrent(nn.Module):
             dropout: float = 0.0,
             num_atoms: int = 1,
             last_step_only: bool = True,
+            ignore_state: bool = True,
     ) -> None:
         super().__init__()
         self.device = device
@@ -337,6 +338,8 @@ class Recurrent(nn.Module):
         self.fc2 = nn.Linear(hidden_layer_size, self.action_dim)
         self.use_last_step = last_step_only
         self.output_dim = self.action_dim
+        self.ignore_state = ignore_state  # whether to ignore the state input. We already set rnn style obs in env, so state should be ignored.
+
     def forward(
             self,
             obs: Union[np.ndarray, torch.Tensor],
@@ -355,7 +358,7 @@ class Recurrent(nn.Module):
             obs = obs.unsqueeze(-2)
         obs = self.fc1(obs)
         self.nn.flatten_parameters()
-        if state is None:
+        if state is None or self.ignore_state:
             obs, (hidden, cell) = self.nn(obs)
         else:
             # we store the stack data in [bsz, len, ...] format
