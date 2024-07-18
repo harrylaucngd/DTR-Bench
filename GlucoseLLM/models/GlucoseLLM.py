@@ -2,12 +2,11 @@ import os.path
 from math import sqrt
 import torch
 import torch.nn as nn
-import gc
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from GlucoseLLM.layers.Embed import PatchEmbedding
+from GlucoseLLM.models.layers.Embed import PatchEmbedding
 import transformers
-from GlucoseLLM.layers.StandardNorm import Normalize
+from GlucoseLLM.models.layers.StandardNorm import Normalize
 
 transformers.logging.set_verbosity_error()
 
@@ -41,7 +40,7 @@ class Model(nn.Module):
         self.seq_len = configs.seq_len
         self.d_ff = configs.d_ff
         self.top_k = 5
-        self.d_llm = configs.llm_dim
+        self.d_llm = configs.token_dim
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         self.need_llm = need_llm
