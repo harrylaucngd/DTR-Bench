@@ -3,6 +3,7 @@ import argparse
 import torch
 import torch.nn as nn
 from GlucoseLLM.models import GlucoseLLM
+from DTRBench.utils.prompt_pipeline import Conversation
 from tianshou.utils.net.common import ActorCritic, MLP
 from typing import Union, List, Tuple, Optional, Callable, Sequence, Dict, Any
 from typing import (
@@ -133,7 +134,7 @@ class LLMNet(GlucoseLLM.Model):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
-        if isinstance(messages, str):
+        if isinstance(messages, Conversation):
             prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
         else:
             for message in messages:
@@ -179,7 +180,7 @@ class LLMNet(GlucoseLLM.Model):
             else:
                 prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
             prompts.append(prompt)
-        series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
+        series = torch.tensor(series, dtype=torch.float32).to(self.device)
         q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
         return q_list
     

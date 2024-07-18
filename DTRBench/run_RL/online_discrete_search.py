@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=50)
+    parser.add_argument("--test_num", type=int, default=1)
     parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 18)
@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--llm", type=str, default="Qwen2-1.5B-Instruct",
                         choices=["internlm2_5-7b-chat", "Phi-3-small-128k-instruct", "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"])
     parser.add_argument("--policy_name", type=str, default="LLM-DQN",
-                        choices=["LLM-DQN", "LLM-DDQN", "DQN", "DDQN", "SAC", "TD3"])
+                        choices=["LLM-DQN", "LLM-DDQN", "DQN", "DDQN", "TD3"])
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
@@ -115,7 +115,3 @@ if __name__ == "__main__":
         else:
             print("role must be one of [sweep, agent, run_single], get {}".format(args.role))
             raise NotImplementedError
-
-        # todo: obs add drug
-        # todo: test sweep
-        # todo: eval multiple

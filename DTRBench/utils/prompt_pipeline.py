@@ -90,10 +90,14 @@ def obs_prompt_reprogramming(obs, act, obs_exp):
 def q_prompt_reprogramming(obs, act, obs_exp, act_exp):
     series = torch.tensor([])
     history_prompt = Conversation()
-    for (o, a) in zip(obs, act):
-        series = torch.cat((series, torch.tensor([o])), dim=0)
-        series = torch.cat((series, torch.tensor([a])), dim=0)
-    series = torch.cat((series, torch.tensor([obs[-1]])), dim=0)
+    obs_tensor = torch.tensor(obs)
+    act_tensor = torch.tensor(act)
+    zero_tensor = torch.tensor([0])
+    act_tensor = torch.cat((zero_tensor, act_tensor))
+    series = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
+    series[0::2] = obs_tensor
+    series[1::2] = act_tensor
+    series = series.unsqueeze(1)
     for i, (o, a, o_exp, a_exp) in enumerate(zip(obs, act, obs_exp, act_exp)):
         history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o} (mg/dL).")
         if o_exp != "":
@@ -104,7 +108,6 @@ def q_prompt_reprogramming(obs, act, obs_exp, act_exp):
     history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]} (mg/dL).")
     if obs_exp[-1] != "":
         history_prompt.add_component("assistant", f"{obs_exp[-1]}")
-    series = torch.unsqueeze(series, 0)
     return series, history_prompt
 
 
