@@ -26,6 +26,7 @@ class OffPolicyRLHyperParameterSpace:
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
         "obs_mode": common_hparams["obs_mode"],
+        "start_timesteps": common_hparams["start_timesteps"],
     }
     # policy hyperparameter search space
     _policy_hparams = {
@@ -195,13 +196,14 @@ class SACHyperParams(OffPolicyRLHyperParameterSpace):
 class TD3HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("td3",)
     _policy_hparams = {
-        "actor_lr": common_hparams["lr"],
+        # "actor_lr": common_hparams["lr"],  # manually set to 0.1*critic_lr
+
         "critic_lr": common_hparams["lr"],
         "n_step": common_hparams["n_step"],
         "exploration_noise": common_hparams["exploration_noise"],
         "tau": common_hparams["tau"],
         "start_timesteps": common_hparams["start_timesteps"],
         "update_actor_freq": common_hparams["update_actor_freq"],
-        "policy_noise": 0.2,
-        "noise_clip": 0.5,
+        "policy_noise": 0.05,  # todo: TBD
+        "noise_clip": 0.1,
     }

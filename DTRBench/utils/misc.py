@@ -3,7 +3,6 @@ import random
 import numpy as np
 
 
-
 def to_bool(value):
     valid = {'true': True, 't': True, '1': True,
              'false': False, 'f': False, '0': False,

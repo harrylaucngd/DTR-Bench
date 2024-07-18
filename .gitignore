@@ -49,12 +49,11 @@ DTRGym/*/offline_data/*.png
 DTRGym/*/offline_data/*.pdf
 DTRGym/*/*plots/*.pdf
 DTRGym/*/*plots/*.png
-
 log/online/*
 log/offline/*
-ICML result*
-
 DTRBench/run_RL/debug
 DTRBench/run_RL/wandb
-wandb
 sweep_log
+wandb/
+/DTRBench/runs/
+

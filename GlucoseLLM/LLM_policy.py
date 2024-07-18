@@ -6,6 +6,7 @@ import torch
 
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 from tianshou.policy import BasePolicy, DQNPolicy
+from tianshou.policy.modelfree.dqn import TDQNTrainingStats
 from tianshou.policy.base import TLearningRateScheduler, TrainingStats
 from tianshou.data.batch import BatchProtocol
 from tianshou.data.types import (
@@ -15,18 +16,10 @@ from tianshou.data.types import (
     RolloutBatchProtocol,
 )
 
-from DTRBench.utils.network import LLMNet
+from GlucoseLLM.models.llm_net import LLMNet
 
 from DTRBench.utils.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, \
     summary_reprogramming
-
-
-@dataclass(kw_only=True)
-class DQNTrainingStats(TrainingStats):
-    loss: float
-
-
-TDQNTrainingStats = TypeVar("TDQNTrainingStats", bound=DQNTrainingStats)
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -154,7 +147,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # get state
         epi_ids, steps = batch.info["episode_id"], batch.info["step"]
-        assert len(epi_ids)==len(steps), "Inequal lengths of epi_ids and steps!"
+        assert len(epi_ids) == len(steps), "Inequal lengths of epi_ids and steps!"
         batch_size = len(epi_ids)
         _is_learn = self.is_learn(epi_ids, steps)
         states = self.get_state(epi_ids, steps)
@@ -193,7 +186,7 @@ class LLM_DQN_Policy(DQNPolicy):
         series, conversation = [], []
         for i in range(batch_size):
             ser, con = q_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"],
-                                                        states[i]["act_exp"])
+                                              states[i]["act_exp"])
             series.append(ser)
             conversation.append(con)
         conversation = torch.stack(series)
@@ -220,7 +213,8 @@ class LLM_DQN_Policy(DQNPolicy):
                 curr_states[i]["summary"] = summary
 
         self.insert_state(curr_states, epi_ids, steps)
-        result = Batch(logits=logits, act=act, state=state);print(steps)
+        result = Batch(logits=logits, act=act, state=state);
+        print(steps)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:

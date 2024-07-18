@@ -1,10 +1,7 @@
 import numpy as np
 import argparse
-import torch
-import torch.nn as nn
 from GlucoseLLM.models import GlucoseLLM
 from tianshou.utils.net.common import ActorCritic, MLP
-from typing import Union, List, Tuple, Optional, Callable, Sequence, Dict, Any
 from typing import (
     Any,
     Callable,
@@ -17,211 +14,16 @@ from typing import (
     Union,
     no_type_check,
 )
-from transformers import LogitsProcessorList, TopKLogitsWarper, TopPLogitsWarper, TemperatureLogitsWarper, StoppingCriteria, StoppingCriteriaList, MaxLengthCriteria
 import torch
 from torch import nn
-import torch.nn.functional as F
-from tianshou.data.batch import Batch
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
 
-llm_context_window = {
-    "internlm2_5-7b-chat": 32768,
-    "Phi-3-small-128k-instruct": 131072,
-    "Yi-1.5-9b-Chat": 4096,
-    "Qwen2-1.5B-Instruct": 32768,
-}
-
-obs_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. "
-                  "The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels "
-                  "(the observation) within a target range through the administration of insulin (the action). "
-                  "The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose "
-                  "concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was "
-                  "injected, a raising or high level of action is witnessed, and vice versa. The following would be "
-                  "conversation history between user and you as an assistant, where the user gives blood glucose "
-                  "observation and the agent's action (Insulin Bolus Dose) at every timestep, and next timestep's "
-                  "observation, then the assistant give explaination to the observation at every next timestep.") # expertised system prompt of background knowledge for observation explanation
-Q_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of "
-            "glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-            "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target "
-            "range through the administration of insulin (the action). 5 number of actions (Insulin Bolus Dose) "
-            "represents 5 degrees of insulin injection to restrain high blood glucose level. In Q-learning, "
-            "the Q-value represents the expected future rewards for taking a given action in a given state, "
-            "with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. "
-            "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
-            "value action should be high, and q value of the low value action should be low, and vice versa for low "
-            "blood glucose level. The following would be conversation history between user and you as an assistant, "
-            "where the user gives blood glucose observation and the agent's action (Insulin Bolus Dose) at every timestep, "
-            "then the assistant give explaination to both the observation and action at every timestep.")       # expertised system prompt for series information description and Q value prediction
-act_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
-                  "target range through the administration of insulin (the action). The reason for a high value action "
-                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
-                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
-                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa. The following would be conversation "
-                  "history between user and you as an assistant, where the user gives blood glucose observation and "
-                  "the agent's action (Insulin Bolus Dose) at every timestep, then the assistant give explaination to the "
-                  "action at every timestep.") # expertised system prompt of background knowledge for action explanation
-summary_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
-                  "target range through the administration of insulin (the action). The reason for a high value action "
-                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
-                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
-                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa. The reason for a high value "
-                  "observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is "
-                  "typically in last/last several timestep, more insulin (action) was injected, a raising or high level "
-                  "of action is witnessed, and vice versa.") # expertised system prompt of background knowledge for regulation summary
+# todo: move the following llm code to a separate file
 
 
-class LLMNet(GlucoseLLM.Model):
-    def __init__(
-            self,
-            configs: argparse.Namespace,
-            state_shape: Union[int, Sequence[int]],
-            action_shape: Union[int, Sequence[int]] = 0,
-            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-            llm: str = "Qwen2-1.5B-Instruct",
-            llm_dim: int = 1536,
-            need_llm: bool = False,
-    ) -> None:
-        if isinstance(action_shape, int):
-            self.num_actions = action_shape
-        elif isinstance(action_shape, Sequence):
-            self.num_actions = 1
-            for dim in action_shape:
-                self.num_actions *= dim
-        configs.pred_len = self.num_actions
-        configs.seq_len = state_shape   # TODO: need padding
-        configs.llm_model = llm
-        configs.llm_dim = llm_dim
-        super().__init__(configs, need_llm=need_llm)
-        self.configs = configs
-        self.input_shape = state_shape
-        self.output_shape = action_shape
-        self.device = device
-        self.llm = llm
-
-    def forward_Q(self, series, prompt):
-        # Inference the whole network
-        dec_out = self.forecast(series, prompt)
-        return dec_out[:, -self.pred_len:, :].squeeze(-1), []
-
-    def forward_text(self, prompt, max_length=128):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.llm_model.device)
-        outputs = self.llm_model.generate(
-            **inputs,
-            max_new_tokens=max_length,
-            do_sample=True,
-            top_k=50,
-            top_p=0.95,
-            temperature=1
-        )
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        cutoff_index = generated_text.rfind("assistant\n")
-        if cutoff_index != -1:   # answer cutoff
-            generated_text = generated_text[cutoff_index + len("assistant\n"):]
-        return generated_text
-
-    def forward(self, series, messages, max_length=100, mode='Q'):
-        logits, state = None, None
-        # prompt = messages.to_str()
-        prompts = []
-        if isinstance(messages, str):
-            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
-        else:
-            for message in messages:
-                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
-                prompts.append(prompt)
-        if mode == 'Q':
-            logits, state = self.forward_Q(series, prompts)
-            llm_output = ""
-        elif mode == 'str':
-            llm_output = self.forward_text(prompts, max_length=max_length)
-        else:
-            raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
-        return logits, state, llm_output
-
-    def freeze_llm_model(self):
-        """Ensure all llm_model parameters are frozen."""
-        for param in self.llm_model.parameters():
-            param.requires_grad = False
-
-    def unfreeze_llm_model(self):
-        """Unfreeze all llm_model parameters, allowing them to be updated during training."""
-        for param in self.llm_model.parameters():
-            param.requires_grad = True
-
-    def explain_obs(self, conversation, summary, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
-        prompt.insert_component("system", obs_exp_prompt, 0)
-        if summary is None:
-            prompt.append_content("Please analyze the current state within 100 words:", -1)
-        else:
-            prompt.append_content("Extracted rules and regulations: "+summary+"Please analyze the current state within 100 words:", -1)
-        series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return response
-    
-    def q_pred(self, series, conversations, summaries, mode='Q'):
-        prompts = []
-        for conversation, summary in zip(conversations, summaries):
-            prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
-            prompt.insert_component("system", Q_prompt, 0)
-            if summary is None:
-                prompt.append_content(f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
-            else:
-                prompt.append_content("Extracted rules and regulations: "+summary+f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
-            prompts.append(prompt)
-        series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
-        q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
-        return q_list
-    
-    def explain_act(self, conversation, summary, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
-        prompt.insert_component("system", act_exp_prompt, 0)
-        if summary is None:
-            prompt.append_content("Please explain why the agent chose the last action within 100 words:", -1)
-        else:
-            prompt.append_content("Extracted rules and regulations: "+summary+"Please explain why the agent chose the last action within 100 words:", -1)
-        series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return response
-
-    def summarize(self, conversation, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm]-300, self.tokenizer)
-        prompt.insert_component("system", summary_prompt, 0)
-        prompt.append_content("Please summarize the rules and regulations you can observe or extract from the history data and background information. Separate each rule with a serial number.", -1)
-        series=torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return response
-
-
-def define_llm_network(input_shape: int, output_shape: int,
-                          device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", llm_dim=1536,
-                          ):
-    configs = argparse.Namespace(
-        d_ff = 32,
-        patch_len = 9,  # TODO: Adaptive value?
-        stride = 8,  # TODO: Adaptive value?
-        llm_layers = 6,
-        d_model = 16,
-        dropout = 0.1,
-        n_heads = 8,
-        enc_in = 7,
-        prompt_domain = 0,
-        content = "",
-    )
-    net = LLMNet(configs=configs, state_shape=input_shape, action_shape=output_shape,
-                     device=device, llm=llm, llm_dim=llm_dim, need_llm=True).to(device)
-    return net
-    
 
 class Net(nn.Module):
     def __init__(
@@ -282,8 +84,13 @@ class Net(nn.Module):
             info: Dict[str, Any] = {},
     ) -> Tuple[torch.Tensor, Any]:
         """Mapping: obs -> flatten (inside MLP)-> logits."""
+        obs = torch.as_tensor(
+            obs,
+            device=self.device,
+            dtype=torch.float32,
+        )
         if obs.ndim == 3:
-            obs = obs.reshape(obs.shape[0], -1)
+            obs = obs.view(obs.shape[0], -1)  # cat. ATTENTION: this is a temporary solution.
         logits = self.model(obs)
         bsz = logits.shape[0]
         if self.use_dueling:  # Dueling DQN
@@ -310,6 +117,7 @@ class Recurrent(nn.Module):
             dropout: float = 0.0,
             num_atoms: int = 1,
             last_step_only: bool = True,
+            ignore_state: bool = True,
     ) -> None:
         super().__init__()
         self.device = device
@@ -325,6 +133,8 @@ class Recurrent(nn.Module):
         self.fc1 = nn.Linear(int(np.prod(state_shape)), hidden_layer_size)
         self.fc2 = nn.Linear(hidden_layer_size, self.action_dim)
         self.use_last_step = last_step_only
+        self.output_dim = self.action_dim
+        self.ignore_state = ignore_state  # whether to ignore the state input. We already set rnn style obs in env, so state should be ignored.
 
     def forward(
             self,
@@ -344,7 +154,7 @@ class Recurrent(nn.Module):
             obs = obs.unsqueeze(-2)
         obs = self.fc1(obs)
         self.nn.flatten_parameters()
-        if state is None:
+        if state is None or self.ignore_state:
             obs, (hidden, cell) = self.nn(obs)
         else:
             # we store the stack data in [bsz, len, ...] format
@@ -368,69 +178,73 @@ class Recurrent(nn.Module):
             "cell": cell.transpose(0, 1).detach()
         }
 
-class RecurrentPreprocess(nn.Module):
+
+# class Actor(nn.Module):
+#     def __init__(self, preprocess_net, min_action=-1, max_action=1, activation="Tanh"):
+#         super(Actor, self).__init__()
+#         self.preprocess_net = preprocess_net
+#         self.activation = getattr(nn, activation)()
+#         self.device = self.preprocess_net.device
+#         self.min_action = min_action
+#         self.max_action = max_action
+#
+#     def forward(self, obs, state=None, info={}):
+#         obs = torch.as_tensor(
+#             obs,
+#             device=self.device,
+#             dtype=torch.float32,
+#         )
+#         obs, state = self.preprocess_net(obs, state)
+#         action = self.activation(obs)
+#         action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
+#         return action, state
+
+
+class Critic(nn.Module):
+
     def __init__(
             self,
-            layer_num: int,
-            state_shape: Union[int, Sequence[int]],
-            device: Union[str, int, torch.device] = "cpu",
-            hidden_layer_size: int = 128,
-            dropout: float = 0.0,
-            last_step_only: bool = True,
+            state_net: nn.Module,
+            action_net: nn.Module,
+            cat_size: int = 256,
+            fuse_hidden_sizes: Sequence[int] = (256,),
+            device: str | int | torch.device = "cpu",
     ) -> None:
         super().__init__()
+
+        self.obs_net = state_net
+        self.act_net = action_net
         self.device = device
-        self.nn = nn.LSTM(
-            input_size=hidden_layer_size,
-            hidden_size=hidden_layer_size,
-            num_layers=layer_num,
-            dropout=dropout,
-            batch_first=True,
+        self.output_dim = 1
+        self.last = MLP(
+            cat_size,
+            1,
+            fuse_hidden_sizes,
+            device=self.device,
+            linear_layer=nn.Linear,
+            flatten_input=True,
         )
-        self.fc1 = nn.Linear(int(np.prod(state_shape)), hidden_layer_size)
-        self.use_last_step = last_step_only
 
     def forward(
             self,
-            obs: Union[np.ndarray, torch.Tensor],
+            obs: np.ndarray | torch.Tensor,
+            act: np.ndarray | torch.Tensor,
             state: Optional[Dict[str, torch.Tensor]] = None,
-            info: Dict[str, Any] = {},
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        obs = torch.as_tensor(
-            obs,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        # obs [bsz, len, dim] (training) or [bsz, dim] (evaluation)
-        # In short, the tensor's shape in training phase is longer than which
-        # in evaluation phase.
-        if len(obs.shape) == 2:
-            obs = obs.unsqueeze(-2)
-        obs = self.fc1(obs)
-        self.nn.flatten_parameters()
-        if state is None:
-            obs, (hidden, cell) = self.nn(obs)
-        else:
-            # we store the stack data in [bsz, len, ...] format
-            # but pytorch rnn needs [len, bsz, ...]
-            obs, (hidden, cell) = self.nn(
-                obs, (
-                    state["hidden"].transpose(0, 1).contiguous(),
-                    state["cell"].transpose(0, 1).contiguous()
-                )
-            )
-        if self.use_last_step:
-            obs = obs[:, -1]
-        # please ensure the first dim is batch size: [bsz, len, ...]
-        return obs, {
-            "hidden": hidden.transpose(0, 1).detach(),
-            "cell": cell.transpose(0, 1).detach()
-        }
+            info: dict[str, Any] | None = {},
+    ):
+        """Mapping: (s, a) -> logits -> Q(s, a)."""
+        obs, state = self.obs_net(obs, state)  # state here won't be useful anyway since tianshou does not RNN-critic
+        act, _ = self.act_net(act)
+        obs = torch.cat([obs, act], dim=1)
+        value = self.last(obs)
+        return value
 
-def define_single_network(input_shape: int, output_shape: int,
+
+def define_single_network(input_shape: int, output_shape: int, hidden_size=256, num_layer=4,
                           use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
                           device="cuda" if torch.cuda.is_available() else "cpu",
                           ):
+    assert num_layer > 1 or linear
     if use_dueling and use_rnn:
         raise NotImplementedError("rnn and dueling are not implemented together")
 
@@ -439,67 +253,47 @@ def define_single_network(input_shape: int, output_shape: int,
             dueling_params = ({"hidden_sizes": (), "activation": None},
                               {"hidden_sizes": (), "activation": None})
         else:
-            dueling_params = ({"hidden_sizes": (256, 256), "activation": nn.ReLU},
-                              {"hidden_sizes": (256, 256), "activation": nn.ReLU})
+            dueling_params = ({"hidden_sizes": (hidden_size, hidden_size), "activation": nn.ReLU},
+                              {"hidden_sizes": (hidden_size, hidden_size), "activation": nn.ReLU})
     else:
         dueling_params = None
     if not use_rnn:
         net = Net(state_shape=input_shape, action_shape=output_shape,
-                  hidden_sizes=(256, 256, 256, 256) if not linear else (), activation=nn.ReLU if not linear else None,
+                  hidden_sizes=(hidden_size,) * num_layer if not linear else (),
+                  activation=nn.ReLU if not linear else None,
                   device=device, dueling_param=dueling_params, cat_num=cat_num).to(device)
     else:
-        net = Recurrent(layer_num=3,
+        net = Recurrent(layer_num=num_layer - 1,
                         state_shape=input_shape,
                         action_shape=output_shape,
                         device=device,
-                        hidden_layer_size=256,
+                        hidden_layer_size=hidden_size,
                         ).to(device)
 
     return net
 
 
-class QRDQN(nn.Module):
-    """Reference: Distributional Reinforcement Learning with Quantile \
-    Regression.
-
-    For advanced usage (how to customize the network), please refer to
-    :ref:`build_the_network`.
+def define_continuous_critic(state_shape: int, action_shape,
+                             state_net_n_layer=2,
+                             state_net_hidden_size=128,
+                             action_net_n_layer=1,
+                             action_net_hidden_size=128,
+                             fuse_net_n_layer=1,
+                             linear=False,
+                             device="cuda" if torch.cuda.is_available() else "cpu"):
     """
+    Since Tianshou's critic network does not support RNN style network, we use a simple MLP network here.
+    """
+    obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
+                  hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
+                  activation=nn.ReLU if not linear else None,
+                  device=device, dueling_param=None, cat_num=1).to(device)
+    act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
+                  hidden_sizes=action_net_n_layer * [action_net_hidden_size],
+                  activation=nn.ReLU,
+                  device=device, cat_num=1).to(device)
+    critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
+                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
+                    device=device).to(device)
 
-    def __init__(self, state_shape, action_shape, hidden_sizes=(256, 256, 256, 256), activation=nn.ReLU,
-                 num_quantiles=200, cat_num: int = 1, device="cpu"):
-        super(QRDQN, self).__init__()
-        self.input_shape = state_shape
-        self.action_shape = action_shape
-        self.cat_num = cat_num
-        self.hidden_sizes = hidden_sizes
-        self.activation = activation
-        self.num_quantiles = num_quantiles
-        self.device = device
-        model_list = []
-        for i in range(len(hidden_sizes)):
-            if i == 0:
-                model_list.append(nn.Linear(state_shape * self.cat_num, hidden_sizes[i]))
-            else:
-                model_list.append(nn.Linear(hidden_sizes[i - 1], hidden_sizes[i]))
-            model_list.append(self.activation())
-        if hidden_sizes:
-            model_list.append(nn.Linear(hidden_sizes[-1], action_shape * num_quantiles))
-        else:
-            model_list.append(nn.Linear(state_shape * self.cat_num, action_shape * num_quantiles))
-        self.model = nn.Sequential(*model_list)
-
-    def forward(
-            self,
-            obs: Union[np.ndarray, torch.Tensor],
-            state: Optional[Any] = None,
-            info: Dict[str, Any] = {},
-    ) -> Tuple[torch.Tensor, Any]:
-        r"""Mapping: x -> Z(x, \*)."""
-        obs = torch.as_tensor(obs, device=self.device, dtype=torch.float32)
-        if obs.ndim == 3:
-            obs = obs.reshape(obs.shape[0], -1)
-        obs = self.model(obs)
-        obs = obs.view(-1, self.action_shape, self.num_quantiles)
-        return obs, state
-
+    return critic
