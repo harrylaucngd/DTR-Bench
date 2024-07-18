@@ -1,8 +1,6 @@
 import torch
 from tianshou.policy import BasePolicy
-from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
-    TD3Policy, SACPolicy, REDQPolicy, DiscreteSACPolicy, DiscreteBCQPolicy, DiscreteCQLPolicy, BCQPolicy, CQLPolicy, \
-    ImitationPolicy
+from tianshou.policy import DQNPolicy, TD3Policy
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy
 from DTRBench.src.base_obj import RLObjective
 
@@ -11,7 +9,7 @@ from GlucoseLLM.LLMObj import LLM_DQN_Objective
 from DTRBench.src.RLObj import DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams, TD3HyperParams
-from DTRBench.src.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
+from DTRBench.naive_baselines.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
 
 
 

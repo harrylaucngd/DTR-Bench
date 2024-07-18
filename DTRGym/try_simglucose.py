@@ -1,14 +1,7 @@
-import DTRGym
-import gymnasium as gym
-from DTRGym.simglucose_env import RandomPatientEnv
-from DTRGym.utils import DiscreteActionWrapper
-from DTRBench.utils.misc import set_global_seed
-import pandas as pd
-import matplotlib.pyplot as plt
 import time
 
 from DTRBench.src.collector import GlucoseCollector
-from DTRBench.src.naive_baselines import ConstantPolicy, RandomPolicy
+from DTRBench.naive_baselines.naive_baselines import RandomPolicy
 from DTRGym.base import make_env
 
 import warnings

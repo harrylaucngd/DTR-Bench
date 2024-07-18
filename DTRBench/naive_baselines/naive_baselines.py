@@ -11,8 +11,6 @@ from tianshou.data.types import (
 import numpy as np
 from tianshou.policy.base import BasePolicy
 from tianshou.policy.base import TTrainingStats
-from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.src.base_hparams import common_hparams
 
 
 class RandomPolicy(BasePolicy):
@@ -89,24 +87,7 @@ class PulsePolicy(BasePolicy):
         raise NotImplementedError("PulsePolicy does not support learning.")
 
 
-class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
-    _meta_hparams = [
-    ]
 
-    # general hyperparameter search space
-    _general_hparams = {
-        # general parameters
-        "seed": common_hparams["seed"],
-        "policy_name": ["zero_drug", "constant0.02", "random0.1", "random0.5", "pulse30-0.1", "pulse60-0.2"],
-        "env_name": ["SimGlucoseEnv-adult1", "SimGlucoseEnv-adult4", "SimGlucoseEnv-all4"]
-    }
-    # policy hyperparameter search space
-    _policy_hparams = {
-    }
-    _supported_algos = ("zero_drug", "constant0.02", "random0.1", "random0.5", "pulse30-0.1", "pulse60-0.2")
-
-    def __init__(self):
-        pass
 
 
 # Example usage

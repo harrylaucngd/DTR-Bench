@@ -1,22 +1,9 @@
 #!/usr/bin/env python
 import argparse
-import wandb
-from pathlib import Path
-from DTRBench.src.helper_fn import get_policy_class, get_hparam_class, get_obj_class, get_policy_type
 import warnings
-from DTRBench.src.naive_baselines import BaselineHyperParams
-import os
-from tqdm import tqdm
 import wandb
-from DTRBench.utils.wandb import WandbLogger
-from torch.utils.tensorboard import SummaryWriter
-from tianshou.trainer.utils import test_episode
-from DTRGym.base import make_env
-from DTRBench.utils.misc import set_global_seed
-from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.src.helper_fn import baselineLOOKUP
-from DTRBench.src.naive_baselines import BaselineHyperParams
-from DTRBench.src.base_obj import RLObjective
+from DTRBench.naive_baselines.baselineHparams import BaselineHyperParams
+from DTRBench.naive_baselines.baselineObj import BaselineObj
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -47,34 +34,6 @@ def call_agent():
         # Finish the wandb experiment normally if no issues
         wandb.finish()
     return
-
-
-class BaselineObj(RLObjective):
-    def __init__(self, env_args: dict, hyperparam: BaselineHyperParams, **kwargs):
-        super().__init__(None, env_args, hyperparam, device="cpu", **kwargs)
-
-    def define_policy(self, policy_name, **kwargs):
-        return baselineLOOKUP[policy_name]["policy"](
-            action_space=self.env.action_space, **baselineLOOKUP[policy_name]["policy_args"]
-        )
-
-    def wandb_search(self):
-        self.logger = WandbLogger(train_interval=24 * 15)
-        self.env_name = wandb.config["env_name"]
-        self.meta_param["training_num"] = 1
-        self.meta_param["num_actions"] = None
-        hparams = wandb.config
-
-        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
-        set_global_seed(int(hparams["seed"]))
-
-        # start training
-        print("prepare policy")
-        self.policy = self.define_policy(**{**hparams, **self.meta_param})
-
-        # test on all envs
-        self.test_all_patients(self.policy, None, int(hparams["seed"]), self.logger, n_episode=20)
-
 
 
 if __name__ == "__main__":
