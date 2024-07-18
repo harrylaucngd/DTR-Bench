@@ -19,6 +19,7 @@ from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
 from DTRBench.src.naive_baselines import ConstantPolicy, RandomPolicy
 
+
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
@@ -38,7 +39,8 @@ class DQNObjective(RLObjective):
                       **kwargs
                       ):
         # define model
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
+            "stack_num"]
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
@@ -154,8 +156,8 @@ class LLM_DQN_Objective(DQNObjective):
                       **kwargs
                       ):
         # define model
-        net = define_llm_network(self.state_shape, self.action_shape,   # Changing to GlucoseLLM
-                                    device=self.device, llm=self.llm, llm_dim=self.llm_dim)
+        net = define_llm_network(self.state_shape, self.action_shape,  # Changing to GlucoseLLM
+                                 device=self.device, llm=self.llm, llm_dim=self.llm_dim)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
@@ -199,7 +201,6 @@ class LLM_DQN_Objective(DQNObjective):
         def test_fn(epoch, env_step):
             policy.set_eps(eps_test)
 
-
         # replay buffer: `save_last_obs` and `stack_num` can be removed together
         # when you have enough RAM
         if self.meta_param["training_num"] > 1:
@@ -236,7 +237,6 @@ class LLM_DQN_Objective(DQNObjective):
             update_per_step=update_per_step,
             save_checkpoint_fn=self.save_checkpoint_fn,
         ).run()
-
 
         # load the best policy to test again
         policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
@@ -371,7 +371,7 @@ class TD3Objective(RLObjective):
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
         net_a = define_single_network(self.state_shape, 256, num_layer=3,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
-                                      use_dueling=False,)
+                                      use_dueling=False, )
         actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
                       preprocess_net_output_dim=256).to(self.device)
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
@@ -435,23 +435,11 @@ class TD3Objective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
-            # todo: collect with random
-            train_collector.collect(n_step=start_timesteps, random=True)
-
-        train_collector.collect(n_step=1000, random=True)
-        # def train_fn(epoch, env_step):
-        #     # nature DQN setting, linear decay in the first 10k steps
-        #     if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
-        #         eps = exploration_noise - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
-        #               (exploration_noise - exploration_noise_final)
-        #     else:
-        #         eps = eps_train_final
-        #     policy.set_exp_noise(eps)
-        #     if env_step % 1000 == 0:
-        #         self.logger.write("train/env_step", env_step, {"train/eps": eps})
-        #
-        # def test_fn(epoch, env_step):
-        #     policy.set_eps(eps_test)
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
+                                         action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
@@ -477,26 +465,30 @@ class TD3Objective(RLObjective):
         policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
         return policy, lambda epoch, env_step: None
 
+
 class PPOObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
-                        norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+                      norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
+            "stack_num"]
         if list(obs_mode.keys())[0] == "cat":
             cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
         net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3,
-                                    use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
-        actor = ActorProb(net_a,  self.action_shape, unbounded=True, device=self.device, ).to(self.device)
+                                      use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
+        actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
         critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
-                                           device=self.device)
+                                          device=self.device)
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
+
         # todo: define actor critic and use one optim
         def dist(loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
             return Independent(Normal(loc, scale), 1)
+
         policy: PPOPolicy = PPOPolicy(
             actor=actor,
             critic=critic,
@@ -517,22 +509,35 @@ class PPOObjective(RLObjective):
         )
         return policy
 
-    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect,
-            update_per_step, batch_size, **kwargs):
-        def train_fn(epoch, env_step):
-            pass
-
-        def test_fn(epoch, env_step):
-            pass
-
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
-        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
-        stack_num = max(stack_num, cat_num)
-
+    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
+
+        # collector
+        if self.meta_param["training_num"] > 1:
+            buffer = VectorReplayBuffer(
+                self.meta_param["buffer_size"],
+                buffer_num=len(self.train_envs),
+                ignore_obs_next=False,
+                save_only_last_obs=False,
+                stack_num=1
+            )
+        else:
+            buffer = ReplayBuffer(self.meta_param["buffer_size"],
+                                  ignore_obs_next=False,
+                                  save_only_last_obs=False,
+                                  stack_num=1)
+
+        # collector
+        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
+        if start_timesteps > 0:
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
+                                         action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
+
         OnpolicyTrainer(
             policy,
             batch_size=batch_size,
@@ -543,11 +548,14 @@ class PPOObjective(RLObjective):
             step_per_collect=step_per_collect,
             repeat_per_collect=repeat_per_collect,
             episode_per_test=self.meta_param["test_num"],
-            train_fn=train_fn,
-            test_fn=test_fn,
+            train_fn=None,
+            test_fn=None,
             stop_fn=self.early_stop_fn,
             save_best_fn=save_best_fn,
             logger=self.logger,
             save_checkpoint_fn=self.save_checkpoint_fn,
         ).run()
-        # replay buffer: `save_last_obs`
+
+        # load the best policy to test again
+        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
+        return policy, lambda epoch, env_step: None

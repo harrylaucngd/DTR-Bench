@@ -8,7 +8,7 @@ from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
 from DTRBench.src.RLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
-from DTRBench.src.offpolicyRLHparams import DQNHyperParams, SACHyperParams, TD3HyperParams
+from DTRBench.src.offpolicyRLHparams import DQNHyperParams, TD3HyperParams
 from DTRBench.src.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
 
 
