@@ -63,12 +63,12 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step, target_update_freq, is_double,
                       # llm prompt
-                      llm, token_dim, need_obs_explain, need_act_explain, need_summary, exp_freq,
+                      llm_mode, need_obs_explain, need_act_explain, need_summary, exp_freq,
                       *args, **kwargs
                       ):
         # define model
         net = define_llm_network(self.state_shape, self.action_shape,
-                                 device=self.device, llm=llm, token_dim=token_dim,
+                                 device=self.device, llm=llm_mode["llm"], token_dim=llm_mode["token_dim"],
                                  obs_exp_prompt=obs_exp_prompt, Q_prompt=Q_prompt, act_exp_prompt=act_exp_prompt, summary_prompt=summary_prompt)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy

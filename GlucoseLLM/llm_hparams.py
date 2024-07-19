@@ -10,19 +10,6 @@ Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
 1. Qwen/Qwen2-1.5B-Instruct
 '''
 
-token_dim_table = {
-    "internlm2_5-7b-chat": {"token_dim": 4096},
-    "Phi-3-small-128k-instruct": {"token_dim": 4096},
-    "Yi-1.5-9b-Chat": {"token_dim": 4096},
-    "Qwen2-1.5B-Instruct": {"token_dim": 1536},
-    "llama-2-13b": {"token_dim": 5120},
-    "llama-13b": {"token_dim": 5120},
-    "llama-3-8b": {"token_dim": 4096},
-    "llama-2-7b": {"token_dim": 4096},
-    "llama-7b": {"token_dim": 4096},
-    "gpt2": {"token_dim": 768}
-}
-
 
 class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     # "internlm2_5-7b-chat", "Phi-3-small-128k-instruct",
@@ -33,8 +20,6 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _supported_algos = ("llm-dqn", "llm-ddqn")
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
-        # "stack_num": common_hparams["stack_num"],
-        # "cat_num": common_hparams["cat_num"],
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_test"],
         "eps_train_final": 0.001,
@@ -43,9 +28,28 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "is_double": False,
         "use_dueling": False,
 
-        # llm hparam, TODO: The code here violates aesthetical requirements
-        "llm": ["Qwen2-1.5B-Instruct", "internlm2_5-7b-chat"],
-        "token_dim": 1536,
+        # llm hparam
+        "llm_mode": [
+        {"llm": "Qwen2-1.5B-Instruct",
+                   "token_dim": 1536},
+        {"llm": "internlm2_5-7b-chat",
+                   "token_dim": 4096},
+        {"llm": "Phi-3-small-128k-instruct",
+                   "token_dim": 4096},
+        {"llm": "Yi-1.5-9b-Chat",
+                   "token_dim": 4096},
+        {"llm": "llama-2-13b",
+                   "token_dim": 5120},
+        {"llm": "llama-13b",
+                   "token_dim": 5120},
+        {"llm": "llama-3-8b",
+                   "token_dim": 4096},
+        {"llm": "llama-2-7b",
+                   "token_dim": 4096},
+        {"llm": "llama-7b",
+                   "token_dim": 4096},
+        {"llm": "gpt2",
+                   "token_dim": 768}],
 
         # prompt hparam
         "need_obs_explain": [True, False],
