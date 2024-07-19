@@ -9,9 +9,10 @@ from tianshou.data.batch import BatchProtocol
 from tianshou.data.types import (
     ModelOutputBatchProtocol,
     ObsBatchProtocol,
+    RolloutBatchProtocol,
 )
 from tianshou.policy import BasePolicy, DQNPolicy
-from tianshou.policy.base import TLearningRateScheduler
+from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 
 from GlucoseLLM.models.llm_net import LLMNet
 
@@ -204,49 +205,23 @@ class LLM_Policy(BasePolicy):
 
     def __init__(
         self,
-        *,
         model: torch.nn.Module,
-        optim: torch.optim.Optimizer,
-        action_space: gym.spaces.Discrete,
-        discount_factor: float = 0.99,
-        estimation_step: int = 1,
-        target_update_freq: int = 0,
-        reward_normalization: bool = False,
-        is_double: bool = True,
-        clip_loss_grad: bool = False,
+        action_space: gym.Space,
         observation_space: gym.Space | None = None,
-        lr_scheduler: TLearningRateScheduler | None = None,
     ) -> None:
         super().__init__(
             action_space=action_space,
             observation_space=observation_space,
             action_scaling=False,
             action_bound_method=None,
-            lr_scheduler=lr_scheduler,
         )
         self.model = model
-        self.optim = optim
-        self.eps = 0.0
-        assert (
-            0.0 <= discount_factor <= 1.0
-        ), f"discount factor should be in [0, 1] but got: {discount_factor}"
-        self.gamma = discount_factor
-        assert (
-            estimation_step > 0
-        ), f"estimation_step should be greater than 0 but got: {estimation_step}"
-        self.n_step = estimation_step
-        self._target = target_update_freq > 0
-        self.freq = target_update_freq
-        self._iter = 0
-        self.rew_norm = reward_normalization
-        self.is_double = is_double
-        self.clip_loss_grad = clip_loss_grad
 
     def preprocess(self, obs_next):
-        pass
+        raise NotImplementedError("Preprocess function not implemented.")
     
     def process(self, logits):
-        pass    
+        raise NotImplementedError("Process function not implemented.")
     
     def forward(
             self,
@@ -255,11 +230,15 @@ class LLM_Policy(BasePolicy):
             model: Literal["model", "model_old"] = "model",
             **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
-        """Decide action over the given batch data and give explanations to the decision."""
+        """Decide action over the given batch data."""
         model = getattr(self, model)
         obs = batch.obs
         obs_next = obs.obs if hasattr(obs, "obs") else obs
-        logits, hidden = model(obs_next, state=state, info=batch.info)
+        prompt = self.preprocess(obs_next)
+        logits = model(prompt)
         act = self.process(logits)
-        result = Batch(logits=logits, act=act, state=hidden)
+        result = Batch(act=act, state=None)
         return cast(ModelOutputBatchProtocol, result)
+    
+    def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
+        raise NotImplementedError("LLM_Policy does not support learning.")

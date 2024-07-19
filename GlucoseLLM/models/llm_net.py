@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import argparse
 from GlucoseLLM.models import GlucoseLLM
@@ -16,6 +17,7 @@ from typing import (
 )
 import torch
 from torch import nn
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
@@ -191,4 +193,41 @@ def define_llm_network(input_shape: int, output_shape: int,
                  # prompt options
                  summary_prompt=summary_prompt, obs_exp_prompt=obs_exp_prompt,
                  Q_prompt=Q_prompt, act_exp_prompt=act_exp_prompt).to(device)
+    return net
+
+
+class LLM(torch.nn.Module):
+    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
+        super().__init__()
+        self.llm = llm
+        self.max_length = context_window
+        self.device = device
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}")
+        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}").to(self.device)
+    
+    def forward(self, input_text):
+        inputs = self.tokenizer(input_text, return_tensors="pt").to(self.device)
+        
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_length=self.max_length,
+                do_sample=True,
+                top_k=50,
+                top_p=0.95,
+                temperature=1
+            )
+        
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        cutoff_index = generated_text.rfind("assistant\n")
+        if cutoff_index != -1:  # answer cutoff
+            generated_text = generated_text[cutoff_index + len("assistant\n"):]
+        return generated_text
+
+
+def define_llm(llm="Qwen2-1.5B-Instruct", context_window=32768,
+               device="cuda" if torch.cuda.is_available() else "cpu",
+    ):
+    net = LLM(llm=llm, context_window=context_window, device=device).to(device)
     return net

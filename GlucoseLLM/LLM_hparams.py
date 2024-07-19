@@ -1,5 +1,6 @@
 import DTRBench.src.offpolicyRLHparams as offpolicyRLHparams
 from DTRBench.src.offpolicyRLHparams import common_hparams
+from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 
 '''
 Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
@@ -56,4 +57,32 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "need_act_explain": [True, False],
         "need_summary": [True, False],
         "exp_freq": [0, 12, 24, 36],
+    }
+
+
+class LLM_HyperParams(OffPolicyRLHyperParameterSpace):
+    _supported_algos = ("llm", )
+    # policy hyperparameter search space
+    _policy_hparams = {
+        "llm_mode": [
+        {"llm": "Qwen2-1.5B-Instruct",
+                   "context_window": 32768},
+        {"llm": "internlm2_5-7b-chat",
+                   "context_window": 32768},
+        {"llm": "Phi-3-small-128k-instruct",
+                   "context_window": 131072},
+        {"llm": "Yi-1.5-9b-Chat",
+                   "context_window": 4096},
+        {"llm": "llama-2-13b",
+                   "context_window": 4096},
+        {"llm": "llama-13b",
+                   "context_window": 4096},
+        {"llm": "llama-3-8b",
+                   "context_window": 4096},
+        {"llm": "llama-2-7b",
+                   "context_window": 4096},
+        {"llm": "llama-7b",
+                   "context_window": 4096},
+        {"llm": "gpt2",
+                   "context_window": 768}],
     }

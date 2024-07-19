@@ -1,11 +1,11 @@
 import torch
 from tianshou.policy import BasePolicy
 from tianshou.policy import DQNPolicy, TD3Policy
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
 from DTRBench.src.base_obj import RLObjective
 
-from GlucoseLLM.LLM_hparams import LLM_DQN_HyperParams
-from GlucoseLLM.LLMObj import LLM_DQN_Objective
+from GlucoseLLM.LLM_hparams import LLM_DQN_HyperParams, LLM_HyperParams
+from GlucoseLLM.LLMObj import LLM_DQN_Objective, LLM_Objective
 from DTRBench.src.RLObj import DQNObjective, TD3Objective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams, TD3HyperParams
@@ -32,6 +32,7 @@ offpolicyLOOKUP = {
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
     "llm-dqn": {"hparam": LLM_DQN_HyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
     # "llm-ddqn": {"hparam": LLM_DQN_HyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
+    "llm": {"hparam": LLM_HyperParams, "policy": LLM_Policy, "obj": LLM_Objective, "type": "continuous"},
 }
 
 baselineLOOKUP = {"zero_drug": {"policy": ConstantPolicy, "policy_args": {"dose": 0}},
