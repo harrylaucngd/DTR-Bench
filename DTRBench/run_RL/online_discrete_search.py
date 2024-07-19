@@ -52,13 +52,13 @@ def parse_args():
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
 
-    parser.add_argument("--policy_name", type=str, default="DQN",  # Change this for different sweep!
+    parser.add_argument("--policy_name", type=str, default="TD3",  # Change this for different sweep!
                         choices=["DQN", "TD3"],
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single"])
+    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
 
     return args

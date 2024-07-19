@@ -484,14 +484,24 @@ def define_continuous_critic(state_shape: int, action_shape,
                              action_net_hidden_size=128,
                              fuse_net_n_layer=1,
                              linear=False,
+                             use_rnn=False,
+                             cat_num=1,
                              device="cuda" if torch.cuda.is_available() else "cpu"):
     """
     Since Tianshou's critic network does not support RNN style network, we use a simple MLP network here.
     """
-    obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
-                  hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
-                  activation=nn.ReLU if not linear else None,
-                  device=device, dueling_param=None, cat_num=1).to(device)
+    if use_rnn:
+        obs_net = Recurrent(layer_num=state_net_n_layer,
+                            state_shape=state_shape,
+                            action_shape=state_net_hidden_size,
+                            device=device,
+                            hidden_layer_size=state_net_hidden_size,
+                            ).to(device)
+    else:
+        obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
+                      hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
+                      activation=nn.ReLU if not linear else None,
+                      device=device, dueling_param=None, cat_num=cat_num).to(device)
     act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
                   hidden_sizes=action_net_n_layer * [action_net_hidden_size],
                   activation=nn.ReLU,
