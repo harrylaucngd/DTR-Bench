@@ -37,7 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL2")
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL2-debug")
     parser.add_argument("--sweep_id", type=str, default="1did1f4s", help="sweep id for wandb,"
                                                                          " only used in agent mode")
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
@@ -51,9 +51,8 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
-
     parser.add_argument("--policy_name", type=str, default="TD3",  # Change this for different sweep!
-                        choices=["DQN", "TD3"],
+                        choices=["DQN", "TD3", "PPO"],
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
 

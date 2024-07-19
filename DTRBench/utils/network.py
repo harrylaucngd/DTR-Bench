@@ -409,7 +409,7 @@ class Critic(nn.Module):
     def __init__(
             self,
             state_net: nn.Module,
-            action_net: nn.Module,
+            action_net: nn.Module = None,
             cat_size: int = 256,
             fuse_hidden_sizes: Sequence[int] = (256,),
             device: str | int | torch.device = "cpu",
@@ -432,21 +432,24 @@ class Critic(nn.Module):
     def forward(
             self,
             obs: np.ndarray | torch.Tensor,
-            act: np.ndarray | torch.Tensor,
+            act: np.ndarray | torch.Tensor = None,
             state: Optional[Dict[str, torch.Tensor]] = None,
             info: dict[str, Any] | None = {},
     ):
         """Mapping: (s, a) -> logits -> Q(s, a)."""
         obs, state = self.obs_net(obs, state)  # state here won't be useful anyway since tianshou does not RNN-critic
-        act, _ = self.act_net(act)
-        obs = torch.cat([obs, act], dim=1)
+        if act is not None:
+            act, _ = self.act_net(act)
+            obs = torch.cat([obs, act], dim=1)
+        else:
+            assert self.act_net is None
         value = self.last(obs)
         return value
 
 
 def define_single_network(input_shape: int, output_shape: int, hidden_size=256, num_layer=4,
                           use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
-                          device="cuda" if torch.cuda.is_available() else "cpu",
+                          device="cuda" if torch.cuda.is_available() else "cpu"
                           ):
     assert num_layer > 1 or linear
     if use_dueling and use_rnn:
@@ -485,7 +488,7 @@ def define_continuous_critic(state_shape: int, action_shape,
                              fuse_net_n_layer=1,
                              linear=False,
                              use_rnn=False,
-                             cat_num=1,
+                             cat_num=1, use_action_net=True,
                              device="cuda" if torch.cuda.is_available() else "cpu"):
     """
     Since Tianshou's critic network does not support RNN style network, we use a simple MLP network here.
@@ -502,12 +505,18 @@ def define_continuous_critic(state_shape: int, action_shape,
                       hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
                       activation=nn.ReLU if not linear else None,
                       device=device, dueling_param=None, cat_num=cat_num).to(device)
-    act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
-                  hidden_sizes=action_net_n_layer * [action_net_hidden_size],
-                  activation=nn.ReLU,
-                  device=device, cat_num=1).to(device)
-    critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
-                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
-                    device=device).to(device)
+    if use_action_net:
+        act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
+                      hidden_sizes=action_net_n_layer * [action_net_hidden_size],
+                      activation=nn.ReLU,
+                      device=device, cat_num=1).to(device)
+        critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
+                        fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
+                        device=device).to(device)
 
-    return critic
+        return critic
+    else:
+        critic = Critic(obs_net, None, cat_size=state_net_hidden_size,
+                        fuse_hidden_sizes=[state_net_hidden_size] * fuse_net_n_layer,
+                        device=device).to(device)
+        return critic

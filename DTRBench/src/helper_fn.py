@@ -3,12 +3,13 @@ from tianshou.policy import BasePolicy
 
 from tianshou.policy import C51Policy, DQNPolicy, DDPGPolicy, \
     TD3Policy, SACPolicy, REDQPolicy, DiscreteSACPolicy, DiscreteBCQPolicy, DiscreteCQLPolicy, BCQPolicy, CQLPolicy, \
-    ImitationPolicy
+    ImitationPolicy, PPOPolicy
 from DTRBench.src.base_obj import RLObjective
 from pathlib import Path
-from DTRBench.src.RLObj import LLM_DQN_Objective, DQNObjective, TD3Objective
+from DTRBench.src.RLObj import DQNObjective, TD3Objective, PPOObjective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams, TD3HyperParams
+from DTRBench.src.onpolicyRLHparams import PPOHyperParams
 from DTRBench.src.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
 
 
@@ -24,7 +25,8 @@ def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
     return policy
 
 
-offpolicyLOOKUP = {
+policyLOOKUP = {
+    "ppo": {"hparam": PPOHyperParams, "policy": PPOPolicy, "obj": PPOObjective, "type": "continuous"},
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
 }
@@ -37,11 +39,6 @@ baselineLOOKUP = {"zero_drug": {"policy": ConstantPolicy, "policy_args": {"dose"
                   "pulse60-0.2": {"policy": PulsePolicy, "policy_args": {"dose": 0.2, "interval": 12}}}
 
 
-# todo: add onpolicy
-# onpolicyLOOKUP = {
-#     "PPO": {"hparam": PPOHyperParams, "policy": PPOPolicy, "obj": PPOObjective, "type": "discrete"},
-# }
-
 def get_policy_class(algo_name) -> BasePolicy:
     algo_name = algo_name.lower()
     if "llm" not in algo_name:
@@ -51,7 +48,7 @@ def get_policy_class(algo_name) -> BasePolicy:
             algo_name = "ddqn"
         elif "discrete-imitation" in algo_name:
             algo_name = "discrete-imitation"
-    return offpolicyLOOKUP[algo_name]["policy"]
+    return policyLOOKUP[algo_name]["policy"]
 
 
 def get_hparam_class(algo_name: str, offline) -> OffPolicyRLHyperParameterSpace.__class__:
@@ -66,7 +63,7 @@ def get_hparam_class(algo_name: str, offline) -> OffPolicyRLHyperParameterSpace.
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
-        return offpolicyLOOKUP[algo_name]["hparam"]
+        return policyLOOKUP[algo_name]["hparam"]
 
 
 def get_obj_class(algo_name: str, offline) -> RLObjective.__class__:
@@ -81,7 +78,7 @@ def get_obj_class(algo_name: str, offline) -> RLObjective.__class__:
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
-        return offpolicyLOOKUP[algo_name]["obj"]
+        return policyLOOKUP[algo_name]["obj"]
 
 
 def get_policy_type(algo_name: str, offline: bool) -> str:
@@ -96,4 +93,4 @@ def get_policy_type(algo_name: str, offline: bool) -> str:
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
     else:
-        return offpolicyLOOKUP[algo_name]["type"]
+        return policyLOOKUP[algo_name]["type"]

@@ -18,7 +18,7 @@ from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
 from DTRBench.src.naive_baselines import ConstantPolicy, RandomPolicy
-
+import torch.nn as nn
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -374,6 +374,13 @@ class TD3Objective(RLObjective):
                                       use_dueling=False, )
         actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
                       preprocess_net_output_dim=256).to(self.device)
+
+        # init actor with orthogonal initialization and zeros bias
+        for m in actor.modules():
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.zeros_(m.bias)
+                m.weight.data.copy_(0.01 * m.weight.data)
+
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
         critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
@@ -486,21 +493,33 @@ class PPOObjective(RLObjective):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
-                      norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
+                      advantage_normalization, recompute_advantage, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
             "stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
         net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3,
                                       use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
         actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
-        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+                                          cat_num=cat_num, use_action_net=False,
                                           device=self.device)
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
-        # todo: define actor critic and use one optim
-        def dist(loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
+        torch.nn.init.constant_(actor.sigma_param, -0.5)
+        for m in actor_critic.modules():
+            if isinstance(m, torch.nn.Linear):
+                # orthogonal initialization
+                torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                torch.nn.init.zeros_(m.bias)
+        # do last policy layer scaling, this will make initial actions have (close to)
+        # 0 mean and std, and will help boost performances,
+        # see https://arxiv.org/abs/2006.05990, Fig.24 for details
+        for m in actor.mu.modules():
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.zeros_(m.bias)
+                m.weight.data.copy_(0.01 * m.weight.data)
+
+        def dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
             return Independent(Normal(loc, scale), 1)
 
@@ -519,8 +538,8 @@ class PPOObjective(RLObjective):
             eps_clip=eps_clip,
             value_clip=value_clip,
             dual_clip=dual_clip,
-            advantage_normalization=norm_adv,
-            recompute_advantage=recompute_adv,
+            advantage_normalization=advantage_normalization,
+            recompute_advantage=recompute_advantage,
         )
         return policy
 

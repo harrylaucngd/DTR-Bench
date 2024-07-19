@@ -3,6 +3,7 @@ from DTRBench.src.base_hparams import common_hparams
 import numpy as np
 
 
+
 class OffPolicyRLHyperParameterSpace:
     _meta_hparams = [
         "algo_name",  # name of the algorithm
@@ -88,6 +89,8 @@ class OffPolicyRLHyperParameterSpace:
                     space[k] = {"value": v}
                 else:
                     space[k] = {"values": v}
+            elif v is None:
+                space[k] = {"value": v}
             else:
                 raise NotImplementedError(f"unsupported type {type(v)} for hyperparameter {k}")
         return space
@@ -177,6 +180,6 @@ class TD3HyperParams(OffPolicyRLHyperParameterSpace):
         "tau": common_hparams["tau"],
         "start_timesteps": common_hparams["start_timesteps"],
         "update_actor_freq": common_hparams["update_actor_freq"],
-        "policy_noise": 0.05,
-        "noise_clip": 0.1,
+        "policy_noise": 0.025,
+        "noise_clip": 0.05,
     }
