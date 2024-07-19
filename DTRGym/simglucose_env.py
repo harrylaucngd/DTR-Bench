@@ -84,7 +84,7 @@ def TIR_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # else:
     #     delta_reward = -1
 
-    insulin_penalty = - (insulin * 5)**2
+    insulin_penalty = - (insulin * 50)**2
     #
     reward = bg_reward + insulin_penalty
 
@@ -220,7 +220,7 @@ class SinglePatientEnv(gymnasium.Env):
         bg[bg == 0] = -1
         act[-len(self.drug_history):] = self.drug_history[-self.obs_window:]
         obs = np.stack([bg, act], axis=1)
-        return obs, reward, self.terminated, self.truncated, all_info
+        return obs, float(reward), self.terminated, self.truncated, all_info
 
     def seed(self, seed):
         self.np_random, seed1 = seeding.np_random(seed=seed)

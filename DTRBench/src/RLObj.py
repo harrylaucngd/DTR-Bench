@@ -369,26 +369,26 @@ class TD3Objective(RLObjective):
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
-        net_a = define_single_network(self.state_shape, 256, num_layer=3,
+        net_a = define_single_network(self.state_shape, 128,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False, )
         actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
-                      preprocess_net_output_dim=256).to(self.device)
+                      preprocess_net_output_dim=128).to(self.device)
 
-        # init actor with orthogonal initialization and zeros bias
-        for m in actor.modules():
-            if isinstance(m, torch.nn.Linear):
-                torch.nn.init.zeros_(m.bias)
-                m.weight.data.copy_(0.01 * m.weight.data)
+        # # init actor with orthogonal initialization and zeros bias
+        # for m in actor.modules():
+        #     if isinstance(m, torch.nn.Linear):
+        #         torch.nn.init.zeros_(m.bias)
+        #         m.weight.data.copy_(0.01 * m.weight.data)
 
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
         critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
-                                           cat_num=cat_num,
+                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
         critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
-                                           cat_num=cat_num,
+                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
@@ -496,11 +496,11 @@ class PPOObjective(RLObjective):
                       advantage_normalization, recompute_advantage, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
             "stack_num"]
-        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3,
+        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3, hidden_size=128,
                                       use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
         actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
         critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
-                                          cat_num=cat_num, use_action_net=False,
+                                          cat_num=cat_num, use_action_net=False, state_net_hidden_size=128, 
                                           device=self.device)
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
@@ -529,7 +529,7 @@ class PPOObjective(RLObjective):
             optim=optim,
             dist_fn=dist,
             discount_factor=gamma,
-            gae_lambda=gae_lambda,
+            gae_lambda=float(gae_lambda),
             vf_coef=vf_coef,
             ent_coef=ent_coef,
             action_scaling=True,
