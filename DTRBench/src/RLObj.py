@@ -435,11 +435,24 @@ class TD3Objective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
-            print(f"warmup with random policy for {start_timesteps} steps..")
-            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
-                                         action_space=self.action_space)
-            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
-            warmup_collector.collect(n_step=start_timesteps)
+            # todo: collect with random
+            train_collector.collect(n_step=start_timesteps, random=True)
+
+        train_collector.collect(n_step=1000, random=True)
+
+        # def train_fn(epoch, env_step):
+        #     # nature DQN setting, linear decay in the first 10k steps
+        #     if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
+        #         eps = exploration_noise - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
+        #               (exploration_noise - exploration_noise_final)
+        #     else:
+        #         eps = eps_train_final
+        #     policy.set_exp_noise(eps)
+        #     if env_step % 1000 == 0:
+        #         self.logger.write("train/env_step", env_step, {"train/eps": eps})
+        #
+        # def test_fn(epoch, env_step):
+        #     policy.set_eps(eps_test)
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
