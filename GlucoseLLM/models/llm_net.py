@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 from GlucoseLLM.models import GlucoseLLM
+from GlucoseLLM.prompt_pipeline import Conversation
 from typing import (
     Any,
     Callable,
@@ -85,7 +86,7 @@ class LLMNet(GlucoseLLM.Model):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
-        if isinstance(messages, str):
+        if isinstance(messages, Conversation):
             prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False,
                                                          add_generation_prompt=True)
         else:
@@ -138,7 +139,7 @@ class LLMNet(GlucoseLLM.Model):
                     "Extracted rules and regulations: " + summary + f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:",
                     -1)
             prompts.append(prompt)
-        series = torch.tensor(series, dtype=torch.float32).unsqueeze(-1).to(self.device)
+        series = torch.tensor(series, dtype=torch.float32).to(self.device)
         q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
         return q_list
 
@@ -169,12 +170,12 @@ class LLMNet(GlucoseLLM.Model):
 
 def define_llm_network(input_shape: int, output_shape: int,
                        device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", token_dim=1536,
-                        summary_prompt=False, obs_exp_prompt=False, Q_prompt=False, act_exp_prompt=False,
+                       obs_exp_prompt=False, Q_prompt=False, act_exp_prompt=False, summary_prompt=False,
                        ):
     configs = argparse.Namespace(
         d_ff=32,
-        patch_len=9,  # TODO: Adaptive value?
-        stride=8,  # TODO: Adaptive value?
+        patch_len=9,  # TODO: TBD
+        stride=8,  # TODO: TBD
         llm_layers=6,
         d_model=16,
         dropout=0.1,

@@ -51,37 +51,37 @@ class Model(nn.Module):
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         self.need_llm = need_llm
-        self.llm = configs.llm_model
+        self.llm = configs.llm
 
         model_dir = os.path.join("model_hub")
         os.makedirs(model_dir, exist_ok=True)
         if self.need_llm:
             try:
                 self.llm_model = AutoModelForCausalLM.from_pretrained(
-                    f'{model_dir}/{configs.llm_model}',
+                    f'{model_dir}/{configs.llm}',
                     trust_remote_code=True,
                     local_files_only=True,
                 )
             except EnvironmentError:  # downloads model from HF if not already done
                 print("Local model files not found. Attempting to download...")
                 self.llm_model = AutoModelForCausalLM.from_pretrained(
-                    f'{model_hf[configs.llm_model]}',
+                    f'{model_hf[configs.llm]}',
                     trust_remote_code=True,
                     local_files_only=False,
                 )
 
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    f'{model_dir}/{configs.llm_model}',
-                    cache_dir=f'{model_dir}/{configs.llm_model}',
+                    f'{model_dir}/{configs.llm}',
+                    cache_dir=f'{model_dir}/{configs.llm}',
                     trust_remote_code=True,
                     local_files_only=True
                 )
             except EnvironmentError:  # downloads the tokenizer from HF if not already done
                 print("Local tokenizer files not found. Attempting to download them...")
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    f'{model_hf[configs.llm_model]}',
-                    cache_dir=f'{model_dir}/{configs.llm_model}',
+                    f'{model_hf[configs.llm]}',
+                    cache_dir=f'{model_dir}/{configs.llm}',
                     trust_remote_code=True,
                     local_files_only=False
                 )

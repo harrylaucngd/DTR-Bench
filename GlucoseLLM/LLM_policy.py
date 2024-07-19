@@ -27,13 +27,13 @@ class LLM_DQN_Policy(DQNPolicy):
         self,
         model: LLMNet,
         optim: torch.optim.Optimizer,
-        action_space: gym.spaces.Discrete,
         discount_factor: float = 0.99,
         estimation_step: int = 1,
         target_update_freq: int = 0,
         reward_normalization: bool = False,
         is_double: bool = True,
         clip_loss_grad: bool = False,
+        action_space: gym.spaces.Discrete | None = None,
         observation_space: gym.Space | None = None,
         lr_scheduler: TLearningRateScheduler | None = None,
         need_obs_explain=True,
@@ -154,7 +154,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # obs and obs explanation
         obs = batch.obs
-        obs_next = obs.obs[:, 0] if hasattr(obs, "obs") else obs[:, 0]
+        obs_next = obs.obs[:, -1, 0] if hasattr(obs, "obs") else obs[:, -1, 0]
         for i in range(batch_size):
             states[i]["obs"] = np.append(states[i]["obs"], obs_next[i])
             curr_states[i]["obs"] = obs_next[i]
