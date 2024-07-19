@@ -1,5 +1,3 @@
-import os
-import numpy as np
 import argparse
 from GlucoseLLM.models import GlucoseLLM
 from GlucoseLLM.prompt_pipeline import Conversation
@@ -32,7 +30,6 @@ llm_context_window = {
 
 
 class LLMNet(GlucoseLLM.Model):
-    # todo: overwrite by merge. Pls check the code
     def __init__(
             self,
             configs: argparse.Namespace,
@@ -197,17 +194,23 @@ def define_llm_network(input_shape: int, output_shape: int,
 
 
 class LLM(torch.nn.Module):
-    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768,
+                 device="cuda" if torch.cuda.is_available() else "cpu",
+                 system_prompt=False):
         super().__init__()
         self.llm = llm
         self.max_length = context_window
         self.device = device
+        self.system_prompt = system_prompt
         
         self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}")
         self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}").to(self.device)
     
     def forward(self, input_text):
-        inputs = self.tokenizer(input_text, return_tensors="pt").to(self.device)
+        messages = [{"role": "system", "content": self.system_prompt+input_text}]
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
+                                                            add_generation_prompt=True)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         
         with torch.no_grad():
             outputs = self.model.generate(
@@ -228,6 +231,7 @@ class LLM(torch.nn.Module):
 
 def define_llm(llm="Qwen2-1.5B-Instruct", context_window=32768,
                device="cuda" if torch.cuda.is_available() else "cpu",
+               system_prompt=False,
     ):
-    net = LLM(llm=llm, context_window=context_window, device=device).to(device)
+    net = LLM(llm=llm, context_window=context_window, device=device, system_prompt=system_prompt).to(device)
     return net

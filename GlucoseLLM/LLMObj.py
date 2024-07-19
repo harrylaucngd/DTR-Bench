@@ -18,8 +18,8 @@ obs_exp_prompt = ("The Simglucose environment is a simulation environment design
                   "concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was "
                   "injected, a raising or high level of action is witnessed, and vice versa. The following would be "
                   "conversation history between user and you as an assistant, where the user gives blood glucose "
-                  "observation and the agent's action (Insulin Bolus Dose) at every timestep, and next timestep's "
-                  "observation, then the assistant give explaination to the observation at every next timestep.")  # expertised system prompt of background knowledge for observation explanation
+                  "observation and the agent's action (Insulin Bolus Dose) at every timestep at five minute intervals, "
+                  "and next timestep's observation, then the assistant give explaination to the observation at every next timestep.")  # expertised system prompt of background knowledge for observation explanation
 
 Q_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of "
             "glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
@@ -31,8 +31,8 @@ Q_prompt = ("The Simglucose environment is a simulation environment designed to 
             "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
             "value action should be high, and q value of the low value action should be low, and vice versa for low "
             "blood glucose level. The following would be conversation history between user and you as an assistant, "
-            "where the user gives blood glucose observation and the agent's action (Insulin Bolus Dose) at every timestep, "
-            "then the assistant give explaination to both the observation and action at every timestep.")  # expertised system prompt for series information description and Q value prediction
+            "where the user gives blood glucose observation and the agent's action (Insulin Bolus Dose) at every timestep "
+            "at five minute intervals, then the assistant give explaination to both the observation and action at every timestep.")  # expertised system prompt for series information description and Q value prediction
 
 act_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
                   "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
@@ -43,8 +43,9 @@ act_exp_prompt = ("The Simglucose environment is a simulation environment design
                   "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
                   "to prevent the blood glucose from getting too high, and vice versa. The following would be conversation "
                   "history between user and you as an assistant, where the user gives blood glucose observation and "
-                  "the agent's action (Insulin Bolus Dose) at every timestep, then the assistant give explaination to the "
-                  "action at every timestep.")  # expertised system prompt of background knowledge for action explanation
+                  "the agent's action (Insulin Bolus Dose) at every timestep at five minute intervals, then the assistant "
+                  "give explaination to the action at every timestep.")  # expertised system prompt of background knowledge for action explanation
+
 summary_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
                   "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
                   "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
@@ -56,6 +57,18 @@ summary_prompt = ("The Simglucose environment is a simulation environment design
                   "observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is "
                   "typically in last/last several timestep, more insulin (action) was injected, a raising or high level "
                   "of action is witnessed, and vice versa.")  # expertised system prompt of background knowledge for regulation summary
+
+system_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
+                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
+                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
+                  "target range through the administration of insulin (the action). The reason for a high value action "
+                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
+                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
+                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
+                  "to prevent the blood glucose from getting too high, and vice versa. The following would be the history "
+                  "of blood glucose observation and the agent's action (Insulin Bolus Dose) at past timesteps at five minute "
+                  "intervals, then the you will act as the assistant to give the insulin dose from 0~0.5 unit (if the blood "
+                  "glucose level is normal, you can just give 0) in the following timestep.")  # expertised system prompt of background knowledge for action decision
 
 
 class LLM_DQN_Objective(DQNObjective):
@@ -100,7 +113,7 @@ class LLM_Objective(RLObjective):
 
     def define_policy(self, llm_mode, **kwargs):
         net = define_llm(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
-                                 device=self.device)
+                                 device=self.device, system_prompt=system_prompt)
         return LLM_Policy(
             net,
             action_space=self.action_space,

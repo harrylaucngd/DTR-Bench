@@ -19,6 +19,16 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     # "llama-3-8b", "llama-2-7b", "llama-7b",
     # "gpt2"
     _supported_algos = ("llm-dqn", "llm-ddqn")
+    _general_hparams = {
+        # general parameters
+        "seed": common_hparams["seed"],
+        "batch_size": common_hparams["batch_size"],
+        "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
+        "update_per_step": common_hparams["update_per_step"],
+        # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
+        "gamma": common_hparams["gamma"],
+        "start_timesteps": common_hparams["start_timesteps"],
+    }
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
         "eps_test": common_hparams["eps_test"],
@@ -39,7 +49,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
                    "token_dim": 4096},
         {"llm": "Yi-1.5-9b-Chat",
                    "token_dim": 4096},
-        {"llm": "llama-2-13b",
+        '''{"llm": "llama-2-13b",
                    "token_dim": 5120},
         {"llm": "llama-13b",
                    "token_dim": 5120},
@@ -50,7 +60,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         {"llm": "llama-7b",
                    "token_dim": 4096},
         {"llm": "gpt2",
-                   "token_dim": 768}],
+                   "token_dim": 768}'''],
 
         # prompt hparam
         "need_obs_explain": [True, False],
@@ -62,6 +72,10 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
 
 class LLM_HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("llm", )
+    _general_hparams = {
+        # general parameters
+        "seed": common_hparams["seed"],
+    }
     # policy hyperparameter search space
     _policy_hparams = {
         "llm_mode": [
@@ -73,7 +87,7 @@ class LLM_HyperParams(OffPolicyRLHyperParameterSpace):
                    "context_window": 131072},
         {"llm": "Yi-1.5-9b-Chat",
                    "context_window": 4096},
-        {"llm": "llama-2-13b",
+        '''{"llm": "llama-2-13b",
                    "context_window": 4096},
         {"llm": "llama-13b",
                    "context_window": 4096},
@@ -84,5 +98,5 @@ class LLM_HyperParams(OffPolicyRLHyperParameterSpace):
         {"llm": "llama-7b",
                    "context_window": 4096},
         {"llm": "gpt2",
-                   "context_window": 768}],
+                   "context_window": 768}'''],
     }

@@ -1,5 +1,7 @@
 from typing import Any, Literal, cast
 
+import re
+import random
 import gymnasium as gym
 import numpy as np
 import torch
@@ -217,11 +219,38 @@ class LLM_Policy(BasePolicy):
         )
         self.model = model
 
-    def preprocess(self, obs_next):
-        raise NotImplementedError("Preprocess function not implemented.")
+    def obs2text(self, obs_next):
+        filtered_obs = obs_next[obs_next[:, 0] != -1]
+
+        if filtered_obs.shape[0] == 0:
+            return "No valid data available."
+        
+        descriptions = []
+        
+        for i, (glucose, insulin) in enumerate(filtered_obs):
+            if i == 0:
+                descriptions.append(f"The patient was initially given {insulin} unit of insulin, in the first timestep, the patient's glucose level is {glucose} mg/dL.")
+            else:
+                descriptions.append(f"Then the patient was given {insulin} unit of insulin, in timestep {i+1}, the patient's glucose level is {glucose} mg/dL.")
+        
+        return " ".join(descriptions)+" Please determine the current insulin dosage for this patient (0 unit or from 0~0.5 unit):"
     
-    def process(self, logits):
-        raise NotImplementedError("Process function not implemented.")
+    def text2act(self, logits):
+        numbers = re.findall(r'-?\d+\.?\d*', logits)
+        numbers = [float(num) for num in numbers]
+        
+        selected_number = None
+        for num in reversed(numbers):
+            if 0 <= num <= 0.5:
+                selected_number = num
+                break
+        
+        if selected_number is not None:
+            selected_number = max(0, min(0.5, selected_number))
+        else:
+            selected_number = random.uniform(0, 0.5)
+        
+        return selected_number
     
     def forward(
             self,
@@ -233,11 +262,11 @@ class LLM_Policy(BasePolicy):
         """Decide action over the given batch data."""
         model = getattr(self, model)
         obs = batch.obs
-        obs_next = obs.obs if hasattr(obs, "obs") else obs
-        prompt = self.preprocess(obs_next)
+        obs_next = obs.obs[0] if hasattr(obs, "obs") else obs[0]
+        prompt = self.obs2text(obs_next)
         logits = model(prompt)
-        act = self.process(logits)
-        result = Batch(act=act, state=None)
+        act = [self.text2act(logits)]
+        result = Batch(act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
     
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
