@@ -9,66 +9,27 @@ from DTRBench.src.base_obj import RLObjective
 from DTRBench.utils.wandb import WandbLogger
 from DTRBench.utils.misc import set_global_seed
 
+universal_sys_prompt = ("You are a specialist assistant working with Type-1 Diabetic patients. Your primary goal is to"
+                        " maintain a patient's blood glucose levels (the observation, received every 5 minutes) within"
+                        " 70-140 mg/dL through the administration of insulin (the action). Insulin will reduce blood "
+                        "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will"
+                        "be penalized for blood glucose <70 or >140, and high insulin doses. Notably, low blood glucose"
+                        "levels are much more dangerous. You should take caution to avoid overdosing insulin, thus"
+                        "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units/hour, ranging from 0 to 0.5.")
 
-obs_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. "
-                  "The primary goal in the Simglucose environment is to maintain a patient's blood glucose levels "
-                  "(the observation) within a target range through the administration of insulin (the action). "
-                  "The reason for a high value observation (high Blood Glucose Level (BG): the current blood glucose "
-                  "concentration in mg/dL) is typically in last/last several timestep, more insulin (action) was "
-                  "injected, a raising or high level of action is witnessed, and vice versa. The following would be "
-                  "conversation history between user and you as an assistant, where the user gives blood glucose "
-                  "observation and the agent's action (Insulin Bolus Dose) at every timestep at five minute intervals, "
-                  "and next timestep's observation, then the assistant give explaination to the observation at every next timestep.")  # expertised system prompt of background knowledge for observation explanation
+sys_obs_exp_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for observation explanation
 
-Q_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics of "
-            "glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-            "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a target "
-            "range through the administration of insulin (the action). 5 number of actions (Insulin Bolus Dose) "
-            "represents 5 degrees of insulin injection to restrain high blood glucose level. In Q-learning, "
-            "the Q-value represents the expected future rewards for taking a given action in a given state, "
-            "with high Q-values indicating more favorable actions and low Q-values indicating less favorable actions. "
-            "So for a q-learning agent, if the blood glucose level is observed to be high, the q value of the high "
-            "value action should be high, and q value of the low value action should be low, and vice versa for low "
-            "blood glucose level. The following would be conversation history between user and you as an assistant, "
-            "where the user gives blood glucose observation and the agent's action (Insulin Bolus Dose) at every timestep "
-            "at five minute intervals, then the assistant give explaination to both the observation and action at every timestep.")  # expertised system prompt for series information description and Q value prediction
+sys_Q_prompt = universal_sys_prompt + ("Please generate the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
+                "the following insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25,"
+                " 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]")  # expertised system prompt for series information description and Q value prediction
 
-act_exp_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
-                  "target range through the administration of insulin (the action). The reason for a high value action "
-                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
-                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
-                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa. The following would be conversation "
-                  "history between user and you as an assistant, where the user gives blood glucose observation and "
-                  "the agent's action (Insulin Bolus Dose) at every timestep at five minute intervals, then the assistant "
-                  "give explaination to the action at every timestep.")  # expertised system prompt of background knowledge for action explanation
+sys_act_exp_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action explanation
 
-summary_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
-                  "target range through the administration of insulin (the action). The reason for a high value action "
-                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
-                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
-                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa. The reason for a high value "
-                  "observation (high Blood Glucose Level (BG): the current blood glucose concentration in mg/dL) is "
-                  "typically in last/last several timestep, more insulin (action) was injected, a raising or high level "
-                  "of action is witnessed, and vice versa.")  # expertised system prompt of background knowledge for regulation summary
+sys_summary_prompt = ("You are a specialist assistant working with Type-1 Diabetic patients. Your primary goal is to"
+                        "summarize history conversations. You need to extract information such as glucose record trend, "
+                      "drug dosage history, abnormal signs. Please extract as much information as possible while keeping short.")  # expertised system prompt of background knowledge for regulation summary
 
-system_prompt = ("The Simglucose environment is a simulation environment designed to mimic the physiological dynamics "
-                  "of glucose metabolism in humans, often used in research of glucose control. The primary goal in the "
-                  "Simglucose environment is to maintain a patient's blood glucose levels (the observation) within a "
-                  "target range through the administration of insulin (the action). The reason for a high value action "
-                  "(high Insulin Bolus Dose measured in units (U) of insulin) is typically in current timestep or the "
-                  "past several timesteps, a relatively high value of Blood Glucose Level (BG): the current blood "
-                  "glucose concentration in mg/dL is observed (low observation), thus the patient needs more insulin "
-                  "to prevent the blood glucose from getting too high, and vice versa. The following would be the history "
-                  "of blood glucose observation and the agent's action (Insulin Bolus Dose) at past timesteps at five minute "
-                  "intervals, then the you will act as the assistant to give the insulin dose from 0~0.5 unit (if the blood "
-                  "glucose level is normal, you can just give 0) in the following timestep.")  # expertised system prompt of background knowledge for action decision
+sys_llm_only_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action decision
 
 
 class LLM_DQN_Objective(DQNObjective):
@@ -87,7 +48,7 @@ class LLM_DQN_Objective(DQNObjective):
         # define model
         net = define_llm_network(self.state_shape, self.action_shape,
                                  device=self.device, llm=llm_mode["llm"], token_dim=llm_mode["token_dim"],
-                                 obs_exp_prompt=obs_exp_prompt, Q_prompt=Q_prompt, act_exp_prompt=act_exp_prompt, summary_prompt=summary_prompt)
+                                 obs_exp_prompt=sys_obs_exp_prompt, Q_prompt=sys_Q_prompt, act_exp_prompt=sys_act_exp_prompt, summary_prompt=sys_summary_prompt)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
@@ -113,7 +74,7 @@ class LLM_Objective(RLObjective):
 
     def define_policy(self, llm_mode, **kwargs):
         net = define_llm(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
-                                 device=self.device, system_prompt=system_prompt)
+                         device=self.device, system_prompt=sys_llm_only_prompt)
         return LLM_Policy(
             net,
             action_space=self.action_space,

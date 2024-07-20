@@ -219,21 +219,25 @@ class LLM_Policy(BasePolicy):
         )
         self.model = model
 
-    def obs2text(self, obs_next):
-        filtered_obs = obs_next[obs_next[:, 0] != -1]
+    def obs2text(self, batch):
+        obs = batch.obs
+        length = obs.shape[1]
+        time = batch.info["time"]
+        glucose = obs[:, :, 0]
+        insulin = obs[:, :, 1]
 
-        if filtered_obs.shape[0] == 0:
-            return "No valid data available."
-        
         descriptions = []
-        
-        for i, (glucose, insulin) in enumerate(filtered_obs):
+        # todo: include time from batch.info, time shift is wrong for now
+        for i in range(length):
+            if glucose == -1:
+                continue
             if i == 0:
-                descriptions.append(f"The patient was initially given {insulin} unit of insulin, in the first timestep, the patient's glucose level is {glucose} mg/dL.")
+                descriptions.append(f"Time: {time - (length - i - 1) * 5}, insulin: {insulin[0]};")
+            elif 0 < i < length-1:
+                descriptions.append(f"Time: {time - (length - i - 1) * 5}, glucose: {glucose[i]}, insulin: {insulin[i]};")
             else:
-                descriptions.append(f"Then the patient was given {insulin} unit of insulin, in timestep {i+1}, the patient's glucose level is {glucose} mg/dL.")
-        
-        return " ".join(descriptions)+" Please determine the current insulin dosage for this patient (0 unit or from 0~0.5 unit):"
+                descriptions.append(f"Time: {time}, glucose: {glucose[i]}.")
+        return " ".join(descriptions)+" Please determine the current insulin dosage for this patient, giving a value in 0-0.5, without any explanation:"
     
     def text2act(self, logits):
         numbers = re.findall(r'-?\d+\.?\d*', logits)
@@ -261,9 +265,8 @@ class LLM_Policy(BasePolicy):
     ) -> ModelOutputBatchProtocol:
         """Decide action over the given batch data."""
         model = getattr(self, model)
-        obs = batch.obs
-        obs_next = obs.obs[0] if hasattr(obs, "obs") else obs[0]
-        prompt = self.obs2text(obs_next)
+
+        prompt = self.obs2text(batch)
         logits = model(prompt)
         act = [self.text2act(logits)]
         result = Batch(act=act, state=state)
