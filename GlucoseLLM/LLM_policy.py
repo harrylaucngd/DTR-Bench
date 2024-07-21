@@ -227,34 +227,29 @@ class LLM_Policy(BasePolicy):
         insulin = obs[:, :, 1]
 
         descriptions = []
-        # todo: include time from batch.info, time shift is wrong for now
+        # todo:  check time shift
         for i in range(length):
             if glucose == -1:
                 continue
             if i == 0:
-                descriptions.append(f"Time: {time - (length - i - 1) * 5}, insulin: {insulin[0]};")
-            elif 0 < i < length-1:
-                descriptions.append(f"Time: {time - (length - i - 1) * 5}, glucose: {glucose[i]}, insulin: {insulin[i]};")
+                descriptions.append(f"Time:{time - length * 5},insulin:{insulin[0]}. ")
+            if i < length - 1:
+                descriptions.append(f"Time:{time - (length - i - 1) * 5},glucose:{glucose[i]},insulin:{insulin[i]+1}. ")
             else:
-                descriptions.append(f"Time: {time}, glucose: {glucose[i]}.")
-        return " ".join(descriptions)+" Please determine the current insulin dosage for this patient, giving a value in 0-0.5, without any explanation:"
+                descriptions.append("Please determine the current insulin dosage, giving a number in 0-0.5,"
+                                    " without anything else. ")
+                descriptions.append(f"Current time: {time},glucose:{glucose[i]}, insulin:")
+        return " ".join(descriptions)
     
     def text2act(self, logits):
-        numbers = re.findall(r'-?\d+\.?\d*', logits)
+        numbers = re.findall(r'-?\d+\.?\d*', logits)  # todo: make sure it select the correct number with 0.
         numbers = [float(num) for num in numbers]
-        
-        selected_number = None
-        for num in reversed(numbers):
-            if 0 <= num <= 0.5:
-                selected_number = num
-                break
-        
-        if selected_number is not None:
-            selected_number = max(0, min(0.5, selected_number))
-        else:
-            selected_number = random.uniform(0, 0.5)
-        
-        return selected_number
+
+        if len(numbers) == 0:
+            return self.action_space.sample()
+
+        # always select the first number
+        return np.clip(numbers[0], 0, 0.5)
     
     def forward(
             self,

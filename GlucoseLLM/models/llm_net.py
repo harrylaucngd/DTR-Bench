@@ -207,14 +207,15 @@ class LLM(torch.nn.Module):
         self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}").to(self.device)
     
     def forward(self, input_text):
-        messages = [{"role": "system", "content": self.system_prompt+input_text}]
+        messages = [{"role": "system", "content": self.system_prompt}]
+        messages.append({"role":"user", "content": input_text})
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
                                                             add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         
         with torch.no_grad():
             outputs = self.model.generate(
-                **inputs,
+                inputs.input_ids,
                 max_length=self.max_length,
                 do_sample=True,
                 top_k=50,

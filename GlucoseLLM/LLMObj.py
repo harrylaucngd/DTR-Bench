@@ -2,14 +2,14 @@ import torch
 import wandb
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLM_HyperParams
-from GlucoseLLM.models.llm_net import define_llm_network, define_llm
+from GlucoseLLM.models.llm_net import define_llm_network, LLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.utils.wandb import WandbLogger
 from DTRBench.utils.misc import set_global_seed
 
-universal_sys_prompt = ("You are a specialist assistant working with Type-1 Diabetic patients. Your primary goal is to"
+universal_sys_prompt = ("You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
                         " maintain a patient's blood glucose levels (the observation, received every 5 minutes) within"
                         " 70-140 mg/dL through the administration of insulin (the action). Insulin will reduce blood "
                         "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will"
@@ -25,9 +25,10 @@ sys_Q_prompt = universal_sys_prompt + ("Please generate the expected discounted 
 
 sys_act_exp_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action explanation
 
-sys_summary_prompt = ("You are a specialist assistant working with Type-1 Diabetic patients. Your primary goal is to"
-                        "summarize history conversations. You need to extract information such as glucose record trend, "
-                      "drug dosage history, abnormal signs. Please extract as much information as possible while keeping short.")  # expertised system prompt of background knowledge for regulation summary
+sys_summary_prompt = ("You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
+                        "summarize history glucose record and drug usage. You need to extract information such as"
+                      " glucose record trend, drug dosage history, abnormal glucose signs and possible misuse of insulin."
+                      " Please extract as much information as possible while keeping the answer short.")  # expertised system prompt of background knowledge for regulation summary
 
 sys_llm_only_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action decision
 
@@ -73,8 +74,8 @@ class LLM_Objective(RLObjective):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
     def define_policy(self, llm_mode, **kwargs):
-        net = define_llm(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
-                         device=self.device, system_prompt=sys_llm_only_prompt)
+        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
+                  device=self.device, system_prompt=sys_llm_only_prompt).to(self.device)
         return LLM_Policy(
             net,
             action_space=self.action_space,

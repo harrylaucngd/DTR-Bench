@@ -27,11 +27,8 @@ def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
 
 offpolicyLOOKUP = {
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
-    # "ddqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
-    # "sac": {"hparam": SACHyperParams, "policy": SACPolicy, "obj": SACObjective, "type": "continuous"},
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
     "llm-dqn": {"hparam": LLM_DQN_HyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
-    # "llm-ddqn": {"hparam": LLM_DQN_HyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
     "llm": {"hparam": LLM_HyperParams, "policy": LLM_Policy, "obj": LLM_Objective, "type": "continuous"},
 }
 
