@@ -12,8 +12,8 @@ from tianshou.trainer import OffpolicyTrainer, OnpolicyTrainer
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
-from DTRBench.utils.network import define_llm_network, define_single_network, Critic, define_continuous_critic
-from tianshou.utils.net.continuous import Actor, ActorProb
+from DTRBench.utils.network import define_llm_network, define_single_network, Critic, define_continuous_critic, Actor
+from tianshou.utils.net.continuous import ActorProb
 from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
@@ -372,7 +372,7 @@ class TD3Objective(RLObjective):
         net_a = define_single_network(self.state_shape, 128,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False, )
-        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
+        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device, final_activation=None,
                       preprocess_net_output_dim=128).to(self.device)
 
         # # init actor with orthogonal initialization and zeros bias
@@ -505,12 +505,12 @@ class PPOObjective(RLObjective):
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
-        torch.nn.init.constant_(actor.sigma_param, -0.5)
-        for m in actor_critic.modules():
-            if isinstance(m, torch.nn.Linear):
-                # orthogonal initialization
-                torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-                torch.nn.init.zeros_(m.bias)
+        # torch.nn.init.constant_(actor.sigma_param, -0.5)
+        # for m in actor_critic.modules():
+        #     if isinstance(m, torch.nn.Linear):
+        #         # orthogonal initialization
+        #         torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+        #         torch.nn.init.zeros_(m.bias)
         # do last policy layer scaling, this will make initial actions have (close to)
         # 0 mean and std, and will help boost performances,
         # see https://arxiv.org/abs/2006.05990, Fig.24 for details

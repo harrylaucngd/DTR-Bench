@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from GlucoseLLM.models import GlucoseLLM
 from tianshou.utils.net.common import ActorCritic, MLP
+from tianshou.utils.net.continuous import Actor as tianshouActor
 from typing import Union, List, Tuple, Optional, Callable, Sequence, Dict, Any
 from typing import (
     Any,
@@ -402,6 +403,66 @@ class Recurrent(nn.Module):
 #         action = self.activation(obs)
 #         action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
 #         return action, state
+
+class Actor(tianshouActor):
+    """Simple actor network.
+
+    It will create an actor operated in continuous action space with structure of preprocess_net ---> action_shape.
+
+    :param preprocess_net: a self-defined preprocess_net which output a
+        flattened hidden state.
+    :param action_shape: a sequence of int for the shape of action.
+    :param hidden_sizes: a sequence of int for constructing the MLP after
+        preprocess_net. Default to empty sequence (where the MLP now contains
+        only a single linear layer).
+    :param max_action: the scale for the final action logits. Default to
+        1.
+    :param preprocess_net_output_dim: the output dimension of
+        preprocess_net.
+
+    For advanced usage (how to customize the network), please refer to
+    :ref:`build_the_network`.
+
+    .. seealso::
+
+        Please refer to :class:`~tianshou.utils.net.common.Net` as an instance
+        of how preprocess_net is suggested to be defined.
+    """
+
+    def __init__(
+            self,
+            preprocess_net: nn.Module,
+            action_shape,
+            hidden_sizes: Sequence[int] = (),
+            max_action: float = 1.0,
+            device: str | int | torch.device = "cpu",
+            preprocess_net_output_dim: int | None = None,
+            final_activation: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+            last_layer_init_scale: float = 1.
+    ) -> None:
+        super().__init__(preprocess_net, action_shape, hidden_sizes, max_action, device, preprocess_net_output_dim)
+        self.activation = final_activation
+        self.last_layer_init_scale = last_layer_init_scale
+
+        # last layer init rescale
+        torch.nn.init.zeros_(self.last.bias)
+        self.last.weight.data.copy_(self.last_layer_init_scale * self.last.weight.data)
+
+    def forward(
+            self,
+            obs: np.ndarray | torch.Tensor,
+            state: Any = None,
+            info: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, Any]:
+        """Mapping: obs -> logits -> action."""
+        if info is None:
+            info = {}
+        logits, hidden = self.preprocess(obs, state)
+        logits = self.last(logits)
+        if self.activation is not None:
+            logits = self.activation(logits)
+        logits = self.max_action * logits
+        return logits, hidden
 
 
 class Critic(nn.Module):
