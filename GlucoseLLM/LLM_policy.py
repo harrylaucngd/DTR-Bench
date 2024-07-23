@@ -18,7 +18,8 @@ from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 
 from GlucoseLLM.models.llm_net import LLMNet
 
-from GlucoseLLM.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, summary_reprogramming
+from GlucoseLLM.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, \
+    summary_reprogramming
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -27,22 +28,22 @@ class LLM_DQN_Policy(DQNPolicy):
     """
 
     def __init__(
-        self,
-        model: LLMNet,
-        optim: torch.optim.Optimizer,
-        discount_factor: float = 0.99,
-        estimation_step: int = 1,
-        target_update_freq: int = 0,
-        reward_normalization: bool = False,
-        is_double: bool = True,
-        clip_loss_grad: bool = False,
-        action_space: gym.spaces.Discrete | None = None,
-        observation_space: gym.Space | None = None,
-        lr_scheduler: TLearningRateScheduler | None = None,
-        need_obs_explain=True,
-        need_act_explain=True,
-        need_summary=True,
-        exp_freq=0,
+            self,
+            model: LLMNet,
+            optim: torch.optim.Optimizer,
+            discount_factor: float = 0.99,
+            estimation_step: int = 1,
+            target_update_freq: int = 0,
+            reward_normalization: bool = False,
+            is_double: bool = True,
+            clip_loss_grad: bool = False,
+            action_space: gym.spaces.Discrete | None = None,
+            observation_space: gym.Space | None = None,
+            lr_scheduler: TLearningRateScheduler | None = None,
+            need_obs_explain=True,
+            need_act_explain=True,
+            need_summary=True,
+            exp_freq=0,
     ) -> None:
         BasePolicy.__init__(
             self,
@@ -56,11 +57,11 @@ class LLM_DQN_Policy(DQNPolicy):
         self.optim = optim
         self.eps = 0.0
         assert (
-            0.0 <= discount_factor <= 1.0
+                0.0 <= discount_factor <= 1.0
         ), f"discount factor should be in [0, 1] but got: {discount_factor}"
         self.gamma = discount_factor
         assert (
-            estimation_step > 0
+                estimation_step > 0
         ), f"estimation_step should be greater than 0 but got: {estimation_step}"
         self.n_step = estimation_step
         self._target = target_update_freq > 0
@@ -74,6 +75,22 @@ class LLM_DQN_Policy(DQNPolicy):
         self.need_summary = need_summary
         self.exp_freq = exp_freq
         self.state = {}
+
+    def _target_q(self, buffer, indices) -> torch.Tensor:
+        obs_next_batch = Batch(
+            obs=buffer[indices].obs_next,
+            info=buffer[indices].info,
+        )  # obs_next: s_{t+n}
+        result = self(obs_next_batch)
+        if self._target:
+            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
+            target_q = self(obs_next_batch, model="model_old").logits
+        else:
+            target_q = result.logits
+        if self.is_double:
+            return target_q[np.arange(len(result.act)), result.act]
+        # Nature DQN, over estimate
+        return target_q.max(dim=1)[0]
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
@@ -169,7 +186,8 @@ class LLM_DQN_Policy(DQNPolicy):
         # Q value prediction
         series, conversation = [], []
         for i in range(batch_size):
-            ser, con = q_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"], states[i]["act_exp"])
+            ser, con = q_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"],
+                                              states[i]["act_exp"])
             series.append(ser)
             conversation.append(con)
         series = torch.stack(series)
@@ -196,7 +214,8 @@ class LLM_DQN_Policy(DQNPolicy):
 
         if not _is_learn:
             self.insert_state(curr_states, epi_ids, steps)
-        result = Batch(logits=logits, act=act, state=state);print(step)
+        result = Batch(logits=logits, act=act, state=state);
+        print(step)
         return cast(ModelOutputBatchProtocol, result)
 
 
@@ -206,10 +225,10 @@ class LLM_Policy(BasePolicy):
     """
 
     def __init__(
-        self,
-        model: torch.nn.Module,
-        action_space: gym.Space,
-        observation_space: gym.Space | None = None,
+            self,
+            model: torch.nn.Module,
+            action_space: gym.Space,
+            observation_space: gym.Space | None = None,
     ) -> None:
         super().__init__(
             action_space=action_space,
@@ -234,13 +253,14 @@ class LLM_Policy(BasePolicy):
             if i == 0:
                 descriptions.append(f"Time:{time - length * 5},insulin:{insulin[0]}. ")
             if i < length - 1:
-                descriptions.append(f"Time:{time - (length - i - 1) * 5},glucose:{glucose[i]},insulin:{insulin[i]+1}. ")
+                descriptions.append(
+                    f"Time:{time - (length - i - 1) * 5},glucose:{glucose[i]},insulin:{insulin[i] + 1}. ")
             else:
                 descriptions.append("Please determine the current insulin dosage, giving a number in 0-0.5,"
                                     " without anything else. ")
                 descriptions.append(f"Current time: {time},glucose:{glucose[i]}, insulin:")
         return " ".join(descriptions)
-    
+
     def text2act(self, logits):
         numbers = re.findall(r'-?\d+\.?\d*', logits)  # todo: make sure it select the correct number with 0.
         numbers = [float(num) for num in numbers]
@@ -250,7 +270,7 @@ class LLM_Policy(BasePolicy):
 
         # always select the first number
         return np.clip(numbers[0], 0, 0.5)
-    
+
     def forward(
             self,
             batch: ObsBatchProtocol,
@@ -266,6 +286,6 @@ class LLM_Policy(BasePolicy):
         act = [self.text2act(logits)]
         result = Batch(act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
-    
+
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
         raise NotImplementedError("LLM_Policy does not support learning.")

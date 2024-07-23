@@ -70,7 +70,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     }
 
 
-class LLM_HyperParams(OffPolicyRLHyperParameterSpace):
+class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("llm", )
     _general_hparams = {
         # general parameters
