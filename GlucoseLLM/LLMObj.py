@@ -1,7 +1,7 @@
 import torch
 import wandb
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
-from GlucoseLLM.LLM_hparams import LLM_HyperParams
+from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
 from GlucoseLLM.models.llm_net import define_llm_network, LLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective
@@ -70,7 +70,7 @@ class LLM_DQN_Objective(DQNObjective):
 
 
 class LLM_Objective(RLObjective):
-    def __init__(self, env_name, env_args, hparam_space: LLM_HyperParams, device, **kwargs):
+    def __init__(self, env_name, env_args, hparam_space: LLMInference_HyperParams, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
     def define_policy(self, llm_mode, **kwargs):

@@ -1,6 +1,6 @@
-
 from DTRBench.src.base_hparams import common_hparams
 import numpy as np
+
 
 
 class OffPolicyRLHyperParameterSpace:
@@ -84,10 +84,12 @@ class OffPolicyRLHyperParameterSpace:
         space = {}
         for k, v in search_space.items():
             if isinstance(v, (int, float, bool, str, dict, list, tuple)):
-                if not hasattr(v, "__len__") or len(v) == 1:
+                if not hasattr(v, "__len__") or len(v) == 1 or isinstance(v, dict):
                     space[k] = {"value": v}
                 else:
                     space[k] = {"values": v}
+            elif v is None:
+                space[k] = {"value": v}
             else:
                 raise NotImplementedError(f"unsupported type {type(v)} for hyperparameter {k}")
         return space
@@ -154,7 +156,7 @@ class OffPolicyRLHyperParameterSpace:
 
 
 class DQNHyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("dqn", "ddqn")
+    _supported_algos = ("dqn",)
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
         "n_step": common_hparams["n_step"],
@@ -171,13 +173,12 @@ class TD3HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("td3",)
     _policy_hparams = {
         # "actor_lr": common_hparams["lr"],  # manually set to 0.1*critic_lr
-
         "critic_lr": common_hparams["lr"],
         "n_step": common_hparams["n_step"],
         "exploration_noise": common_hparams["exploration_noise"],
         "tau": common_hparams["tau"],
         "start_timesteps": common_hparams["start_timesteps"],
         "update_actor_freq": common_hparams["update_actor_freq"],
-        "policy_noise": 0.05,  # todo: TBD
-        "noise_clip": 0.1,
+        "policy_noise": 0.025,
+        "noise_clip": 0.05,
     }
