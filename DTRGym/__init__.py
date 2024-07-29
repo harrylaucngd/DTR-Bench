@@ -18,6 +18,7 @@ from .ghaffari_cancer_env import create_GhaffariCancerEnv_discrete, create_Ghaff
     create_GhaffariCancerEnv_discrete_setting5, create_GhaffariCancerEnv_continuous_setting1, \
     create_GhaffariCancerEnv_continuous_setting2, create_GhaffariCancerEnv_continuous_setting3, \
     create_GhaffariCancerEnv_continuous_setting4, create_GhaffariCancerEnv_continuous_setting5
+from .glucoenv.T1DEnv import create_GluCoEnv_adult1
 import os
 import importlib
 from pathlib import Path
@@ -65,11 +66,13 @@ registered_ids = ["AhnChemoEnv-continuous",
                   "SimGlucoseEnv-all4",
                   "SimGlucoseEnv-adult1",
                   "SimGlucoseEnv-adult4",
-                  "SimGlucoseEnv-single-patient",]
+                  "SimGlucoseEnv-single-patient",
+                  "GluCoEnv-adult1",]
 
 envs = ["AhnChemoEnv",
         "GhaffariCancerEnv",
         "SimGlucoseEnv",
+        "GluCoEnv",
         "OberstSepsisEnv",
         "MIMIC3SepsisEnv",  # offline placeholder
         "MIMIC3SepsisEnvSyn",  # GAN based simulation
