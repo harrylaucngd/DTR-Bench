@@ -1,4 +1,5 @@
 from typing import Any, Literal, cast
+from datetime import timedelta
 
 import re
 import random
@@ -84,7 +85,8 @@ class LLM_DQN_Policy(DQNPolicy):
         result = self(obs_next_batch)
         if self._target:
             # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
-            target_q = self(obs_next_batch, model="model_old").logits
+            self.model.active_branch = "model_old"
+            target_q = self(obs_next_batch, model="model", input="obs_next").logits
         else:
             target_q = result.logits
         if self.is_double:
@@ -94,8 +96,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
-        attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection",
-                      "normalized_layer"]
+        attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection"]
         for attr in attributes:
             old_attr = f"{attr}_old"
             old_attr_obj = getattr(self.model, old_attr)
@@ -120,12 +121,13 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def is_learn(self, epi_ids, steps):
         """Check if the current forward is in the learning process."""
-        for ep, st in zip(epi_ids, steps):
+        '''for ep, st in zip(epi_ids, steps):
             if ep not in self.state:
                 return False
             if st not in self.state[ep]:
                 return False
-        return True
+        return True'''
+        is_learn = True if len(epi_ids)>1 else False;return is_learn
 
     def insert_state(self, curr_states, epi_ids, steps):
         """Insert current states to self.state if not in learning process."""
@@ -136,6 +138,30 @@ class LLM_DQN_Policy(DQNPolicy):
             else:
                 assert st == len(self.state[ep]), "Step should be the next step"
             self.state[ep][st] = curr_state
+
+    def left_padding(self, series, seq_len=48):
+        """
+        Pad a list of 2D tensors to a target length with left alignment.
+        
+        Args:
+        series (list of torch.Tensor): List of 2D tensors of shape (n_i, 1) to be padded.
+        seq_len (int): The length to pad the tensors to.
+        
+        Returns:
+        torch.Tensor: A 3D tensor of shape (k, seq_len, 1) with padded tensors.
+        """
+        padded_tensors = []
+        
+        for tensor in series:
+            current_length = tensor.size(0)
+            if current_length < seq_len:
+                padding = torch.zeros(seq_len - current_length, 1)
+                padded_tensor = torch.cat((tensor, padding), dim=0)
+            else:
+                padded_tensor = tensor[:seq_len, :]
+            padded_tensors.append(padded_tensor)
+    
+        return torch.stack(padded_tensors)
 
     def forward(
             self,
@@ -190,7 +216,7 @@ class LLM_DQN_Policy(DQNPolicy):
                                               states[i]["act_exp"])
             series.append(ser)
             conversation.append(con)
-        series = torch.stack(series)
+        series = self.left_padding(series, seq_len=48)
         logits = model.q_pred(series, conversation, summ, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
@@ -214,8 +240,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         if not _is_learn:
             self.insert_state(curr_states, epi_ids, steps)
-        result = Batch(logits=logits, act=act, state=state);
-        print(step)
+        result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
 
 
@@ -241,24 +266,27 @@ class LLM_Policy(BasePolicy):
     def obs2text(self, batch):
         obs = batch.obs
         length = obs.shape[1]
-        time = batch.info["time"]
-        glucose = obs[:, :, 0]
-        insulin = obs[:, :, 1]
+        time = batch.info["time"][0]
+        glucose = obs[:, :, 0][0]
+        insulin = obs[:, :, 1][0]
+
+        def adjust_time(datetime_input, min):
+            adjusted_time = datetime_input + timedelta(minutes=min)
+            return adjusted_time.strftime("%Y-%m-%d %H:%M:%S")
 
         descriptions = []
         # todo:  check time shift
         for i in range(length):
-            if glucose == -1:
+            if glucose[i] == -1:
                 continue
             if i == 0:
-                descriptions.append(f"Time:{time - length * 5},insulin:{insulin[0]}. ")
+                descriptions.append(f"Time:{adjust_time(time, -(length-1)*5)},insulin:{insulin[0]}. ")
             if i < length - 1:
-                descriptions.append(
-                    f"Time:{time - (length - i - 1) * 5},glucose:{glucose[i]},insulin:{insulin[i] + 1}. ")
+                descriptions.append(f"Time:{adjust_time(time, -(length-i-1)*5)},glucose:{glucose[i]},insulin:{insulin[i]+1}. ")
             else:
                 descriptions.append("Please determine the current insulin dosage, giving a number in 0-0.5,"
                                     " without anything else. ")
-                descriptions.append(f"Current time: {time},glucose:{glucose[i]}, insulin:")
+                descriptions.append(f"Current time: {adjust_time(time, 0)},glucose:{glucose[i]}, insulin:")
         return " ".join(descriptions)
 
     def text2act(self, logits):

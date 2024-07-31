@@ -24,8 +24,9 @@ Sequence[Dict[Any, Any]]]
 llm_context_window = {
     "internlm2_5-7b-chat": 32768,
     "Phi-3-small-128k-instruct": 131072,
-    "Yi-1.5-9b-Chat": 4096,
+    "Yi-1.5-9B-Chat": 4096,
     "Qwen2-1.5B-Instruct": 32768,
+    "Qwen2-0.5B-Instruct": 32768,
 }
 
 
@@ -47,7 +48,7 @@ class LLMNet(GlucoseLLM.Model):
             for dim in action_shape:
                 self.num_actions *= dim
         configs.pred_len = self.num_actions
-        configs.seq_len = state_shape  # TODO: need padding
+        configs.seq_len = 48  # TODO: need padding
         super().__init__(configs, need_llm=need_llm)
         self.configs = configs
         self.llm = self.configs.llm
@@ -203,8 +204,8 @@ class LLM(torch.nn.Module):
         self.device = device
         self.system_prompt = system_prompt
         
-        self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}")
-        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}").to(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
     
     def forward(self, input_text):
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -217,9 +218,7 @@ class LLM(torch.nn.Module):
             outputs = self.model.generate(
                 inputs.input_ids,
                 max_length=self.max_length,
-                do_sample=True,
-                top_k=50,
-                top_p=0.95,
+                do_sample=False,
                 temperature=1
             )
         

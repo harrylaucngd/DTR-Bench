@@ -13,15 +13,17 @@ transformers.logging.set_verbosity_error()
 model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
-    "Yi-1.5-9b-Chat": "01-ai/Yi-1.5-9b-Chat",
+    "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
+    "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
 }
 
 llm_context_window = {
     "internlm2_5-7b-chat": 32768,
     "Phi-3-small-128k-instruct": 131072,
-    "Yi-1.5-9b-Chat": 4096,
+    "Yi-1.5-9B-Chat": 4096,
     "Qwen2-1.5B-Instruct": 32768,
+    "Qwen2-0.5B-Instruct": 32768,
 }
 
 

@@ -6,7 +6,7 @@ from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
 1. internlm/internlm2_5-7b-chat
 2. microsoft/Phi-3-small-128k-instruct
-3. 01-ai/Yi-1.5-9b-Chat
+3. 01-ai/Yi-1.5-9B-Chat
 Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
 1. Qwen/Qwen2-1.5B-Instruct
 '''
@@ -14,7 +14,7 @@ Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
 
 class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     # "internlm2_5-7b-chat", "Phi-3-small-128k-instruct",
-    # "Yi-1.5-9b-Chat", "Qwen2-1.5B-Instruct"
+    # "Yi-1.5-9B-Chat", "Qwen2-1.5B-Instruct"
     # "llama-2-13b", "llama-13b",
     # "llama-3-8b", "llama-2-7b", "llama-7b",
     # "gpt2"
@@ -22,7 +22,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
-        "batch_size": common_hparams["batch_size"],
+        "batch_size": 4,#common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -41,26 +41,10 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
 
         # llm hparam
         "llm_mode": [
+        {"llm": "Qwen2-0.5B-Instruct",
+                   "token_dim": 896},
         {"llm": "Qwen2-1.5B-Instruct",
-                   "token_dim": 1536},
-        {"llm": "internlm2_5-7b-chat",
-                   "token_dim": 4096},
-        {"llm": "Phi-3-small-128k-instruct",
-                   "token_dim": 4096},
-        {"llm": "Yi-1.5-9b-Chat",
-                   "token_dim": 4096},
-        '''{"llm": "llama-2-13b",
-                   "token_dim": 5120},
-        {"llm": "llama-13b",
-                   "token_dim": 5120},
-        {"llm": "llama-3-8b",
-                   "token_dim": 4096},
-        {"llm": "llama-2-7b",
-                   "token_dim": 4096},
-        {"llm": "llama-7b",
-                   "token_dim": 4096},
-        {"llm": "gpt2",
-                   "token_dim": 768}'''],
+                   "token_dim": 1536},],
 
         # prompt hparam
         "need_obs_explain": [True, False],
@@ -74,7 +58,7 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("llm", )
     _general_hparams = {
         # general parameters
-        "seed": common_hparams["seed"],
+        "seed": 2732,
     }
     # policy hyperparameter search space
     _policy_hparams = {
@@ -85,18 +69,6 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
                    "context_window": 32768},
         {"llm": "Phi-3-small-128k-instruct",
                    "context_window": 131072},
-        {"llm": "Yi-1.5-9b-Chat",
-                   "context_window": 4096},
-        '''{"llm": "llama-2-13b",
-                   "context_window": 4096},
-        {"llm": "llama-13b",
-                   "context_window": 4096},
-        {"llm": "llama-3-8b",
-                   "context_window": 4096},
-        {"llm": "llama-2-7b",
-                   "context_window": 4096},
-        {"llm": "llama-7b",
-                   "context_window": 4096},
-        {"llm": "gpt2",
-                   "context_window": 768}'''],
+        {"llm": "Yi-1.5-9B-Chat",
+                   "context_window": 4096},],
     }
