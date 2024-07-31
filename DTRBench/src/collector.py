@@ -23,7 +23,7 @@ import copy
 
 
 def get_env_result(data: Batch) -> dict[str, Any]:
-    bg = data.obs[:, 0] * 100
+    bg = data.obs[:, 0]
     bg_normal = np.logical_and(70 < bg, 180 > bg).mean()
     bg_hypo = (bg < 70).mean()
     bg_hyper = (bg > 180).mean()

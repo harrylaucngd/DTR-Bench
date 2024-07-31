@@ -38,11 +38,13 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # #     reward = 100
     # else:
 
-    if 70 < bg_next < 140:
-        risk_reward = 1
+    X_MAX, X_MIN = 0, -100
+    r = -risk_index([bg_next], 1)[-1]
+    rew = ((r - X_MIN) / (X_MAX - X_MIN))
+    if bg_next < 40:
+        risk_reward = -15
     else:
-        _, _, risk = risk_index([bg_next], 1)
-        risk_reward = -0.05 * risk
+        risk_reward = rew
 
     # delta_bg = bg_next - bg_current
     # if delta_bg < 30:
@@ -52,7 +54,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # else:
     #     delta_reward = -1
 
-    insulin_penalty = - (insulin * 5)**2
+    insulin_penalty = 0
 
     # reward = risk_reward + delta_reward + insulin_penalty
     reward = risk_reward + insulin_penalty
@@ -171,7 +173,6 @@ class SinglePatientEnv(gymnasium.Env):
 
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
-        bg[-len(self.bg_history):] = np.array(self.bg_history) * 0.01 # scale bg to [0, 6]
         bg[bg == 0] = -1
         act[-len(self.drug_history):] = self.drug_history
         obs = np.stack([bg, act], axis=1)
@@ -197,7 +198,8 @@ class SinglePatientEnv(gymnasium.Env):
         if self.t >= self.max_t:
             self.terminated = False
             self.truncated = True
-        if not (10 < bg_next < 600):  # we define the lower bound of bg to be 54 since <54 is severe hypoglycemia
+
+        if not (40 < bg_next < 600):  # we define the lower bound of bg to be 54 since <54 is severe hypoglycemia
             self.terminated = True
             self.truncated = False
 
@@ -216,7 +218,6 @@ class SinglePatientEnv(gymnasium.Env):
         # get rnn style obs
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
-        bg[-len(self.bg_history):] = np.array(self.bg_history[-self.obs_window:]) * 0.01  # scale bg to [0, 6]
         bg[bg == 0] = -1
         act[-len(self.drug_history):] = self.drug_history[-self.obs_window:]
         obs = np.stack([bg, act], axis=1)
@@ -405,7 +406,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=48, **kwargs):
     env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
-                           random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
+                           random_obs=True, random_meal=False, start_time=5 * 60, obs_window=obs_window,
                            missing_rate=0.0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)

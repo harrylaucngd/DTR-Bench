@@ -25,7 +25,7 @@ common_hparams = {
     "start_timesteps": 0,
     "gamma": 0.999,
     "tau": 0.005,
-    "exploration_noise": 0.05,
+    "exploration_noise": 0.1,
 
     # epsilon-greedy exploration
     "eps_train": 0.1,

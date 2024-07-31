@@ -372,7 +372,8 @@ class TD3Objective(RLObjective):
         net_a = define_single_network(self.state_shape, 128,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False, )
-        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device, final_activation=None,
+        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
+                      final_activation=nn.Tanh(),
                       preprocess_net_output_dim=128).to(self.device)
 
         # # init actor with orthogonal initialization and zeros bias

@@ -445,8 +445,9 @@ class Actor(tianshouActor):
         self.last_layer_init_scale = last_layer_init_scale
 
         # last layer init rescale
-        torch.nn.init.zeros_(self.last.bias)
-        self.last.weight.data.copy_(self.last_layer_init_scale * self.last.weight.data)
+        if self.last_layer_init_scale != 1.:
+            # todo: should fix this
+            self.last.weight.data.copy_(self.last_layer_init_scale * self.last.weight.data)
 
     def forward(
             self,

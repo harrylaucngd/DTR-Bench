@@ -47,7 +47,7 @@ class RLObjective:
 
     def wandb_search(self):
         # init wandb to get hparams
-        self.logger = WandbLogger(train_interval=24 * 15)
+        self.logger = WandbLogger(train_interval=10, update_interval=100)
         hparams = wandb.config
         # get names
         hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"

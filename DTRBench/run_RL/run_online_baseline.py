@@ -59,7 +59,7 @@ class BaselineObj(RLObjective):
         )
 
     def wandb_search(self):
-        self.logger = WandbLogger(train_interval=24 * 15)
+        self.logger = WandbLogger(train_interval=10)
         self.env_name = wandb.config["env_name"]
         self.meta_param["training_num"] = 1
         self.meta_param["num_actions"] = None
