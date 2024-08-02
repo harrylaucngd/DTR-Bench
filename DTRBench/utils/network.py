@@ -438,16 +438,19 @@ class Actor(tianshouActor):
             device: str | int | torch.device = "cpu",
             preprocess_net_output_dim: int | None = None,
             final_activation: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-            last_layer_init_scale: float = 1.
+            last_layer_init: Optional[float] = None
     ) -> None:
         super().__init__(preprocess_net, action_shape, hidden_sizes, max_action, device, preprocess_net_output_dim)
         self.activation = final_activation
-        self.last_layer_init_scale = last_layer_init_scale
+        self.last_layer_init_scale = last_layer_init
 
         # last layer init rescale
-        if self.last_layer_init_scale != 1.:
+        if self.last_layer_init_scale is not None:
             # todo: should fix this
-            self.last.weight.data.copy_(self.last_layer_init_scale * self.last.weight.data)
+            for m in self.last.modules():
+                if isinstance(m, torch.nn.Linear):
+                    # torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                    nn.init.constant_(m.bias, self.last_layer_init_scale)
 
     def forward(
             self,
@@ -509,7 +512,7 @@ class Critic(nn.Module):
         return value
 
 
-def define_single_network(input_shape: int, output_shape: int, hidden_size=256, num_layer=4,
+def define_single_network(input_shape: int, output_shape: int, hidden_size=128, num_layer=2,
                           use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
                           device="cuda" if torch.cuda.is_available() else "cpu"
                           ):
@@ -543,10 +546,10 @@ def define_single_network(input_shape: int, output_shape: int, hidden_size=256, 
 
 
 def define_continuous_critic(state_shape: int, action_shape,
-                             state_net_n_layer=2,
-                             state_net_hidden_size=128,
+                             state_net_n_layer=1,
+                             state_net_hidden_size=64,
                              action_net_n_layer=1,
-                             action_net_hidden_size=128,
+                             action_net_hidden_size=64,
                              fuse_net_n_layer=1,
                              linear=False,
                              use_rnn=False,

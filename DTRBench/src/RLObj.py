@@ -372,7 +372,8 @@ class TD3Objective(RLObjective):
         net_a = define_single_network(self.state_shape, 128,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False, )
-        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
+        actor = Actor(net_a, action_shape=self.action_shape, device=self.device,
+                      # last_layer_init=-10,
                       final_activation=nn.Tanh(),
                       preprocess_net_output_dim=128).to(self.device)
 
@@ -411,8 +412,6 @@ class TD3Objective(RLObjective):
             noise_clip=noise_clip,
             estimation_step=n_step,
             action_space=self.action_space,
-            action_scaling=True,
-            action_bound_method='clip',
         )
         return policy
 
@@ -447,8 +446,6 @@ class TD3Objective(RLObjective):
         if start_timesteps > 0:
             # todo: collect with random
             train_collector.collect(n_step=start_timesteps, random=True)
-
-        train_collector.collect(n_step=1000, random=True)
 
         # def train_fn(epoch, env_step):
         #     # nature DQN setting, linear decay in the first 10k steps

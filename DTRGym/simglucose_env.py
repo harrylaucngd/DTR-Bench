@@ -174,6 +174,7 @@ class SinglePatientEnv(gymnasium.Env):
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
         bg[bg == 0] = -1
+        bg[-len(self.bg_history):] = self.bg_history
         act[-len(self.drug_history):] = self.drug_history
         obs = np.stack([bg, act], axis=1)
         return obs, all_info
@@ -219,6 +220,7 @@ class SinglePatientEnv(gymnasium.Env):
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
         bg[bg == 0] = -1
+        bg[-len(self.bg_history):] = self.bg_history[-self.obs_window:]
         act[-len(self.drug_history):] = self.drug_history[-self.obs_window:]
         obs = np.stack([bg, act], axis=1)
         return obs, float(reward), self.terminated, self.truncated, all_info
@@ -404,7 +406,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
     return env
 
 
-def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=48, **kwargs):
+def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
                            random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
                            missing_rate=0.0)
