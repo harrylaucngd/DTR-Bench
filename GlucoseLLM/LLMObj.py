@@ -1,10 +1,11 @@
 import torch
 import wandb
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.models.llm_net import define_llm_network, LLM
+from GlucoseLLM.models.llm_net import define_llm_dqn, define_llm_ppo, LLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.src.RLObj import DQNObjective
+from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
+from DTRBench.src.RLObj import DQNObjective, PPOObjective
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.utils.wandb import WandbLogger
 from DTRBench.utils.misc import set_global_seed
@@ -15,20 +16,16 @@ universal_sys_prompt = ("You are a clinical specialist working with Type-1 Diabe
                         "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will"
                         "be penalized for blood glucose <70 or >140, and high insulin doses. Notably, low blood glucose"
                         "levels are much more dangerous. You should take caution to avoid overdosing insulin, thus"
-                        "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units/hour, ranging from 0 to 0.5.")
-
-sys_obs_exp_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for observation explanation
+                        "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units/hour, ranging from 0 to 0.5. ")
 
 sys_Q_prompt = universal_sys_prompt + ("Please generate the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
                 "the following insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25,"
-                " 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]")  # expertised system prompt for series information description and Q value prediction
-
-sys_act_exp_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action explanation
+                " 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")  # expertised system prompt for series information description and Q value prediction
 
 sys_summary_prompt = ("You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
                         "summarize history glucose record and drug usage. You need to extract information such as"
                       " glucose record trend, drug dosage history, abnormal glucose signs and possible misuse of insulin."
-                      " Please extract as much information as possible while keeping the answer short.")  # expertised system prompt of background knowledge for regulation summary
+                      " Please extract as much information as possible while keeping the answer short. ")  # expertised system prompt of background knowledge for regulation summary
 
 sys_llm_only_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action decision
 
@@ -43,13 +40,13 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step, target_update_freq, is_double,
                       # llm prompt
-                      llm_mode, need_obs_explain, need_act_explain, need_summary, exp_freq,
+                      llm_mode, need_summary, sum_prob,
                       *args, **kwargs
                       ):
         # define model
-        net = define_llm_network(self.state_shape, self.action_shape,
+        net = define_llm_dqn(self.state_shape, self.action_shape,
                                  device=self.device, llm=llm_mode["llm"], token_dim=llm_mode["token_dim"],
-                                 obs_exp_prompt=sys_obs_exp_prompt, Q_prompt=sys_Q_prompt, act_exp_prompt=sys_act_exp_prompt, summary_prompt=sys_summary_prompt)
+                                 Q_prompt=sys_Q_prompt, summary_prompt=sys_summary_prompt)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
@@ -61,12 +58,14 @@ class LLM_DQN_Objective(DQNObjective):
             is_double=is_double,
             action_space=self.action_space,
             observation_space=self.state_space,
-            need_obs_explain=need_obs_explain,
-            need_act_explain=need_act_explain,
             need_summary=need_summary,
-            exp_freq=exp_freq,
+            sum_prob=sum_prob,
         )
         return policy
+
+
+class LLM_PPO_Objective(PPOObjective):
+    pass
 
 
 class LLM_Objective(RLObjective):

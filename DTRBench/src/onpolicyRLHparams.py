@@ -34,7 +34,7 @@ class OnPolicyRLHyperParameterSpace(OffPolicyRLHyperParameterSpace):
     _supported_algos = ()
 
 
-class PPOHyperParameterSpace(OnPolicyRLHyperParameterSpace):
+class PPOHyperParams(OnPolicyRLHyperParameterSpace):
     _supported_algos = ("ppo",)
     _policy_hparams = {"gae_lambda": 0.95,
                        "vf_coef": 0.5,

@@ -3,15 +3,11 @@ from GlucoseLLM.models import GlucoseLLM
 from GlucoseLLM.prompt_pipeline import Conversation
 from typing import (
     Any,
-    Callable,
     Dict,
-    List,
-    Optional,
     Sequence,
     Tuple,
     Type,
     Union,
-    no_type_check,
 )
 import torch
 from torch import nn
@@ -30,7 +26,7 @@ llm_context_window = {
 }
 
 
-class LLMNet(GlucoseLLM.Model):
+class LLMDQN(GlucoseLLM.Model):
     def __init__(
             self,
             configs: argparse.Namespace,
@@ -39,7 +35,7 @@ class LLMNet(GlucoseLLM.Model):
             device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
             need_llm: bool = False,
             # prompt options
-            summary_prompt=False, obs_exp_prompt=False, Q_prompt=False, act_exp_prompt=False,
+            summary_prompt=False, Q_prompt=False, 
     ) -> None:
         if isinstance(action_shape, int):
             self.num_actions = action_shape
@@ -48,41 +44,39 @@ class LLMNet(GlucoseLLM.Model):
             for dim in action_shape:
                 self.num_actions *= dim
         configs.pred_len = self.num_actions
-        configs.seq_len = 48  # TODO: need padding
+        configs.seq_len = 96
         super().__init__(configs, need_llm=need_llm)
         self.configs = configs
         self.llm = self.configs.llm
         self.input_shape = state_shape
         self.output_shape = action_shape
         self.device = device
-
         self.summary_prompt = summary_prompt
-        self.obs_exp_prompt = obs_exp_prompt
         self.Q_prompt = Q_prompt
-        self.act_exp_prompt = act_exp_prompt
 
-    def forward_Q(self, series, prompt):
+    def forward_Q(self, series, prompts):
         # Inference the whole network
-        dec_out = self.forecast(series, prompt)
+        dec_out = self.forecast(series, prompts)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
-    def forward_text(self, prompt, max_length=128):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.llm_model.device)
+    def forward_text(self, prompts, max_length=256):
+        inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)
         outputs = self.llm_model.generate(
             **inputs,
             max_new_tokens=max_length,
-            do_sample=True,
-            top_k=50,
-            top_p=0.95,
+            do_sample=False,
             temperature=1
         )
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        cutoff_index = generated_text.rfind("assistant\n")
-        if cutoff_index != -1:  # answer cutoff
-            generated_text = generated_text[cutoff_index + len("assistant\n"):]
-        return generated_text
+        generated_texts = []
+        for output in outputs:
+            generated_text = self.tokenizer.decode(output, skip_special_tokens=True)
+            cutoff_index = generated_text.rfind("assistant\n")
+            if cutoff_index != -1:  # answer cutoff
+                generated_text = generated_text[cutoff_index + len("assistant\n"):]
+            generated_texts.append(generated_text)
+        return generated_texts
 
-    def forward(self, series, messages, max_length=100, mode='Q'):
+    def forward(self, series, messages, max_length=256, mode='Q'):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
@@ -113,64 +107,30 @@ class LLMNet(GlucoseLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def explain_obs(self, conversation, summary, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
-        prompt.insert_component("system", self.obs_exp_prompt, 0)
-        if summary is None:
-            prompt.append_content("Please analyze the current state within 100 words:", -1)
-        else:
-            prompt.append_content(
-                "Extracted rules and regulations: " + summary + "Please analyze the current state within 100 words:",
-                -1)
-        series = torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return response
-
-    def q_pred(self, series, conversations, summaries, mode='Q'):
+    def q_pred(self, series, conversations, mode='Q'):
         prompts = []
-        for conversation, summary in zip(conversations, summaries):
+        for conversation in conversations:
             prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
             prompt.insert_component("system", self.Q_prompt, 0)
-            if summary is None:
-                prompt.append_content(
-                    f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:", -1)
-            else:
-                prompt.append_content(
-                    "Extracted rules and regulations: " + summary + f"Please predict the q value for the {self.num_actions} possible actions in the next timestep:",
-                    -1)
             prompts.append(prompt)
-        series = torch.tensor(series, dtype=torch.float32).to(self.device)
+        series = torch.stack(series, dim=0).to(self.device)
         q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
         return q_list
 
-    def explain_act(self, conversation, summary, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
-        prompt.insert_component("system", self.act_exp_prompt, 0)
-        if summary is None:
-            prompt.append_content("Please explain why the agent chose the last action within 100 words:", -1)
-        else:
-            prompt.append_content(
-                "Extracted rules and regulations: " + summary + "Please explain why the agent chose the last action within 100 words:",
-                -1)
+    def summarize(self, conversations, mode='str'):
+        prompts = []
+        for conversation in conversations:
+            prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
+            prompt.insert_component("system", self.summary_prompt, 0)
+            prompts.append(prompt)
         series = torch.tensor([]).to(self.device)
-
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
-        return response
-
-    def summarize(self, conversation, mode='str'):
-        prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
-        prompt.insert_component("system", self.summary_prompt, 0)
-        prompt.append_content(
-            "Please summarize the rules and regulations you can observe or extract from the history data and background information. Separate each rule with a serial number.",
-            -1)
-        series = torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompt, max_length=256, mode=mode)
+        _, _, response = self.forward(series, prompts, max_length=256, mode=mode)
         return response
 
 
-def define_llm_network(input_shape: int, output_shape: int,
+def define_llm_dqn(input_shape: int, output_shape: int,
                        device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", token_dim=1536,
-                       obs_exp_prompt=False, Q_prompt=False, act_exp_prompt=False, summary_prompt=False,
+                       Q_prompt=False, summary_prompt=False,
                        ):
     configs = argparse.Namespace(
         d_ff=32,
@@ -186,12 +146,19 @@ def define_llm_network(input_shape: int, output_shape: int,
         token_dim=token_dim,
         llm=llm,
     )
-    net = LLMNet(configs=configs, state_shape=input_shape, action_shape=output_shape,
+    net = LLMDQN(configs=configs, state_shape=input_shape, action_shape=output_shape,
                  device=device, need_llm=True,
                  # prompt options
-                 summary_prompt=summary_prompt, obs_exp_prompt=obs_exp_prompt,
-                 Q_prompt=Q_prompt, act_exp_prompt=act_exp_prompt).to(device)
+                 summary_prompt=summary_prompt, Q_prompt=Q_prompt).to(device)
     return net
+
+
+class LLMPPO(GlucoseLLM.Model):
+    pass
+
+
+def define_llm_ppo():
+    pass
 
 
 class LLM(torch.nn.Module):

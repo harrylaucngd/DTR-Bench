@@ -105,7 +105,6 @@ class DQNObjective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=True)
 
-        print("start training!")
         OffpolicyTrainer(
             policy,
             max_epoch=self.meta_param["epoch"],
@@ -123,78 +122,6 @@ class DQNObjective(RLObjective):
             update_per_step=update_per_step,
             save_checkpoint_fn=self.save_checkpoint_fn,
         ).run()
-
-        # load the best policy to test again
-        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
-        return policy, test_fn
-
-
-
-
-    def run(self, policy,
-            eps_test,
-            eps_train,
-            eps_train_final,
-            step_per_collect,
-            update_per_step,
-            batch_size,
-            **kwargs
-            ):
-        def save_best_fn(policy):
-            torch.save(policy.state_dict(), os.path.join(self.log_path, "policy.pth"))
-
-        def train_fn(epoch, env_step):
-            # nature DQN setting, linear decay in the first 10k steps
-            if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
-                eps = eps_train - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
-                      (eps_train - eps_train_final)
-            else:
-                eps = eps_train_final
-            policy.set_eps(eps)
-            if env_step % 1000 == 0:
-                self.logger.write("train/env_step", env_step, {"train/eps": eps})
-
-        def test_fn(epoch, env_step):
-            policy.set_eps(eps_test)
-
-
-        # replay buffer: `save_last_obs` and `stack_num` can be removed together
-        # when you have enough RAM
-        if self.meta_param["training_num"] > 1:
-            buffer = VectorReplayBuffer(
-                self.meta_param["buffer_size"],
-                buffer_num=len(self.train_envs),
-                ignore_obs_next=False,
-                save_only_last_obs=False
-            )
-        else:
-            buffer = ReplayBuffer(self.meta_param["buffer_size"],
-                                  ignore_obs_next=False,
-                                  save_only_last_obs=False
-                                  )
-
-        # collector
-        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
-
-        OffpolicyTrainer(
-            policy,
-            max_epoch=self.meta_param["epoch"],
-            batch_size=batch_size,
-            train_collector=train_collector,
-            test_collector=test_collector,
-            step_per_epoch=self.meta_param["step_per_epoch"],
-            step_per_collect=step_per_collect,
-            episode_per_test=self.meta_param["test_num"],
-            train_fn=train_fn,
-            test_fn=test_fn,
-            stop_fn=self.early_stop_fn,
-            save_best_fn=save_best_fn,
-            logger=self.logger,
-            update_per_step=update_per_step,
-            save_checkpoint_fn=self.save_checkpoint_fn,
-        ).run()
-
 
         # load the best policy to test again
         policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))

@@ -1,5 +1,7 @@
+import re
+import numpy as np
 import torch
-from transformers import LlamaTokenizer, GPT2Tokenizer, AutoTokenizer
+from datetime import timedelta
 
 
 class Conversation:
@@ -75,54 +77,95 @@ class Conversation:
     def to_str(self):
         str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
         return str
-    
-
-def obs_prompt_reprogramming(obs, act, obs_exp):
-    history_prompt = Conversation()
-    for i, (o, a, exp) in enumerate(zip(obs, act, obs_exp)):
-        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o} (mg/dL), the agent takes action (Insulin Bolus Dose) {a}, the next blood glucose observation is {obs[i+1]} (mg/dL).")
-        if exp != "":
-            history_prompt.add_component("assistant", f"{exp}")
-    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]}(mg/dL). ")
-    return history_prompt
 
 
-def q_prompt_reprogramming(obs, act, obs_exp, act_exp):
-    series = torch.tensor([])
-    history_prompt = Conversation()
-    obs_tensor = torch.tensor(obs)
-    act_tensor = torch.tensor(act)
-    zero_tensor = torch.tensor([0])
-    act_tensor = torch.cat((zero_tensor, act_tensor))
-    series = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
-    series[0::2] = obs_tensor
-    series[1::2] = act_tensor
-    series = series.unsqueeze(1)
-    for i, (o, a, o_exp, a_exp) in enumerate(zip(obs, act, obs_exp, act_exp)):
-        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o} (mg/dL).")
-        if o_exp != "":
-            history_prompt.add_component("assistant", f"{o_exp}")
-        history_prompt.add_component("user", f"In timestep {i}, then the agent takes action (Insulin Bolus Dose) {a}.")
-        if a_exp != "":
-            history_prompt.add_component("assistant", f"{a_exp}")
-    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]} (mg/dL).")
-    if obs_exp[-1] != "":
-        history_prompt.add_component("assistant", f"{obs_exp[-1]}")
+def q_prompt_reprogramming(obs, act, summaries):
+    series, history_prompt = [], []
+    for o, a, summ in zip(obs, act, summaries):
+        obs_tensor = torch.tensor(o)
+        act_tensor = torch.tensor(a)
+        ser = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
+        ser[0::2] = obs_tensor
+        ser[1::2] = act_tensor
+        ser = ser.unsqueeze(1)
+        series.append(ser)
+        prompt = Conversation()
+        if summ == "":
+            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
+                " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
+                " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
+        else:
+            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
+                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
+                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
+                " 0.4-0.45, 0.45-0.5]. ")
+        history_prompt.append(prompt)
     return series, history_prompt
 
 
-def act_prompt_reprogramming(obs, act, act_exp):
-    history_prompt = Conversation()
-    for i, (o, a, exp) in enumerate(zip(obs, act, act_exp)):
-        history_prompt.add_component("user", f"In timestep {i}, the blood glucose observation is {o} (mg/dL), the agent takes action (Insulin Bolus Dose) {a}.")
-        if exp != "":
-            history_prompt.add_component("assistant", f"{exp}")
-    history_prompt.add_component("user", f"In current timestep, the blood glucose observation is {obs[-1]} (mg/dL), the agent takes action (Insulin Bolus Dose) {act[-1]}.")
-    return history_prompt
+def summary_reprogramming(batch):
+    obs = batch.obs
+    batch_size = len(obs)
+    length = obs.shape[1]
 
-def summary_reprogramming(obs, act, summary):
-    history_prompt = Conversation()
-    obs_lst = ",".join(map(str, obs))
-    act_lst = ",".join(map(str, act))
-    history_prompt.add_component("user", f"In the past timesteps, the blood glucose observation (mg/dL) are {obs_lst}, the action (Insulin Bolus Dose) are {act_lst}. The current version of regular patterns of blood glucose control can be summarized as: {summary}.")
-    return history_prompt
+    def adjust_time(datetime_input, min):
+        adjusted_time = datetime_input + timedelta(minutes=min)
+        return adjusted_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    conversations = []
+    for i in range(batch_size):
+        time = batch.info["time"][i]
+        glucose = obs[:, :, 0][i]
+        insulin = obs[:, :, 1][i]
+
+        description = []
+        for j in range(length):
+            if glucose[j] == -1:
+                continue
+            if j == 0:
+                description.append(f"Time:{adjust_time(time, -(length-1)*5)},insulin:{insulin[0]}. ")
+            if j < length - 1:
+                description.append(f"Time:{adjust_time(time, -(length-j-1)*5)},glucose:{glucose[j]},insulin:{insulin[j]+1}. ")
+            else:
+                description.append("Please extract as much information as possible while keeping the answer short. ")
+        conversation = Conversation()
+        conversation.add_component("user", " ".join(description))
+        conversations.append(conversation)
+    return conversations
+
+
+def obs2text(batch):
+    obs = batch.obs
+    length = obs.shape[1]
+    time = batch.info["time"][0]
+    glucose = obs[:, :, 0][0]
+    insulin = obs[:, :, 1][0]
+
+    def adjust_time(datetime_input, min):
+        adjusted_time = datetime_input + timedelta(minutes=min)
+        return adjusted_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    descriptions = []
+    for i in range(length):
+        if glucose[i] == -1:
+            continue
+        if i == 0:
+            descriptions.append(f"Time:{adjust_time(time, -(length-1)*5)},insulin:{insulin[0]}. ")
+        if i < length - 1:
+            descriptions.append(f"Time:{adjust_time(time, -(length-i-1)*5)},glucose:{glucose[i]},insulin:{insulin[i]+1}. ")
+        else:
+            descriptions.append("Please determine the current insulin dosage, giving a number in 0-0.5,"
+                                " without anything else. ")
+            descriptions.append(f"Current time: {adjust_time(time, 0)},glucose:{glucose[i]}, insulin:")
+    return " ".join(descriptions)
+
+
+def text2act(logits, action_space):
+    numbers = re.findall(r'-?\d+\.?\d*', logits)  # todo: make sure it select the correct number with 0.
+    numbers = [float(num) for num in numbers]
+
+    if len(numbers) == 0:
+        return action_space.sample()
+
+    # always select the first number
+    return np.clip(numbers[0], 0, 0.5)

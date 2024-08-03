@@ -1,6 +1,7 @@
 import DTRBench.src.offpolicyRLHparams as offpolicyRLHparams
 from DTRBench.src.offpolicyRLHparams import common_hparams
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
+import DTRBench.src.onpolicyRLHparams as onpolicyRLHparams
 
 '''
 Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
@@ -22,7 +23,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
-        "batch_size": 4,#common_hparams["batch_size"],
+        "batch_size": 32,#common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -47,18 +48,28 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
                    "token_dim": 1536},],
 
         # prompt hparam
-        "need_obs_explain": [True, False],
-        "need_act_explain": [True, False],
         "need_summary": [True, False],
-        "exp_freq": [0, 12, 24, 36],
+        "sum_prob": [0, 0.1, 0.2, 0.4],
     }
+
+
+class LLM_PPO_HyperParams(onpolicyRLHparams.PPOHyperParams):
+    _supported_algos = ("llm-ppo",)
+    _policy_hparams = {"gae_lambda": 0.95,
+                       "vf_coef": 0.5,
+                       "ent_coef": 0.01,
+                       "eps_clip": [0.1, 0.2],
+                       "value_clip": False,
+                       "dual_clip": None,
+                       "advantage_normalization": True,
+                       "recompute_advantage": False, }
 
 
 class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     _supported_algos = ("llm", )
     _general_hparams = {
         # general parameters
-        "seed": 2732,
+        "seed": common_hparams["seed"],
     }
     # policy hyperparameter search space
     _policy_hparams = {

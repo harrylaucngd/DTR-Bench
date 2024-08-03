@@ -1,7 +1,5 @@
 from typing import Any, Literal, cast
-from datetime import timedelta
 
-import re
 import random
 import gymnasium as gym
 import numpy as np
@@ -13,14 +11,16 @@ from tianshou.data.types import (
     ModelOutputBatchProtocol,
     ObsBatchProtocol,
     RolloutBatchProtocol,
+    DistBatchProtocol,
 )
-from tianshou.policy import BasePolicy, DQNPolicy
+from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
+from tianshou.policy.modelfree.pg import TDistributionFunction
+from tianshou.utils.net.common import ActorCritic
 
-from GlucoseLLM.models.llm_net import LLMNet
+from GlucoseLLM.models.llm_net import LLMDQN, LLMPPO
 
-from GlucoseLLM.prompt_pipeline import obs_prompt_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, \
-    summary_reprogramming
+from GlucoseLLM.prompt_pipeline import q_prompt_reprogramming, summary_reprogramming, obs2text, text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -30,7 +30,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def __init__(
             self,
-            model: LLMNet,
+            model: LLMDQN,
             optim: torch.optim.Optimizer,
             discount_factor: float = 0.99,
             estimation_step: int = 1,
@@ -41,10 +41,8 @@ class LLM_DQN_Policy(DQNPolicy):
             action_space: gym.spaces.Discrete | None = None,
             observation_space: gym.Space | None = None,
             lr_scheduler: TLearningRateScheduler | None = None,
-            need_obs_explain=True,
-            need_act_explain=True,
             need_summary=True,
-            exp_freq=0,
+            sum_prob=0,
     ) -> None:
         BasePolicy.__init__(
             self,
@@ -71,11 +69,8 @@ class LLM_DQN_Policy(DQNPolicy):
         self.rew_norm = reward_normalization
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
-        self.need_obs_explain = need_obs_explain
-        self.need_act_explain = need_act_explain
         self.need_summary = need_summary
-        self.exp_freq = exp_freq
-        self.state = {}
+        self.sum_prob = sum_prob
 
     def _target_q(self, buffer, indices) -> torch.Tensor:
         obs_next_batch = Batch(
@@ -103,66 +98,6 @@ class LLM_DQN_Policy(DQNPolicy):
             attr_obj = getattr(self.model, attr)
             old_attr_obj.load_state_dict(attr_obj.state_dict())
 
-    def get_state(self, epi_ids, steps):
-        """Get history states for given episodes and steps."""
-        states = []
-        for ep, st in zip(epi_ids, steps):
-            state = {"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []}
-            if ep in self.state and st > 0:
-                for s in range(st):
-                    if s in self.state[ep]:
-                        state["obs"].append(self.state[ep][s]["obs"])
-                        state["act"].append(self.state[ep][s]["act"])
-                        state["obs_exp"].append(self.state[ep][s]["obs_exp"])
-                        state["act_exp"].append(self.state[ep][s]["act_exp"])
-                        state["summary"].append(self.state[ep][s]["summary"])
-            states.append(state)
-        return states
-
-    def is_learn(self, epi_ids, steps):
-        """Check if the current forward is in the learning process."""
-        '''for ep, st in zip(epi_ids, steps):
-            if ep not in self.state:
-                return False
-            if st not in self.state[ep]:
-                return False
-        return True'''
-        is_learn = True if len(epi_ids)>1 else False;return is_learn
-
-    def insert_state(self, curr_states, epi_ids, steps):
-        """Insert current states to self.state if not in learning process."""
-        for ep, st, curr_state in zip(epi_ids, steps, curr_states):
-            if ep not in self.state:
-                assert st == 0, "Step should be zero in a new episode"
-                self.state[ep] = {}
-            else:
-                assert st == len(self.state[ep]), "Step should be the next step"
-            self.state[ep][st] = curr_state
-
-    def left_padding(self, series, seq_len=48):
-        """
-        Pad a list of 2D tensors to a target length with left alignment.
-        
-        Args:
-        series (list of torch.Tensor): List of 2D tensors of shape (n_i, 1) to be padded.
-        seq_len (int): The length to pad the tensors to.
-        
-        Returns:
-        torch.Tensor: A 3D tensor of shape (k, seq_len, 1) with padded tensors.
-        """
-        padded_tensors = []
-        
-        for tensor in series:
-            current_length = tensor.size(0)
-            if current_length < seq_len:
-                padding = torch.zeros(seq_len - current_length, 1)
-                padded_tensor = torch.cat((tensor, padding), dim=0)
-            else:
-                padded_tensor = tensor[:seq_len, :]
-            padded_tensors.append(padded_tensor)
-    
-        return torch.stack(padded_tensors)
-
     def forward(
             self,
             batch: ObsBatchProtocol,
@@ -170,78 +105,127 @@ class LLM_DQN_Policy(DQNPolicy):
             model: Literal["model", "model_old"] = "model",
             **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
-        """Compute action over the given batch data and give explanations to the decision."""
+        """Compute action over the given batch data and summarize rules."""
         model = getattr(self, model)
 
-        # get state
-        epi_ids, steps = batch.info["episode_id"], batch.info["step"]
-        assert len(epi_ids) == len(steps), "Inequal lengths of epi_ids and steps!"
-        batch_size = len(epi_ids)
-        _is_learn = self.is_learn(epi_ids, steps)
-        states = self.get_state(epi_ids, steps)
-        curr_states, summ = [{"obs": [], "act": [], "obs_exp": [], "act_exp": [], "summary": []} for _ in epi_ids], []
-        for i in range(batch_size):
-            try:
-                summ.append(next((state for state in reversed(states[i]["summary"]) if state != ""), None))
-            except IndexError:
-                summ.append(None)
-
-        # decide to explain or not
-        need_obs_explain, need_act_explain, need_summary = [], [], []
-        for step in steps:
-            if (_is_learn) or (self.exp_freq == 0) or (step % self.exp_freq != 0):
-                need_obs_explain.append(False)
-                need_act_explain.append(False)
-                need_summary.append(False)
-            elif step % self.exp_freq == 0:
-                need_obs_explain.append(True)
-                need_act_explain.append(True)
-                need_summary.append(True)
-
-        # obs and obs explanation
+        # rules summarization
         obs = batch.obs
-        obs_next = obs.obs[:, -1, 0] if hasattr(obs, "obs") else obs[:, -1, 0]
+        batch_size = len(obs)
+        need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
+        conversations = summary_reprogramming(batch)
+        conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
+        summaries_T = model.summarize(conversations_T, mode='str') if conversations_T!=[] else []
+        summaries = ["" for _ in range(batch_size)]
+        true_index = 0
         for i in range(batch_size):
-            states[i]["obs"] = np.append(states[i]["obs"], obs_next[i])
-            curr_states[i]["obs"] = obs_next[i]
-            conversation = obs_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"])
-            obs_explain = model.explain_obs(conversation, summ[i], mode='str') if need_obs_explain[i] else ""
-            states[i]["obs_exp"] = np.append(states[i]["obs_exp"], obs_explain)
-            curr_states[i]["obs_exp"] = obs_explain
+            if need_summary[i]:
+                summaries[i] = summaries_T[true_index]
+                true_index += 1
 
         # Q value prediction
-        series, conversation = [], []
-        for i in range(batch_size):
-            ser, con = q_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["obs_exp"],
-                                              states[i]["act_exp"])
-            series.append(ser)
-            conversation.append(con)
-        series = self.left_padding(series, seq_len=48)
-        logits = model.q_pred(series, conversation, summ, mode='Q')
+        series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
+        logits = model.q_pred(series, conversations, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
-        for i in range(batch_size):
-            states[i]["act"] = np.append(states[i]["act"], act[i])
-            curr_states[i]["act"] = act[i]
 
-        # act explanation and update summary
-        for i in range(batch_size):
-            conversation = act_prompt_reprogramming(states[i]["obs"], states[i]["act"], states[i]["act_exp"])
-            act_explain = model.explain_act(conversation, summ[i], mode='str') if need_act_explain[i] else ""
-            states[i]["act_exp"] = np.append(states[i]["act_exp"], act_explain)
-            curr_states[i]["act_exp"] = act_explain
-
-            conversation = summary_reprogramming(states[i]["obs"], states[i]["act"], states[i]["summary"])
-            summary = model.summarize(conversation, mode='str') if need_summary[i] else ""
-            states[i]["summary"] = np.append(states[i]["summary"], summary)
-            curr_states[i]["summary"] = summary
-
-        if not _is_learn:
-            self.insert_state(curr_states, epi_ids, steps)
         result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
+
+
+class LLM_PPO_Policy(PPOPolicy):
+    """
+    Implementation of LLM-DQN policy.
+    """
+    def __init__(
+        self,
+        *,
+        actor: LLMPPO,
+        critic: LLMPPO,
+        optim: torch.optim.Optimizer,
+        dist_fn: TDistributionFunction,
+        action_space: gym.Space,
+        eps_clip: float = 0.2,
+        dual_clip: float | None = None,
+        value_clip: bool = False,
+        advantage_normalization: bool = True,
+        recompute_advantage: bool = False,
+        vf_coef: float = 0.5,
+        ent_coef: float = 0.01,
+        max_grad_norm: float | None = None,
+        gae_lambda: float = 0.95,
+        max_batchsize: int = 256,
+        discount_factor: float = 0.99,
+        reward_normalization: bool = False,
+        deterministic_eval: bool = False,
+        observation_space: gym.Space | None = None,
+        action_scaling: bool = True,
+        action_bound_method: Literal["clip", "tanh"] | None = "clip",
+        lr_scheduler: TLearningRateScheduler | None = None,
+    ) -> None:
+        assert (
+            dual_clip is None or dual_clip > 1.0
+        ), f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
+
+        super().__init__(
+            actor=actor,
+            critic=critic,
+            optim=optim,
+            dist_fn=dist_fn,
+            action_space=action_space,
+            vf_coef=vf_coef,
+            ent_coef=ent_coef,
+            max_grad_norm=max_grad_norm,
+            gae_lambda=gae_lambda,
+            max_batchsize=max_batchsize,
+            discount_factor=discount_factor,
+            reward_normalization=reward_normalization,
+            deterministic_eval=deterministic_eval,
+            observation_space=observation_space,
+            action_scaling=action_scaling,
+            action_bound_method=action_bound_method,
+            lr_scheduler=lr_scheduler,
+        )
+        self.eps_clip = eps_clip
+        self.dual_clip = dual_clip
+        self.value_clip = value_clip
+        self.norm_adv = advantage_normalization
+        self.recompute_adv = recompute_advantage
+        self._actor_critic: ActorCritic
+    
+    def forward(
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        **kwargs: Any,
+    ) -> DistBatchProtocol:
+        """Compute action over the given batch data by applying the actor.
+
+        Will sample from the dist_fn, if appropriate.
+        Returns a new object representing the processed batch data
+        (contrary to other methods that modify the input batch inplace).
+
+        .. seealso::
+
+            Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
+            more detailed explanation.
+        """
+        # TODO: rename? It's not really logits and there are particular
+        #  assumptions about the order of the output and on distribution type
+        logits, hidden = self.actor(batch.obs, state=state, info=batch.info)
+        if isinstance(logits, tuple):
+            dist = self.dist_fn(*logits)
+        else:
+            dist = self.dist_fn(logits)
+
+        # in this case, the dist is unused!
+        if self.deterministic_eval and not self.training:
+            act = dist.mode
+        else:
+            act = dist.sample()
+        result = Batch(logits=logits, act=act, state=hidden, dist=dist)
+        return cast(DistBatchProtocol, result)
 
 
 class LLM_Policy(BasePolicy):
@@ -263,42 +247,6 @@ class LLM_Policy(BasePolicy):
         )
         self.model = model
 
-    def obs2text(self, batch):
-        obs = batch.obs
-        length = obs.shape[1]
-        time = batch.info["time"][0]
-        glucose = obs[:, :, 0][0]
-        insulin = obs[:, :, 1][0]
-
-        def adjust_time(datetime_input, min):
-            adjusted_time = datetime_input + timedelta(minutes=min)
-            return adjusted_time.strftime("%Y-%m-%d %H:%M:%S")
-
-        descriptions = []
-        # todo:  check time shift
-        for i in range(length):
-            if glucose[i] == -1:
-                continue
-            if i == 0:
-                descriptions.append(f"Time:{adjust_time(time, -(length-1)*5)},insulin:{insulin[0]}. ")
-            if i < length - 1:
-                descriptions.append(f"Time:{adjust_time(time, -(length-i-1)*5)},glucose:{glucose[i]},insulin:{insulin[i]+1}. ")
-            else:
-                descriptions.append("Please determine the current insulin dosage, giving a number in 0-0.5,"
-                                    " without anything else. ")
-                descriptions.append(f"Current time: {adjust_time(time, 0)},glucose:{glucose[i]}, insulin:")
-        return " ".join(descriptions)
-
-    def text2act(self, logits):
-        numbers = re.findall(r'-?\d+\.?\d*', logits)  # todo: make sure it select the correct number with 0.
-        numbers = [float(num) for num in numbers]
-
-        if len(numbers) == 0:
-            return self.action_space.sample()
-
-        # always select the first number
-        return np.clip(numbers[0], 0, 0.5)
-
     def forward(
             self,
             batch: ObsBatchProtocol,
@@ -309,9 +257,9 @@ class LLM_Policy(BasePolicy):
         """Decide action over the given batch data."""
         model = getattr(self, model)
 
-        prompt = self.obs2text(batch)
+        prompt = obs2text(batch)
         logits = model(prompt)
-        act = [self.text2act(logits)]
+        act = [text2act(logits)]
         result = Batch(act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
 

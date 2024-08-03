@@ -1,16 +1,17 @@
 import torch
 from tianshou.policy import BasePolicy
-from tianshou.policy import DQNPolicy, TD3Policy
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
+from tianshou.policy import DQNPolicy, TD3Policy, PPOPolicy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from DTRBench.src.base_obj import RLObjective
 
-from GlucoseLLM.LLM_hparams import LLM_DQN_HyperParams, LLMInference_HyperParams
-from GlucoseLLM.LLMObj import LLM_DQN_Objective, LLM_Objective
-from DTRBench.src.RLObj import DQNObjective, TD3Objective
+from GlucoseLLM.LLM_hparams import LLM_DQN_HyperParams, LLM_PPO_HyperParams, LLMInference_HyperParams
+from GlucoseLLM.LLMObj import LLM_DQN_Objective, LLM_PPO_Objective, LLM_Objective
+from DTRBench.src.RLObj import DQNObjective, TD3Objective, PPOObjective
 from DTRBench.src.base_obj import OffPolicyRLHyperParameterSpace
 from DTRBench.src.offpolicyRLHparams import DQNHyperParams, TD3HyperParams
+from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace, PPOHyperParams
 from DTRBench.naive_baselines.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
-
+from typing import Union
 
 
 def policy_load(policy, ckpt_path: str, device: str, is_train: bool = False):
@@ -40,17 +41,17 @@ baselineLOOKUP = {"zero_drug": {"policy": ConstantPolicy, "policy_args": {"dose"
                   "pulse60-0.2": {"policy": PulsePolicy, "policy_args": {"dose": 0.2, "interval": 12}}}
 
 
-# todo: add onpolicy
-# onpolicyLOOKUP = {
-#     "PPO": {"hparam": PPOHyperParams, "policy": PPOPolicy, "obj": PPOObjective, "type": "discrete"},
-# }
+onpolicyLOOKUP = {
+    "ppo": {"hparam": PPOHyperParams, "policy": PPOPolicy, "obj": PPOObjective, "type": "continuous"},
+    "llm-ppo": {"hparam": LLM_PPO_HyperParams, "policy": LLM_PPO_Policy, "obj": LLM_PPO_Objective, "type": "continuous"},
+}
 
 def get_policy_class(algo_name) -> BasePolicy:
     algo_name = algo_name.lower()
     return offpolicyLOOKUP[algo_name]["policy"]
 
 
-def get_hparam_class(algo_name: str, offline) -> OffPolicyRLHyperParameterSpace.__class__:
+def get_hparam_class(algo_name: str, offline) -> Union[OffPolicyRLHyperParameterSpace.__class__, OnPolicyRLHyperParameterSpace.__class__]:
     algo_name = algo_name.lower()
     if offline:
         raise NotImplementedError("Offline RL is not supported yet")
