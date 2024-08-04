@@ -13,7 +13,7 @@ wandb.require("core")
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL2")
-    parser.add_argument("--sweep_id", type=str, default="wnx78typ", help="sweep id for wandb,"
+    parser.add_argument("--sweep_id", type=str, default="3mis2z1p", help="sweep id for wandb,"
                                                                          " only used in agent mode")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]

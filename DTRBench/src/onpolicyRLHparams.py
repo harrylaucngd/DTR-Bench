@@ -36,10 +36,13 @@ class OnPolicyRLHyperParameterSpace(OffPolicyRLHyperParameterSpace):
 
 class PPOHyperParams(OnPolicyRLHyperParameterSpace):
     _supported_algos = ("ppo",)
-    _policy_hparams = {"gae_lambda": 0.95,
+    _policy_hparams = {"lr": common_hparams["lr"],  # learning rate
+                       "n_step": common_hparams["n_step"],
+                       "start_timesteps": common_hparams["start_timesteps"],
+                       "gae_lambda": 0.95,
                        "vf_coef": 0.5,
-                       "ent_coef": 0.01,
-                       "eps_clip": [0.1, 0.2],
+                       "ent_coef": 0.001,
+                       "eps_clip": 0.1,
                        "value_clip": False,
                        "dual_clip": None,
                        "advantage_normalization": True,

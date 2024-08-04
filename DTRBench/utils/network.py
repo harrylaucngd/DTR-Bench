@@ -1,23 +1,13 @@
 import numpy as np
-from tianshou.utils.net.common import MLP
-from typing import (
-    Any,
-    Dict,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    Union,
-)
+from tianshou.utils.net.common import ActorCritic, MLP
+from tianshou.utils.net.continuous import Actor as tianshouActor
+from typing import Union, List, Tuple, Optional, Callable, Sequence, Dict, Any, Type
 import torch
 from torch import nn
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
 Sequence[Dict[Any, Any]]]
-
-# todo: move the following llm code to a separate file
-
 
 
 class Net(nn.Module):
@@ -194,13 +184,77 @@ class Recurrent(nn.Module):
 #         action = self.min_action + ((action + 1) * (self.max_action - self.min_action) / 2)
 #         return action, state
 
+class Actor(tianshouActor):
+    """Simple actor network.
+
+    It will create an actor operated in continuous action space with structure of preprocess_net ---> action_shape.
+
+    :param preprocess_net: a self-defined preprocess_net which output a
+        flattened hidden state.
+    :param action_shape: a sequence of int for the shape of action.
+    :param hidden_sizes: a sequence of int for constructing the MLP after
+        preprocess_net. Default to empty sequence (where the MLP now contains
+        only a single linear layer).
+    :param max_action: the scale for the final action logits. Default to
+        1.
+    :param preprocess_net_output_dim: the output dimension of
+        preprocess_net.
+
+    For advanced usage (how to customize the network), please refer to
+    :ref:`build_the_network`.
+
+    .. seealso::
+
+        Please refer to :class:`~tianshou.utils.net.common.Net` as an instance
+        of how preprocess_net is suggested to be defined.
+    """
+
+    def __init__(
+            self,
+            preprocess_net: nn.Module,
+            action_shape,
+            hidden_sizes: Sequence[int] = (),
+            max_action: float = 1.0,
+            device: str | int | torch.device = "cpu",
+            preprocess_net_output_dim: int | None = None,
+            final_activation: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+            last_layer_init: Optional[float] = None
+    ) -> None:
+        super().__init__(preprocess_net, action_shape, hidden_sizes, max_action, device, preprocess_net_output_dim)
+        self.activation = final_activation
+        self.last_layer_init_scale = last_layer_init
+
+        # last layer init rescale
+        if self.last_layer_init_scale is not None:
+            # todo: should fix this
+            for m in self.last.modules():
+                if isinstance(m, torch.nn.Linear):
+                    # torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                    nn.init.constant_(m.bias, self.last_layer_init_scale)
+
+    def forward(
+            self,
+            obs: np.ndarray | torch.Tensor,
+            state: Any = None,
+            info: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, Any]:
+        """Mapping: obs -> logits -> action."""
+        if info is None:
+            info = {}
+        logits, hidden = self.preprocess(obs, state)
+        logits = self.last(logits)
+        if self.activation is not None:
+            logits = self.activation(logits)
+        logits = self.max_action * logits
+        return logits, hidden
+
 
 class Critic(nn.Module):
 
     def __init__(
             self,
             state_net: nn.Module,
-            action_net: nn.Module,
+            action_net: nn.Module = None,
             cat_size: int = 256,
             fuse_hidden_sizes: Sequence[int] = (256,),
             device: str | int | torch.device = "cpu",
@@ -223,21 +277,24 @@ class Critic(nn.Module):
     def forward(
             self,
             obs: np.ndarray | torch.Tensor,
-            act: np.ndarray | torch.Tensor,
+            act: np.ndarray | torch.Tensor = None,
             state: Optional[Dict[str, torch.Tensor]] = None,
             info: dict[str, Any] | None = {},
     ):
         """Mapping: (s, a) -> logits -> Q(s, a)."""
         obs, state = self.obs_net(obs, state)  # state here won't be useful anyway since tianshou does not RNN-critic
-        act, _ = self.act_net(act)
-        obs = torch.cat([obs, act], dim=1)
+        if act is not None:
+            act, _ = self.act_net(act)
+            obs = torch.cat([obs, act], dim=1)
+        else:
+            assert self.act_net is None
         value = self.last(obs)
         return value
 
 
-def define_single_network(input_shape: int, output_shape: int, hidden_size=256, num_layer=4,
+def define_single_network(input_shape: int, output_shape: int, hidden_size=128, num_layer=2,
                           use_rnn=False, use_dueling=False, cat_num: int = 1, linear=False,
-                          device="cuda" if torch.cuda.is_available() else "cpu",
+                          device="cuda" if torch.cuda.is_available() else "cpu"
                           ):
     assert num_layer > 1 or linear
     if use_dueling and use_rnn:
@@ -269,26 +326,42 @@ def define_single_network(input_shape: int, output_shape: int, hidden_size=256, 
 
 
 def define_continuous_critic(state_shape: int, action_shape,
-                             state_net_n_layer=2,
-                             state_net_hidden_size=128,
+                             state_net_n_layer=1,
+                             state_net_hidden_size=64,
                              action_net_n_layer=1,
-                             action_net_hidden_size=128,
+                             action_net_hidden_size=64,
                              fuse_net_n_layer=1,
                              linear=False,
+                             use_rnn=False,
+                             cat_num=1, use_action_net=True,
                              device="cuda" if torch.cuda.is_available() else "cpu"):
     """
     Since Tianshou's critic network does not support RNN style network, we use a simple MLP network here.
     """
-    obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
-                  hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
-                  activation=nn.ReLU if not linear else None,
-                  device=device, dueling_param=None, cat_num=1).to(device)
-    act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
-                  hidden_sizes=action_net_n_layer * [action_net_hidden_size],
-                  activation=nn.ReLU,
-                  device=device, cat_num=1).to(device)
-    critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
-                    fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
-                    device=device).to(device)
+    if use_rnn:
+        obs_net = Recurrent(layer_num=state_net_n_layer,
+                            state_shape=state_shape,
+                            action_shape=state_net_hidden_size,
+                            device=device,
+                            hidden_layer_size=state_net_hidden_size,
+                            ).to(device)
+    else:
+        obs_net = Net(state_shape=state_shape, action_shape=state_net_hidden_size,
+                      hidden_sizes=(state_net_hidden_size,) * state_net_n_layer if not linear else (),
+                      activation=nn.ReLU if not linear else None,
+                      device=device, dueling_param=None, cat_num=cat_num).to(device)
+    if use_action_net:
+        act_net = Net(state_shape=action_shape, action_shape=action_net_hidden_size,
+                      hidden_sizes=action_net_n_layer * [action_net_hidden_size],
+                      activation=nn.ReLU,
+                      device=device, cat_num=1).to(device)
+        critic = Critic(obs_net, act_net, cat_size=state_net_hidden_size + action_net_hidden_size,
+                        fuse_hidden_sizes=[state_net_hidden_size + action_net_hidden_size] * fuse_net_n_layer,
+                        device=device).to(device)
 
-    return critic
+        return critic
+    else:
+        critic = Critic(obs_net, None, cat_size=state_net_hidden_size,
+                        fuse_hidden_sizes=[state_net_hidden_size] * fuse_net_n_layer,
+                        device=device).to(device)
+        return critic

@@ -179,6 +179,6 @@ class TD3HyperParams(OffPolicyRLHyperParameterSpace):
         "tau": common_hparams["tau"],
         "start_timesteps": common_hparams["start_timesteps"],
         "update_actor_freq": common_hparams["update_actor_freq"],
-        "policy_noise": 0.025,
-        "noise_clip": 0.05,
+        "policy_noise": 0.2,
+        "noise_clip": 0.5,
     }

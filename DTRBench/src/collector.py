@@ -23,16 +23,20 @@ import copy
 
 
 def get_env_result(data: Batch) -> dict[str, Any]:
-    bg = data.obs[:, 0] * 100
+
+    bg = data.obs[:, 0]
+    assert (bg > 0).all()
     bg_normal = np.logical_and(70 < bg, 180 > bg).mean()
     bg_hypo = (bg < 70).mean()
     bg_hyper = (bg > 180).mean()
-
+    risk = data.info.risk.mean()
     action = data.info["action"]
 
-    return {"bg_normal": bg_normal,
+    return {"bg": bg.mean(),
+        "bg_normal": bg_normal,
             "bg_hypo": bg_hypo,
             "bg_hyper": bg_hyper,
+            "risk": risk,
             "drug_mean": action.mean(),
             "mortality": np.array(data.terminated == True).any()}
 
@@ -61,6 +65,10 @@ class CollectStatsGlucose(CollectStatsBase):
     """The percentage of hyperglycemic blood glucose levels."""
     drug_mean: float
     """The mean drug dose."""
+    risk: float
+    """The mean risk."""
+    bg: float
+    """The mean blood glucose level."""
     mortality: float
 
 
@@ -163,6 +171,7 @@ class GlucoseCollector(Collector):
             if len(self.data.obs.shape) == 3:
                 data = copy.deepcopy(self.data)
                 data.obs = data.obs[:, -1, :]
+                data.act = action_remap
                 episode_data.append(data)  # WARNING: not checked when num_env > 1
             else:
                 episode_data.append(self.data)
@@ -271,5 +280,7 @@ class GlucoseCollector(Collector):
             bg_hypo=float(np.array([data.bg_hypo for data in all_episode_data]).mean()),
             bg_hyper=float(np.array([data.bg_hyper for data in all_episode_data]).mean()),
             drug_mean=float(np.array([data.drug_mean for data in all_episode_data]).mean()),
-            mortality=float(np.array([data.mortality for data in all_episode_data]).mean())
+            mortality=float(np.array([data.mortality for data in all_episode_data]).mean()),
+            risk=float(np.array([data.risk for data in all_episode_data]).mean()),
+            bg=float(np.array([data.bg for data in all_episode_data]).mean()),
         )

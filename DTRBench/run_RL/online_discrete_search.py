@@ -33,11 +33,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
     parser.add_argument("--sweep_id", type=str, default="1did1f4s", help="sweep id for wandb,"
                                                                          " only used in agent mode")
-    parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
+    parser.add_argument("--task", type=str, default="GluCoEnv-adult1",
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")

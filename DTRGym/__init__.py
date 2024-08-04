@@ -65,11 +65,12 @@ registered_ids = ["AhnChemoEnv-continuous",
                   "SimGlucoseEnv-all4",
                   "SimGlucoseEnv-adult1",
                   "SimGlucoseEnv-adult4",
-                  "SimGlucoseEnv-single-patient",]
+                  "SimGlucoseEnv-single-patient"]
 
 envs = ["AhnChemoEnv",
         "GhaffariCancerEnv",
         "SimGlucoseEnv",
+        "GluCoEnv",
         "OberstSepsisEnv",
         "MIMIC3SepsisEnv",  # offline placeholder
         "MIMIC3SepsisEnvSyn",  # GAN based simulation

@@ -8,12 +8,14 @@ from tianshou.policy.modelfree.dqn import DQNPolicy
 from tianshou.trainer import OffpolicyTrainer, OnpolicyTrainer
 from DTRBench.src.base_obj import RLObjective
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
-from DTRBench.utils.network import define_single_network, define_continuous_critic
-from tianshou.utils.net.continuous import Actor, ActorProb
+from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
+from DTRBench.utils.network import define_single_network, Critic, define_continuous_critic, Actor
+from tianshou.utils.net.continuous import ActorProb
 from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
-from DTRBench.naive_baselines.naive_baselines import RandomPolicy
+from DTRBench.naive_baselines.naive_baselines import ConstantPolicy, RandomPolicy
+import torch.nn as nn
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -35,7 +37,8 @@ class DQNObjective(RLObjective):
                       **kwargs
                       ):
         # define model
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
+            "stack_num"]
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
                                     use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
@@ -149,17 +152,28 @@ class TD3Objective(RLObjective):
         cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
                               obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
-        net_a = define_single_network(self.state_shape, 256, num_layer=3,
+        net_a = define_single_network(self.state_shape, 128,
                                       use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
-                                      use_dueling=False,)
-        actor = Actor(net_a, action_shape=self.action_shape, max_action=max_action, device=self.device,
-                      preprocess_net_output_dim=256).to(self.device)
+                                      use_dueling=False, )
+        actor = Actor(net_a, action_shape=self.action_shape, device=self.device,
+                      # last_layer_init=-10,
+                      final_activation=nn.Tanh(),
+                      preprocess_net_output_dim=128).to(self.device)
+
+        # # init actor with orthogonal initialization and zeros bias
+        # for m in actor.modules():
+        #     if isinstance(m, torch.nn.Linear):
+        #         torch.nn.init.zeros_(m.bias)
+        #         m.weight.data.copy_(0.01 * m.weight.data)
+
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
-        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
-        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
+        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
@@ -181,8 +195,6 @@ class TD3Objective(RLObjective):
             noise_clip=noise_clip,
             estimation_step=n_step,
             action_space=self.action_space,
-            action_scaling=True,
-            action_bound_method='clip',
         )
         return policy
 
@@ -218,7 +230,6 @@ class TD3Objective(RLObjective):
             # todo: collect with random
             train_collector.collect(n_step=start_timesteps, random=True)
 
-        train_collector.collect(n_step=1000, random=True)
         # def train_fn(epoch, env_step):
         #     # nature DQN setting, linear decay in the first 10k steps
         #     if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
@@ -257,33 +268,49 @@ class TD3Objective(RLObjective):
         policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
         return policy, lambda epoch, env_step: None
 
+
 class PPOObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
     def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
-                        norm_adv, recompute_adv, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
-        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3,
-                                    use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
-        actor = ActorProb(net_a,  self.action_shape, unbounded=True, device=self.device, ).to(self.device)
-        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear,
-                                           device=self.device)
+                      advantage_normalization, recompute_advantage, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
+            "stack_num"]
+        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3, hidden_size=128,
+                                      use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
+        actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
+        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+                                          cat_num=cat_num, use_action_net=False, state_net_hidden_size=128, 
+                                          device=self.device)
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
-        # todo: define actor critic and use one optim
-        def dist(loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
+
+        # torch.nn.init.constant_(actor.sigma_param, -0.5)
+        # for m in actor_critic.modules():
+        #     if isinstance(m, torch.nn.Linear):
+        #         # orthogonal initialization
+        #         torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+        #         torch.nn.init.zeros_(m.bias)
+        # do last policy layer scaling, this will make initial actions have (close to)
+        # 0 mean and std, and will help boost performances,
+        # see https://arxiv.org/abs/2006.05990, Fig.24 for details
+        for m in actor.mu.modules():
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.zeros_(m.bias)
+                m.weight.data.copy_(0.01 * m.weight.data)
+
+        def dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
             return Independent(Normal(loc, scale), 1)
+
         policy: PPOPolicy = PPOPolicy(
             actor=actor,
             critic=critic,
             optim=optim,
             dist_fn=dist,
             discount_factor=gamma,
-            gae_lambda=gae_lambda,
+            gae_lambda=float(gae_lambda),
             vf_coef=vf_coef,
             ent_coef=ent_coef,
             action_scaling=True,
@@ -292,27 +319,40 @@ class PPOObjective(RLObjective):
             eps_clip=eps_clip,
             value_clip=value_clip,
             dual_clip=dual_clip,
-            advantage_normalization=norm_adv,
-            recompute_advantage=recompute_adv,
+            advantage_normalization=advantage_normalization,
+            recompute_advantage=recompute_advantage,
         )
         return policy
 
-    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect,
-            update_per_step, batch_size, **kwargs):
-        def train_fn(epoch, env_step):
-            pass
-
-        def test_fn(epoch, env_step):
-            pass
-
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        if list(obs_mode.keys())[0] == "cat":
-            cat_num, stack_num = 1, 1  # cat is the deprecated version of cur, we will use cur instead
-        assert not (cat_num > 1 and stack_num > 1), "does not support both categorical and frame stack"
-        stack_num = max(stack_num, cat_num)
-
+    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
+
+        # collector
+        if self.meta_param["training_num"] > 1:
+            buffer = VectorReplayBuffer(
+                self.meta_param["buffer_size"],
+                buffer_num=len(self.train_envs),
+                ignore_obs_next=False,
+                save_only_last_obs=False,
+                stack_num=1
+            )
+        else:
+            buffer = ReplayBuffer(self.meta_param["buffer_size"],
+                                  ignore_obs_next=False,
+                                  save_only_last_obs=False,
+                                  stack_num=1)
+
+        # collector
+        train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
+        if start_timesteps > 0:
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
+                                         action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
+
         OnpolicyTrainer(
             policy,
             batch_size=batch_size,
@@ -323,11 +363,14 @@ class PPOObjective(RLObjective):
             step_per_collect=step_per_collect,
             repeat_per_collect=repeat_per_collect,
             episode_per_test=self.meta_param["test_num"],
-            train_fn=train_fn,
-            test_fn=test_fn,
+            train_fn=None,
+            test_fn=None,
             stop_fn=self.early_stop_fn,
             save_best_fn=save_best_fn,
             logger=self.logger,
             save_checkpoint_fn=self.save_checkpoint_fn,
         ).run()
-        # replay buffer: `save_last_obs`
+
+        # load the best policy to test again
+        policy.load_state_dict(torch.load(os.path.join(self.log_path, "best_policy.pth")))
+        return policy, lambda epoch, env_step: None
