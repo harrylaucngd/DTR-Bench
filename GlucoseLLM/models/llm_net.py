@@ -138,16 +138,14 @@ def define_llm_dqn(input_shape: int, output_shape: int,
         stride=8,  # TODO: TBD
         llm_layers=6,
         d_model=16,
-        dropout=0.1,
+        dropout=0.,
         n_heads=8,
         enc_in=7,
-        prompt_domain=0,
-        content="",
         token_dim=token_dim,
         llm=llm,
     )
     net = LLMDQN(configs=configs, state_shape=input_shape, action_shape=output_shape,
-                 device=device, need_llm=True,
+                 device=device,
                  # prompt options
                  summary_prompt=summary_prompt, Q_prompt=Q_prompt).to(device)
     return net
