@@ -41,7 +41,6 @@ class LLM_DQN_Policy(DQNPolicy):
             action_space: gym.spaces.Discrete | None = None,
             observation_space: gym.Space | None = None,
             lr_scheduler: TLearningRateScheduler | None = None,
-            need_summary=True,
             sum_prob=0,
     ) -> None:
         BasePolicy.__init__(
@@ -69,7 +68,6 @@ class LLM_DQN_Policy(DQNPolicy):
         self.rew_norm = reward_normalization
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
-        self.need_summary = need_summary
         self.sum_prob = sum_prob
 
     def _target_q(self, buffer, indices) -> torch.Tensor:

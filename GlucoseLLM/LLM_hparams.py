@@ -23,7 +23,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
-        "batch_size": 32,#common_hparams["batch_size"],
+        "batch_size": 64,#common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -33,7 +33,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
         "eps_test": common_hparams["eps_test"],
-        "eps_train": common_hparams["eps_test"],
+        "eps_train": common_hparams["eps_train"],
         "eps_train_final": 0.001,
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
@@ -48,7 +48,6 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
                    "token_dim": 1536},],
 
         # prompt hparam
-        "need_summary": [True, False],
         "sum_prob": [0, 0.1, 0.2, 0.4],
     }
 

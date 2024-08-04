@@ -40,7 +40,7 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step, target_update_freq, is_double,
                       # llm prompt
-                      llm_mode, need_summary, sum_prob,
+                      llm_mode, sum_prob,
                       *args, **kwargs
                       ):
         # define model
@@ -58,7 +58,6 @@ class LLM_DQN_Objective(DQNObjective):
             is_double=is_double,
             action_space=self.action_space,
             observation_space=self.state_space,
-            need_summary=need_summary,
             sum_prob=sum_prob,
         )
         return policy
