@@ -19,11 +19,11 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     # "llama-2-13b", "llama-13b",
     # "llama-3-8b", "llama-2-7b", "llama-7b",
     # "gpt2"
-    _supported_algos = ("llm-dqn", "llm-ddqn")
+    _supported_algos = ("llm-dqn",)
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
-        "batch_size": 32,#common_hparams["batch_size"],
+        "batch_size": 1,  #common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -32,24 +32,23 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     }
     _policy_hparams = {
         "lr": common_hparams["lr"],  # learning rate
+        "eps_train": common_hparams["eps_train"],
         "eps_test": common_hparams["eps_test"],
-        "eps_train": common_hparams["eps_test"],
-        "eps_train_final": 0.001,
+        "eps_train_final": common_hparams["eps_train_final"],
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
         "is_double": False,
         "use_dueling": False,
 
         # llm hparam
-        "llm_mode": [
-        {"llm": "Qwen2-0.5B-Instruct",
-                   "token_dim": 896},
-        {"llm": "Qwen2-1.5B-Instruct",
-                   "token_dim": 1536},],
+        "llm_mode":
+            {"llm": "Qwen2-0.5B-Instruct",
+             "token_dim": 896},
+        # {"llm": "Qwen2-1.5B-Instruct",
+        #            "token_dim": 1536},
 
         # prompt hparam
-        "need_summary": [True, False],
-        "sum_prob": [0, 0.1, 0.2, 0.4],
+        "summary_prob": [0, 0.5],
     }
 
 
@@ -66,7 +65,7 @@ class LLM_PPO_HyperParams(onpolicyRLHparams.PPOHyperParams):
 
 
 class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("llm", )
+    _supported_algos = ("llm",)
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
@@ -74,12 +73,12 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "llm_mode": [
-        {"llm": "Qwen2-1.5B-Instruct",
-                   "context_window": 32768},
-        {"llm": "internlm2_5-7b-chat",
-                   "context_window": 32768},
-        {"llm": "Phi-3-small-128k-instruct",
-                   "context_window": 131072},
-        {"llm": "Yi-1.5-9B-Chat",
-                   "context_window": 4096},],
+            {"llm": "Qwen2-1.5B-Instruct",
+             "context_window": 32768},
+            {"llm": "internlm2_5-7b-chat",
+             "context_window": 32768},
+            {"llm": "Phi-3-small-128k-instruct",
+             "context_window": 131072},
+            {"llm": "Yi-1.5-9B-Chat",
+             "context_window": 4096}, ],
     }

@@ -35,7 +35,7 @@ class LLMDQN(GlucoseLLM.Model):
             device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
             need_llm: bool = False,
             # prompt options
-            summary_prompt=False, Q_prompt=False, 
+            summary_prompt=False, Q_prompt=False,
     ) -> None:
         if isinstance(action_shape, int):
             self.num_actions = action_shape
@@ -129,9 +129,9 @@ class LLMDQN(GlucoseLLM.Model):
 
 
 def define_llm_dqn(input_shape: int, output_shape: int,
-                       device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", token_dim=1536,
-                       Q_prompt=False, summary_prompt=False,
-                       ):
+                   device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", token_dim=1536,
+                   Q_prompt=False, summary_prompt=False,
+                   ):
     configs = argparse.Namespace(
         d_ff=32,
         patch_len=9,  # TODO: TBD
@@ -170,17 +170,18 @@ class LLM(torch.nn.Module):
         self.max_length = context_window
         self.device = device
         self.system_prompt = system_prompt
-        
+
         self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
-    
+        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(
+            self.device)
+
     def forward(self, input_text):
         messages = [{"role": "system", "content": self.system_prompt}]
-        messages.append({"role":"user", "content": input_text})
+        messages.append({"role": "user", "content": input_text})
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
-                                                            add_generation_prompt=True)
+                                                    add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
+
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs.input_ids,
@@ -188,7 +189,7 @@ class LLM(torch.nn.Module):
                 do_sample=False,
                 temperature=1
             )
-        
+
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         cutoff_index = generated_text.rfind("assistant\n")
         if cutoff_index != -1:  # answer cutoff
@@ -199,6 +200,6 @@ class LLM(torch.nn.Module):
 def define_llm(llm="Qwen2-1.5B-Instruct", context_window=32768,
                device="cuda" if torch.cuda.is_available() else "cpu",
                system_prompt=False,
-    ):
+               ):
     net = LLM(llm=llm, context_window=context_window, device=device, system_prompt=system_prompt).to(device)
     return net

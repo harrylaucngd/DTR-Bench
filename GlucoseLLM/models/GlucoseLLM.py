@@ -124,30 +124,32 @@ class Model(nn.Module):
 
         self.active_branch = "model"
 
-    def forward(self, x_enc, prompt):
-        dec_out = self.forecast(x_enc, prompt)
-        return dec_out[:, -self.pred_len:, :]
+    def forward(self, x_enc, prompt, model="current"):
+        # decide which model to use, current or old
+        if model == "current":
+            mapping_layer = self.mapping_layer
+            patch_embedding = self.patch_embedding
+            reprogramming_layer = self.reprogramming_layer
+            output_projection = self.output_projection
 
-    def forecast(self, x_enc, prompt):
+        elif model == "old":
+            mapping_layer = self.mapping_layer_old
+            patch_embedding = self.patch_embedding_old
+            reprogramming_layer = self.reprogramming_layer_old
+            output_projection = self.output_projection_old
+        else:
+            raise ValueError("Not supported model!")
+
+        # tokenization and embedding
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=llm_context_window[self.llm]).input_ids
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
-        if self.active_branch == "model":
-            source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
-        elif self.active_branch == "model_old":
-            source_embeddings = self.mapping_layer_old(self.word_embeddings.permute(1, 0)).permute(1, 0)
-        else:
-            raise ValueError("Not supported branch!")
-
+        # reprogramming time series
+        source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
         x_enc = x_enc.permute(0, 2, 1).contiguous()
-        if self.active_branch == "model":
-            enc_out, n_vars = self.patch_embedding(x_enc)
-            enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
-        elif self.active_branch == "model_old":
-            enc_out, n_vars = self.patch_embedding_old(x_enc)
-            enc_out = self.reprogramming_layer_old(enc_out, source_embeddings, source_embeddings)
-        else:
-            raise ValueError("Not supported branch!")
+        enc_out, n_vars = patch_embedding(x_enc)
+        enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
         # llama_enc_out = torch.cat([torch.cat([prompt_embeddings, enc_out[0, :, :].unsqueeze(0)], dim=1), enc_out[1, :, :].unsqueeze(0)], dim=1)
         dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
@@ -157,13 +159,9 @@ class Model(nn.Module):
             dec_out, (-1, n_vars, dec_out.shape[-2], dec_out.shape[-1]))
         dec_out = dec_out.permute(0, 1, 3, 2).contiguous()
 
-        if self.active_branch == "model":
-            dec_out = self.output_projection(dec_out[:, :, :, -self.patch_nums:])
-        elif self.active_branch == "model_old":
-            dec_out = self.output_projection_old(dec_out[:, :, :, -self.patch_nums:])
+        dec_out = output_projection(dec_out[:, :, :, -self.patch_nums:])
         dec_out = dec_out.permute(0, 2, 1).contiguous()
-
-        return dec_out
+        return dec_out[:, -self.pred_len:, :]
 
 
 class ReprogrammingLayer(nn.Module):
