@@ -1,5 +1,7 @@
 from typing import SupportsFloat, Any
+from importlib import resources
 
+import pandas as pd
 from gymnasium.core import ActType, ObsType
 from simglucose.simulation.env import T1DSimEnv as _T1DSimEnv
 from simglucose.patient.t1dpatient import T1DPatient
@@ -107,6 +109,7 @@ class SinglePatientEnv(gymnasium.Env):
                     'adult#006', 'adult#007', 'adult#008', 'adult#009', 'adult#010',
                     'child#001', 'child#002', 'child#003', 'child#004', 'child#005',
                     'child#006', 'child#007', 'child#008', 'child#009', 'child#010']
+    all_patient_meta = pd.read_csv(str(resources.files("simglucose").joinpath("params/Quest.csv")))
     INSULIN_PUMP_HARDWARE = 'Insulet'
 
     def __init__(self, patient_name: str,
@@ -143,6 +146,7 @@ class SinglePatientEnv(gymnasium.Env):
                          }
         self._action_space = None  # Backing attribute for lazy loading
         self._obs_space = None  # Backing attribute for lazy loading
+        self.patient_meta_info = None
 
     def reset(self, seed: int = None, **kwargs):
         self.seed(seed)
@@ -158,6 +162,8 @@ class SinglePatientEnv(gymnasium.Env):
         if self.patient_name not in self.patient_list:
             raise ValueError(f"patient_name must be in {self.patient_list}")
 
+        self.patient_meta_info = (self.all_patient_meta[self.all_patient_meta["Name"] == self.patient_name]
+                                  .squeeze(axis=0).to_dict())
         self.env, _, _, _ = self._create_env(random_init_bg=self.random_init_bg)
         obs, _, _, info = self.env.reset()
         bg = info["bg"]
@@ -217,6 +223,7 @@ class SinglePatientEnv(gymnasium.Env):
         all_info.update(info)
 
         # get rnn style obs
+        # todo: use self.patient_meta_info to get the patient's information if needed
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
         bg[bg == 0] = -1
