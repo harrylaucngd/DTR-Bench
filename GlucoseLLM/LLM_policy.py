@@ -19,8 +19,9 @@ from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 
 from GlucoseLLM.model.llm_net import LLMDQN, LLMPPO
-
-from GlucoseLLM.prompt_utils import q_prompt_reprogramming, summary_reprogramming, obs2text, text2act
+from GlucoseLLM.prompts import (SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT,
+                                LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt)
+from GlucoseLLM.prompt_utils import text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -87,25 +88,17 @@ class LLM_DQN_Policy(DQNPolicy):
             **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Compute action over the given batch data and summarize rules."""
-        model = getattr(self, model)
 
-        # rules summarization
-        obs = batch.obs
-        batch_size = len(obs)
-        need_summary = random.choices([True, False],
-                                      weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
-        conversations = summary_reprogramming(batch)
-        conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
-        summaries_T = model.summarize(conversations_T, mode='str') if conversations_T!=[] else []
-        summaries = ["" for _ in range(batch_size)]
-        true_index = 0
-        for i in range(batch_size):
-            if need_summary[i]:
-                summaries[i] = summaries_T[true_index]
-                true_index += 1
 
+        batch_size = len(batch.obs)
+        need_summary = np.random.choice([True, False], p=[self.sum_prob, 1 - self.sum_prob], size=batch_size)
+        if self.sum_prob > 0 and need_summary.any():
+            summary = self.model.summarize(batch.obs[need_summary])
+            summaries = [summary if need else None for need in need_summary]
+        else:
+            summaries = [None] * batch_size
         # Q value prediction
-        series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
+        # series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
         logits = model.q_pred(series, conversations, mode='Q')
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):

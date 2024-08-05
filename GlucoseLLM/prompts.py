@@ -1,4 +1,4 @@
-system_prompt = ("You are a clinical specialist managing patients with Type-1 Diabetes. "
+SYSTEM_PROMPT = ("You are a clinical specialist managing patients with Type-1 Diabetes. "
                  "Your primary objective is to maintain each patient's blood glucose levels within the range"
                  " of 70-180 mg/dL. Blood glucose levels are observed every 5 minutes, "
                  "and insulin is administered accordingly. "
@@ -21,19 +21,17 @@ system_prompt = ("You are a clinical specialist managing patients with Type-1 Di
 
                  "[Safety Considerations]: Hypoglycemia (low blood glucose levels) is particularly dangerous. "
                  "Extra caution is necessary to avoid administering excessive insulin.")
-actor_instruction_prompt = ("[Instruction]: Please generate the action to administer "
+ACTOR_INSTRUCTION_PROMPT = ("[Instruction]: Please generate the action to administer "
                             "insulin dosage for the next 5 minutes."
                             )
-llm_inference_instruction_prompt = ("[Instruction]: Please generate the action to administer "
+LLM_INFERENCE_INSTRUCTION_PROMPT = ("[Instruction]: Please generate the action to administer "
                                     "insulin dosage for the next 5 minutes. Only provide a numerical value "
                                     "between 0 and 0.5 without any additional information."
                                     )
-summary_instruction_prompt = (
-    "You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
-    "summarize history glucose record and drug usage. You need to extract information such as"
+SUMMARY_INSTRUCTION_PROMPT = (
+    "[Instruction]: PLease extract information such as"
     " glucose record trend, drug dosage history, abnormal glucose signs and possible misuse of insulin."
-    " Please extract as much information as possible while keeping the answer short. ")  # expertised system prompt of background knowledge for regulation summary
-
+    " Extract as much information as possible while keeping the answer short. ")
 
 def get_Q_instruction(n_action, max_dose) -> str:
     doses = [i / n_action * max_dose for i in range(n_action + 1)]

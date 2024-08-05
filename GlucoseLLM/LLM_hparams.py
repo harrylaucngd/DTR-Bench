@@ -48,7 +48,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         #            "token_dim": 1536},
 
         # prompt hparam
-        "summary_prob": [0, 0.5],
+        "summary_prob": 1.,
     }
 
 

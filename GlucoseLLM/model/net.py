@@ -150,13 +150,14 @@ class catLLM(nn.Module):
 
 
 class timeLLM(nn.Module):
-    def __init__(self, llm, seq_len, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
-                 keep_old=False, dropout: float = 0., model_dir=None):
+    def __init__(self, llm, seq_len, d_model, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
+                 keep_old=False, dropout: float = 0., model_dir=None,):
         super(timeLLM, self).__init__()
         self.llm = llm
         self.seq_len = seq_len
         self.d_ff = d_ff
         self.top_k = 5
+        self.d_model = d_model
         self.d_llm = token_dim
         self.patch_len = patch_len
         self.stride = stride
@@ -184,6 +185,7 @@ class timeLLM(nn.Module):
                 f'{model_hf[self.llm]}',
                 trust_remote_code=True,
                 local_files_only=False,
+                device_map="auto",
             )
 
         try:
@@ -191,7 +193,8 @@ class timeLLM(nn.Module):
                 f'{model_dir}/{self.llm}',
                 cache_dir=f'{model_dir}/{self.llm}',
                 trust_remote_code=True,
-                local_files_only=True
+                local_files_only=True,
+                device_map="auto",
             )
         except EnvironmentError:  # downloads the tokenizer from HF if not already done
             print("Local tokenizer files not found. Attempting to download them...")
@@ -199,7 +202,8 @@ class timeLLM(nn.Module):
                 f'{model_hf[self.llm]}',
                 cache_dir=f'{model_dir}/{self.llm}',
                 trust_remote_code=True,
-                local_files_only=False
+                local_files_only=False,
+                device_map="auto",
             )
 
         if self.tokenizer.eos_token:
@@ -222,8 +226,7 @@ class timeLLM(nn.Module):
 
         # define old reprogramming model
         if keep_old:
-            self.patch_embedding_old = PatchEmbedding(
-                self.d_model, self.patch_len, self.stride, self.dropout)
+            self.patch_embedding_old = PatchEmbedding(self.d_model, self.patch_len, self.stride, self.dropout)
             self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
             self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
             self.output_projection_old = FlattenHead(self.enc_in, self.head_nf)
