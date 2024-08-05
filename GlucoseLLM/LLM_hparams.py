@@ -22,8 +22,8 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _supported_algos = ("llm-dqn", "llm-ddqn")
     _general_hparams = {
         # general parameters
-        "seed": common_hparams["seed"],
-        "batch_size": 64,#common_hparams["batch_size"],
+        "seed": common_hparams["llm_seed"],
+        "batch_size": 64,
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -54,14 +54,40 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
 
 class LLM_PPO_HyperParams(onpolicyRLHparams.PPOHyperParams):
     _supported_algos = ("llm-ppo",)
-    _policy_hparams = {"gae_lambda": 0.95,
-                       "vf_coef": 0.5,
-                       "ent_coef": 0.01,
-                       "eps_clip": [0.1, 0.2],
-                       "value_clip": False,
-                       "dual_clip": None,
-                       "advantage_normalization": True,
-                       "recompute_advantage": False, }
+    _general_hparams = {
+        # general parameters
+        "seed": common_hparams["llm_seed"],
+        "batch_size": 64,
+        "step_per_collect": common_hparams["onpolicy_step_per_collect"],
+        # number of steps per collect. refer to tianshou's doc
+        "repeat_per_collect": common_hparams["repeat_per_collect"],
+        # number of steps per collect. refer to tianshou's doc
+        # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
+        "gamma": common_hparams["gamma"],
+    }
+    _policy_hparams = {
+        "lr": common_hparams["lr"],  # learning rate
+        "n_step": common_hparams["n_step"],
+        "start_timesteps": common_hparams["start_timesteps"],
+        "gae_lambda": 0.95,
+        "vf_coef": 0.5,
+        "ent_coef": 0.001,
+        "eps_clip": 0.1,
+        "value_clip": False,
+        "dual_clip": None,
+        "advantage_normalization": True,
+        "recompute_advantage": False,
+                       
+        # llm hparam
+        "llm_mode": [
+        {"llm": "Qwen2-0.5B-Instruct",
+                   "token_dim": 896},
+        {"llm": "Qwen2-1.5B-Instruct",
+                   "token_dim": 1536},],
+
+        # prompt hparam
+        "sum_prob": [0, 0.1, 0.2, 0.4],
+    }
 
 
 class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):

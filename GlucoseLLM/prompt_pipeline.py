@@ -79,30 +79,6 @@ class Conversation:
         return str
 
 
-def q_prompt_reprogramming(obs, act, summaries):
-    series, history_prompt = [], []
-    for o, a, summ in zip(obs, act, summaries):
-        obs_tensor = torch.tensor(o)
-        act_tensor = torch.tensor(a)
-        ser = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
-        ser[0::2] = obs_tensor
-        ser[1::2] = act_tensor
-        ser = ser.unsqueeze(1)
-        series.append(ser)
-        prompt = Conversation()
-        if summ == "":
-            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
-                " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
-                " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
-        else:
-            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
-                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
-                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
-                " 0.4-0.45, 0.45-0.5]. ")
-        history_prompt.append(prompt)
-    return series, history_prompt
-
-
 def summary_reprogramming(batch):
     obs = batch.obs
     batch_size = len(obs)
@@ -132,6 +108,54 @@ def summary_reprogramming(batch):
         conversation.add_component("user", " ".join(description))
         conversations.append(conversation)
     return conversations
+
+
+def q_prompt_reprogramming(obs, act, summaries):
+    series, history_prompt = [], []
+    for o, a, summ in zip(obs, act, summaries):
+        obs_tensor = torch.tensor(o)
+        act_tensor = torch.tensor(a)
+        ser = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
+        ser[0::2] = obs_tensor
+        ser[1::2] = act_tensor
+        ser = ser.unsqueeze(1)
+        series.append(ser)
+        prompt = Conversation()
+        if summ == "":
+            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
+                " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
+                " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
+        else:
+            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
+                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
+                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
+                " 0.4-0.45, 0.45-0.5]. ")
+        history_prompt.append(prompt)
+    return series, history_prompt
+
+
+def act_prompt_reprogramming(obs, act, summaries):
+    series, history_prompt = [], []
+    for o, a, summ in zip(obs, act, summaries):
+        obs_tensor = torch.tensor(o)
+        act_tensor = torch.tensor(a)
+        ser = torch.empty(2 * len(obs_tensor), dtype=obs_tensor.dtype)
+        ser[0::2] = obs_tensor
+        ser[1::2] = act_tensor
+        ser = ser.unsqueeze(1)
+        series.append(ser)
+        prompt = Conversation()
+        if summ == "":
+            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
+                " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
+                " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
+        else:
+            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
+                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
+                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
+                " 0.4-0.45, 0.45-0.5]. ")
+        history_prompt.append(prompt)
+    return series, history_prompt
 
 
 def obs2text(batch):

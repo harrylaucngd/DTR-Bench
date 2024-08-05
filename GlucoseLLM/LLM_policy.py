@@ -20,7 +20,7 @@ from tianshou.utils.net.common import ActorCritic
 
 from GlucoseLLM.models.llm_net import LLMDQN, LLMPPO
 
-from GlucoseLLM.prompt_pipeline import q_prompt_reprogramming, summary_reprogramming, obs2text, text2act
+from GlucoseLLM.prompt_pipeline import summary_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, obs2text, text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -140,7 +140,7 @@ class LLM_PPO_Policy(PPOPolicy):
         self,
         *,
         actor: LLMPPO,
-        critic: LLMPPO,
+        critic: torch.nn.Module,
         optim: torch.optim.Optimizer,
         dist_fn: TDistributionFunction,
         action_space: gym.Space,
@@ -161,6 +161,7 @@ class LLM_PPO_Policy(PPOPolicy):
         action_scaling: bool = True,
         action_bound_method: Literal["clip", "tanh"] | None = "clip",
         lr_scheduler: TLearningRateScheduler | None = None,
+        sum_prob=0,
     ) -> None:
         assert (
             dual_clip is None or dual_clip > 1.0
@@ -172,6 +173,11 @@ class LLM_PPO_Policy(PPOPolicy):
             optim=optim,
             dist_fn=dist_fn,
             action_space=action_space,
+            eps_clip=eps_clip,
+            dual_clip=dual_clip,
+            value_clip=value_clip,
+            advantage_normalization=advantage_normalization,
+            recompute_advantage=recompute_advantage,
             vf_coef=vf_coef,
             ent_coef=ent_coef,
             max_grad_norm=max_grad_norm,
@@ -185,12 +191,7 @@ class LLM_PPO_Policy(PPOPolicy):
             action_bound_method=action_bound_method,
             lr_scheduler=lr_scheduler,
         )
-        self.eps_clip = eps_clip
-        self.dual_clip = dual_clip
-        self.value_clip = value_clip
-        self.norm_adv = advantage_normalization
-        self.recompute_adv = recompute_advantage
-        self._actor_critic: ActorCritic
+        self.sum_prob = sum_prob
     
     def forward(
         self,
@@ -209,9 +210,23 @@ class LLM_PPO_Policy(PPOPolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
-        # TODO: rename? It's not really logits and there are particular
-        #  assumptions about the order of the output and on distribution type
-        logits, hidden = self.actor(batch.obs, state=state, info=batch.info)
+        # rules summarization
+        obs = batch.obs
+        batch_size = len(obs)
+        need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
+        conversations = summary_reprogramming(batch)
+        conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
+        summaries_T = self.actor.summarize(conversations_T, mode='str') if conversations_T!=[] else []
+        summaries = ["" for _ in range(batch_size)]
+        true_index = 0
+        for i in range(batch_size):
+            if need_summary[i]:
+                summaries[i] = summaries_T[true_index]
+                true_index += 1
+
+        # assumptions about the order of the output and on distribution type
+        series, conversations = act_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
+        logits = self.actor.act_pred(series, conversations, mode='act')
         if isinstance(logits, tuple):
             dist = self.dist_fn(*logits)
         else:
@@ -222,7 +237,7 @@ class LLM_PPO_Policy(PPOPolicy):
             act = dist.mode
         else:
             act = dist.sample()
-        result = Batch(logits=logits, act=act, state=hidden, dist=dist)
+        result = Batch(logits=logits, act=act, state=state, dist=dist)
         return cast(DistBatchProtocol, result)
 
 
