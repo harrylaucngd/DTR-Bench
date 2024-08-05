@@ -18,9 +18,9 @@ from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 
-from GlucoseLLM.models.llm_net import LLMDQN, LLMPPO
+from GlucoseLLM.model.llm_net import LLMDQN, LLMPPO
 
-from GlucoseLLM.prompt_pipeline import q_prompt_reprogramming, summary_reprogramming, obs2text, text2act
+from GlucoseLLM.prompt_utils import q_prompt_reprogramming, summary_reprogramming, obs2text, text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -70,23 +70,6 @@ class LLM_DQN_Policy(DQNPolicy):
         self.clip_loss_grad = clip_loss_grad
         self.sum_prob = summary_prob
 
-    def _target_q(self, buffer, indices) -> torch.Tensor:
-        obs_next_batch = Batch(
-            obs=buffer[indices].obs_next,
-            info=buffer[indices].info,
-        )  # obs_next: s_{t+n}
-        result = self(obs_next_batch)
-        if self._target:
-            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
-            self.model.active_branch = "model_old"
-            target_q = self(obs_next_batch, model="model", input="obs_next").logits
-        else:
-            target_q = result.logits
-        if self.is_double:
-            return target_q[np.arange(len(result.act)), result.act]
-        # Nature DQN, over estimate
-        return target_q.max(dim=1)[0]
-
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
         attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection"]
@@ -109,7 +92,8 @@ class LLM_DQN_Policy(DQNPolicy):
         # rules summarization
         obs = batch.obs
         batch_size = len(obs)
-        need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
+        need_summary = random.choices([True, False],
+                                      weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
         conversations = summary_reprogramming(batch)
         conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
         summaries_T = model.summarize(conversations_T, mode='str') if conversations_T!=[] else []

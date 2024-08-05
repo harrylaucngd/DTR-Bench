@@ -1,12 +1,9 @@
 import os.path
 from math import sqrt
-import torch
-import torch.nn as nn
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from GlucoseLLM.models.layers.Embed import PatchEmbedding
+from GlucoseLLM.model.Embed import PatchEmbedding
 import transformers
-from GlucoseLLM.models.layers.StandardNorm import Normalize
 
 transformers.logging.set_verbosity_error()
 
@@ -26,19 +23,85 @@ llm_context_window = {
     "Qwen2-0.5B-Instruct": 32768,
 }
 
+import torch
+import torch.nn as nn
+
+
+class Normalize(nn.Module):
+    def __init__(self, num_features: int, eps=1e-5, affine=False, subtract_last=False, non_norm=False):
+        """
+        :param num_features: the number of features or channels
+        :param eps: a value added for numerical stability
+        :param affine: if True, RevIN has learnable affine parameters
+        """
+        super(Normalize, self).__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.affine = affine
+        self.subtract_last = subtract_last
+        self.non_norm = non_norm
+        if self.affine:
+            self._init_params()
+
+    def forward(self, x, mode: str):
+        if mode == 'norm':
+            self._get_statistics(x)
+            x = self._normalize(x)
+        elif mode == 'denorm':
+            x = self._denormalize(x)
+        else:
+            raise NotImplementedError
+        return x
+
+    def _init_params(self):
+        # initialize RevIN params: (C,)
+        self.affine_weight = nn.Parameter(torch.ones(self.num_features))
+        self.affine_bias = nn.Parameter(torch.zeros(self.num_features))
+
+    def _get_statistics(self, x):
+        dim2reduce = tuple(range(1, x.ndim - 1))
+        if self.subtract_last:
+            self.last = x[:, -1, :].unsqueeze(1)
+        else:
+            self.mean = torch.mean(x, dim=dim2reduce, keepdim=True).detach()
+        self.stdev = torch.sqrt(torch.var(x, dim=dim2reduce, keepdim=True, unbiased=False) + self.eps).detach()
+
+    def _normalize(self, x):
+        if self.non_norm:
+            return x
+        if self.subtract_last:
+            x = x - self.last
+        else:
+            x = x - self.mean
+        x = x / self.stdev
+        if self.affine:
+            x = x * self.affine_weight
+            x = x + self.affine_bias
+        return x
+
+    def _denormalize(self, x):
+        if self.non_norm:
+            return x
+        if self.affine:
+            x = x - self.affine_bias
+            x = x / (self.affine_weight + self.eps * self.eps)
+        x = x * self.stdev
+        if self.subtract_last:
+            x = x + self.last
+        else:
+            x = x + self.mean
+        return x
+
 
 class FlattenHead(nn.Module):
-    def __init__(self, n_vars, nf, target_window, head_dropout=0.):
+    def __init__(self, input_dim, output_dim):
         super().__init__()
-        self.n_vars = n_vars
         self.flatten = nn.Flatten(start_dim=-2)
-        self.linear = nn.Linear(nf, target_window)
-        self.dropout = nn.Dropout(head_dropout)
+        self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
         x = self.flatten(x)
         x = self.linear(x)
-        x = self.dropout(x)
         return x
 
 
@@ -82,15 +145,15 @@ class ReprogrammingLayer(nn.Module):
 
         return reprogramming_embedding
 
+class catLLM(nn.Module):
+    pass
+
 
 class timeLLM(nn.Module):
-    def __init__(self, llm, pred_len, seq_len, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
-
-                 keep_old=False,
-                 dropout: float = 0.1):
+    def __init__(self, llm, seq_len, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
+                 keep_old=False, dropout: float = 0., model_dir=None):
         super(timeLLM, self).__init__()
         self.llm = llm
-        self.pred_len = pred_len
         self.seq_len = seq_len
         self.d_ff = d_ff
         self.top_k = 5
@@ -107,7 +170,7 @@ class timeLLM(nn.Module):
         self.head_nf = self.d_ff * self.patch_nums
 
         # find the LLM model and tokenizer
-        model_dir = os.path.join("model_hub")
+        model_dir = "downloaded_models" if model_dir is None else model_dir
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
@@ -145,21 +208,17 @@ class timeLLM(nn.Module):
             pad_token = '[PAD]'
             self.tokenizer.add_special_tokens({'pad_token': pad_token})
             self.tokenizer.pad_token = pad_token
-
-        for param in self.llm_model.parameters():
-            param.requires_grad = False
+        self.freeze_llm_model()
 
         # define reprogramming model
-        self.patch_embedding = PatchEmbedding(
-            self.d_model, self.patch_len, self.stride, self.dropout)
+        self.patch_embedding = PatchEmbedding(self.d_model, self.patch_len, self.stride, self.dropout)
 
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
 
         self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
         self.reprogramming_layer = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
-        self.output_projection = FlattenHead(self.enc_in, self.head_nf, self.pred_len,
-                                             head_dropout=self.dropout)
+        self.output_projection = FlattenHead(self.enc_in, self.head_nf)
 
         # define old reprogramming model
         if keep_old:
@@ -167,10 +226,19 @@ class timeLLM(nn.Module):
                 self.d_model, self.patch_len, self.stride, self.dropout)
             self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
             self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
-            self.output_projection_old = FlattenHead(self.enc_in, self.head_nf, self.pred_len,
-                                                     head_dropout=self.dropout)
+            self.output_projection_old = FlattenHead(self.enc_in, self.head_nf)
 
-    def forward(self, x_enc, prompt, model="current"):
+    def freeze_llm_model(self):
+        """Ensure all llm_model parameters are frozen."""
+        for param in self.llm_model.parameters():
+            param.requires_grad = False
+
+    def unfreeze_llm_model(self):
+        """Unfreeze all llm_model parameters, allowing them to be updated during training."""
+        for param in self.llm_model.parameters():
+            param.requires_grad = True
+
+    def forward(self, x_enc, prompt, model="current", state=None, info={}):
         # decide which model to use, current or old
         if model == "current":
             mapping_layer = self.mapping_layer
@@ -210,9 +278,20 @@ class timeLLM(nn.Module):
 
         dec_out = output_projection(dec_out[:, :, :, -self.patch_nums:])
         dec_out = dec_out.permute(0, 2, 1).contiguous()
-        return dec_out[:, -self.pred_len:, :]
+        return dec_out[:, -self.pred_len:, :], None
 
-    def generate_text(self, x_enc, prompt):
+    def generate_text(self, x_enc, prompt, max_length=256):
+        # Check the type of the prompt
+        if isinstance(prompt, list):
+            # If the prompt is a list of dictionaries, convert each conversation into a string format
+            prompt = [self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True) for message in prompt]
+            prompt = ' '.join(prompt)
+        elif isinstance(prompt, str):
+            # If the prompt is a string, use it as it is
+            pass
+        else:
+            raise ValueError("Unsupported prompt type! The prompt should be either a string or a list of dictionaries.")
+
         # Tokenization and embedding
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
                                 max_length=llm_context_window[self.llm]).input_ids
@@ -244,4 +323,3 @@ class timeLLM(nn.Module):
             generated_text = generated_text[cutoff_index + len("assistant\n"):]
 
         return generated_text
-

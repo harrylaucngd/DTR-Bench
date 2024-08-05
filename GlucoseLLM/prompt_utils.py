@@ -7,12 +7,15 @@ from datetime import timedelta
 class Conversation:
     def __init__(self):
         # Initialize an empty conversation list
-        self.conversation = []
+        self._conversation = []
+
+    def get(self):
+        return self._conversation
 
     def add_component(self, role, content):
         # Add a new component to the conversation
         if role in ["system", "user", "assistant"]:
-            self.conversation.append({"role": role, "content": content})
+            self._conversation.append({"role": role, "content": content})
             self.syntax_check()
         else:
             raise ValueError("Role must be 'system', 'user', or 'assistant'.")
@@ -21,10 +24,10 @@ class Conversation:
         # Insert a new component at the specified location
         if role in ["system", "user", "assistant"]:
             if loc < 0:
-                loc = len(self.conversation) + loc + 1
-            if loc > len(self.conversation):
-                loc = len(self.conversation)
-            self.conversation.insert(loc, {"role": role, "content": content})
+                loc = len(self._conversation) + loc + 1
+            if loc > len(self._conversation):
+                loc = len(self._conversation)
+            self._conversation.insert(loc, {"role": role, "content": content})
             self.syntax_check()
         else:
             raise ValueError("Role must be 'system', 'user', or 'assistant'.")
@@ -32,9 +35,9 @@ class Conversation:
     def append_content(self, additional_content, pos):
         # Append additional content to the content of the element at position pos
         if pos < 0:
-            pos = len(self.conversation) + pos
-        if 0 <= pos < len(self.conversation):
-            self.conversation[pos]["content"] += additional_content
+            pos = len(self._conversation) + pos
+        if 0 <= pos < len(self._conversation):
+            self._conversation[pos]["content"] += additional_content
             self.syntax_check()
         else:
             raise IndexError("Position out of range.")
@@ -42,12 +45,12 @@ class Conversation:
     def syntax_check(self):
         # Check for neighboring roles that are the same in the conversation
         i = 1
-        while i < len(self.conversation):
-            if self.conversation[i]["role"] == self.conversation[i-1]["role"]:
+        while i < len(self._conversation):
+            if self._conversation[i]["role"] == self._conversation[i - 1]["role"]:
                 # Append content of the current role to the previous role
-                self.conversation[i-1]["content"] += self.conversation[i]["content"]
+                self._conversation[i - 1]["content"] += self._conversation[i]["content"]
                 # Remove the current role
-                self.conversation.pop(i)
+                self._conversation.pop(i)
             else:
                 i += 1
     
@@ -58,24 +61,24 @@ class Conversation:
     
     def clip(self, context_length, tokenizer):
         # Clip the conversation to fit within the context length
-        conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
+        conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self._conversation)
         tokens = self.count_tokens(conv_str, tokenizer)
         
         if tokens <= context_length:
             return self
         
-        for i in range(len(self.conversation)):
-            conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation[i+1:])
+        for i in range(len(self._conversation)):
+            conv_str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self._conversation[i + 1:])
             tokens = self.count_tokens(conv_str, tokenizer)
             if tokens <= context_length:
                 clipped_conversation = Conversation()
-                clipped_conversation.conversation = self.conversation[i+1:]
+                clipped_conversation._conversation = self._conversation[i + 1:]
                 return clipped_conversation
 
         return Conversation()
 
     def to_str(self):
-        str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self.conversation)
+        str = '\n'.join(f'{component["role"]}: {component["content"]}' for component in self._conversation)
         return str
 
 
