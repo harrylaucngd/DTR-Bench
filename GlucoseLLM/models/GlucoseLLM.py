@@ -83,10 +83,12 @@ class ReprogrammingLayer(nn.Module):
         return reprogramming_embedding
 
 
-class Model(nn.Module):
-    def __init__(self, llm, pred_len, seq_len, d_ff, patch_len, stride, token_dim, n_heads, enc_in, keep_old=False,
+class timeLLM(nn.Module):
+    def __init__(self, llm, pred_len, seq_len, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
+
+                 keep_old=False,
                  dropout: float = 0.1):
-        super(Model, self).__init__()
+        super(timeLLM, self).__init__()
         self.llm = llm
         self.pred_len = pred_len
         self.seq_len = seq_len
@@ -210,5 +212,36 @@ class Model(nn.Module):
         dec_out = dec_out.permute(0, 2, 1).contiguous()
         return dec_out[:, -self.pred_len:, :]
 
+    def generate_text(self, x_enc, prompt):
+        # Tokenization and embedding
+        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
+                                max_length=llm_context_window[self.llm]).input_ids
+        prompt_embeddings = self.llm_model.model.get_input_embeddings()(
+            prompt.to(x_enc.device if x_enc is not None else 'cpu'))  # (batch, prompt_token, dim)
 
+        if x_enc is None:
+            llama_enc_out = prompt_embeddings
+        else:
+            # Reprogramming time series
+            source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+            x_enc = x_enc.permute(0, 2, 1).contiguous()
+            enc_out, _ = self.patch_embedding(x_enc)
+            enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+            llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+
+        # Generate text using LLM
+        outputs = self.llm_model.generate(
+            inputs_embeds=llama_enc_out,
+            max_length=self.max_length,
+            do_sample=True,
+            temperature=1
+        )
+
+        # Decode the generated text
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        cutoff_index = generated_text.rfind("assistant\n")
+        if cutoff_index != -1:  # answer cutoff
+            generated_text = generated_text[cutoff_index + len("assistant\n"):]
+
+        return generated_text
 

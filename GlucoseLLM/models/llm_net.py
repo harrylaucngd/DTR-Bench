@@ -26,7 +26,7 @@ llm_context_window = {
 }
 
 
-class LLMDQN(GlucoseLLM.Model):
+class LLMDQN(GlucoseLLM.timeLLM):
     def __init__(
             self,
             configs: argparse.Namespace,
@@ -151,7 +151,7 @@ def define_llm_dqn(input_shape: int, output_shape: int,
     return net
 
 
-class LLMPPO(GlucoseLLM.Model):
+class LLMPPO(GlucoseLLM.timeLLM):
     pass
 
 
