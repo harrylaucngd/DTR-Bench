@@ -1,8 +1,10 @@
 import torch
 import wandb
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_Policy
+from pathlib import Path
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLMInference_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.model.llm_net import define_llm_dqn, LLM
+from GlucoseLLM.model.net import LLMInference
+from GlucoseLLM.model.llm_net import define_llm_dqn
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
 from DTRBench.src.base_obj import RLObjective
@@ -46,17 +48,20 @@ class LLM_PPO_Objective(PPOObjective):
     pass
 
 
-class LLM_Objective(RLObjective):
+class LLM_Inference_Objective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: LLMInference_HyperParams, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
-    def define_policy(self, llm_mode, **kwargs):
-        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
-                  device=self.device, system_prompt=sys_llm_only_prompt).to(self.device)
-        return LLM_Policy(
+    def define_policy(self, llm_mode, num_try, need_summary, **kwargs):
+        net = LLMInference(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
+                           device=self.device,
+                           model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub").to(self.device)
+        return LLMInference_Policy(
             net,
             action_space=self.action_space,
             observation_space=self.state_space,
+            num_try=num_try,
+            need_summary=need_summary
         )
 
     def wandb_search(self):

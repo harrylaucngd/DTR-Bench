@@ -64,12 +64,12 @@ class Conversation:
         return str
 
 
-def text2act(logits, action_space):
-    numbers = re.findall(r'-?\d+\.?\d*', logits)  # todo: make sure it select the correct number with 0.
-    numbers = [float(num) for num in numbers]
-
-    if len(numbers) == 0:
-        return action_space.sample()
-
-    # always select the first number
-    return np.clip(numbers[0], 0, 0.5)
+def text2act(text, action_space):
+    # Find the first numerical value in the text
+    match = re.search(r'-?\d+\.?\d*', text)
+    if match:
+        value = float(match.group())
+        # Check if the value is within the action space bounds
+        if action_space.contains([value]):
+            return value
+    return None

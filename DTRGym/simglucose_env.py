@@ -198,6 +198,7 @@ class SinglePatientEnv(gymnasium.Env):
             raise ValueError(f"action should be in [{self.action_space.low}, {self.action_space.high}]")
         self.t += self.env.sample_time
         self.step_counter += 1
+        print("env act", action)
         # This gym only controls basal insulin
         act = Action(basal=action, bolus=0)  # U/h -> U/min
         obs, _, _, info = self.env.step(act)
@@ -269,7 +270,7 @@ class SinglePatientEnv(gymnasium.Env):
             raise ValueError("start_time must be less than 24 hours")
         time_string = str(timedelta(seconds=self.start_time))
         hour, minute, second = map(int, time_string.split(':'))
-        start_time = datetime(2018, 1, 1, hour, minute, second)
+        start_time = datetime(2024, 1, 1, hour, minute, second)
         if self.random_meal:
             scenario = RandomScenario(start_time=start_time, seed=seed4)
         else:

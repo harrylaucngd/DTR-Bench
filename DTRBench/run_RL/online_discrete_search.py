@@ -47,7 +47,7 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
-    parser.add_argument("--policy_name", type=str, default="LLM-DQN",  # Change this for different sweep!
+    parser.add_argument("--policy_name", type=str, default="LLM",  # Change this for different sweep!
                         choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "TD3"],
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")

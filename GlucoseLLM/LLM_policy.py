@@ -19,9 +19,10 @@ from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 
 from GlucoseLLM.model.llm_net import LLMDQN, LLMPPO
-from GlucoseLLM.prompts import (SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT,
-                                LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt)
-from GlucoseLLM.prompt_utils import text2act
+from GlucoseLLM.prompts import (obs2text, SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY_INSTRUCTION_PROMPT,
+                                LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt,
+                                LLM_INFERENCE_RETRY_PROMPT)
+from GlucoseLLM.prompt_utils import text2act, Conversation
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -89,7 +90,6 @@ class LLM_DQN_Policy(DQNPolicy):
     ) -> ModelOutputBatchProtocol:
         """Compute action over the given batch data and summarize rules."""
 
-
         batch_size = len(batch.obs)
         need_summary = np.random.choice([True, False], p=[self.sum_prob, 1 - self.sum_prob], size=batch_size)
         if self.sum_prob > 0 and need_summary.any():
@@ -113,34 +113,35 @@ class LLM_PPO_Policy(PPOPolicy):
     """
     Implementation of LLM-DQN policy.
     """
+
     def __init__(
-        self,
-        *,
-        actor: LLMPPO,
-        critic: LLMPPO,
-        optim: torch.optim.Optimizer,
-        dist_fn: TDistributionFunction,
-        action_space: gym.Space,
-        eps_clip: float = 0.2,
-        dual_clip: float | None = None,
-        value_clip: bool = False,
-        advantage_normalization: bool = True,
-        recompute_advantage: bool = False,
-        vf_coef: float = 0.5,
-        ent_coef: float = 0.01,
-        max_grad_norm: float | None = None,
-        gae_lambda: float = 0.95,
-        max_batchsize: int = 256,
-        discount_factor: float = 0.99,
-        reward_normalization: bool = False,
-        deterministic_eval: bool = False,
-        observation_space: gym.Space | None = None,
-        action_scaling: bool = True,
-        action_bound_method: Literal["clip", "tanh"] | None = "clip",
-        lr_scheduler: TLearningRateScheduler | None = None,
+            self,
+            *,
+            actor: LLMPPO,
+            critic: LLMPPO,
+            optim: torch.optim.Optimizer,
+            dist_fn: TDistributionFunction,
+            action_space: gym.Space,
+            eps_clip: float = 0.2,
+            dual_clip: float | None = None,
+            value_clip: bool = False,
+            advantage_normalization: bool = True,
+            recompute_advantage: bool = False,
+            vf_coef: float = 0.5,
+            ent_coef: float = 0.01,
+            max_grad_norm: float | None = None,
+            gae_lambda: float = 0.95,
+            max_batchsize: int = 256,
+            discount_factor: float = 0.99,
+            reward_normalization: bool = False,
+            deterministic_eval: bool = False,
+            observation_space: gym.Space | None = None,
+            action_scaling: bool = True,
+            action_bound_method: Literal["clip", "tanh"] | None = "clip",
+            lr_scheduler: TLearningRateScheduler | None = None,
     ) -> None:
         assert (
-            dual_clip is None or dual_clip > 1.0
+                dual_clip is None or dual_clip > 1.0
         ), f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
 
         super().__init__(
@@ -168,12 +169,12 @@ class LLM_PPO_Policy(PPOPolicy):
         self.norm_adv = advantage_normalization
         self.recompute_adv = recompute_advantage
         self._actor_critic: ActorCritic
-    
+
     def forward(
-        self,
-        batch: ObsBatchProtocol,
-        state: dict | BatchProtocol | np.ndarray | None = None,
-        **kwargs: Any,
+            self,
+            batch: ObsBatchProtocol,
+            state: dict | BatchProtocol | np.ndarray | None = None,
+            **kwargs: Any,
     ) -> DistBatchProtocol:
         """Compute action over the given batch data by applying the actor.
 
@@ -203,7 +204,7 @@ class LLM_PPO_Policy(PPOPolicy):
         return cast(DistBatchProtocol, result)
 
 
-class LLM_Policy(BasePolicy):
+class LLMInference_Policy(BasePolicy):
     """
     Implementation of pure LLM policy.
     """
@@ -213,6 +214,8 @@ class LLM_Policy(BasePolicy):
             model: torch.nn.Module,
             action_space: gym.Space,
             observation_space: gym.Space | None = None,
+            need_summary: bool = False,
+            num_try: int = 1,
     ) -> None:
         super().__init__(
             action_space=action_space,
@@ -221,6 +224,10 @@ class LLM_Policy(BasePolicy):
             action_bound_method=None,
         )
         self.model = model
+        self.need_summary = need_summary
+        self.num_try = num_try
+        if num_try < 1:
+            raise ValueError("num_try should be greater than 0")
 
     def forward(
             self,
@@ -230,12 +237,39 @@ class LLM_Policy(BasePolicy):
             **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Decide action over the given batch data."""
+        if batch.obs.shape[0] != 1:
+            raise ValueError("LLMInference_Policy only supports batch size of 1 at inference time.")
         model = getattr(self, model)
 
-        prompt = obs2text(batch)
-        logits = model(prompt)
-        act = [text2act(logits)]
-        result = Batch(act=act, state=state)
+        obs_prompt = obs2text(batch)
+        messages = Conversation()
+        messages.insert_component("system", SYSTEM_PROMPT, 0)
+        if self.need_summary and (batch.obs[:,:,0] == -1).mean() < 0.8:
+            messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
+            summary = model(messages.get())
+            messages.insert_component("assistant", summary, -1)
+            messages.insert_component("user", LLM_INFERENCE_INSTRUCTION_PROMPT, -1)
+            action_text = model(messages.get())
+        else:
+            messages.insert_component("user", obs_prompt + LLM_INFERENCE_INSTRUCTION_PROMPT, -1)
+            action_text = model(messages.get())
+
+        use_random = True
+        for _ in range(self.num_try):
+            act = text2act(action_text, self.action_space)
+            if act is not None:
+                use_random = False
+                break
+            messages.insert_component("assistant", action_text, -1)
+            messages.insert_component("user", LLM_INFERENCE_RETRY_PROMPT, -1)
+            action_text = model(messages.get())
+
+        # use random action if no valid action is found
+        if use_random:
+            act = self.action_space.sample()
+
+        result = Batch(act=[act], state=state)
+        print("policy act", act)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:

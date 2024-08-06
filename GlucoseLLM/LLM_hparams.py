@@ -72,13 +72,14 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     }
     # policy hyperparameter search space
     _policy_hparams = {
-        "llm_mode": [
-            {"llm": "Qwen2-1.5B-Instruct",
+        "need_summary": [True, False],
+        "num_try": 2,
+        "llm_mode":
+            [
+            {"llm": "Qwen2-7B-Instruct",
              "context_window": 32768},
             {"llm": "internlm2_5-7b-chat",
              "context_window": 32768},
             {"llm": "Phi-3-small-128k-instruct",
-             "context_window": 131072},
-            {"llm": "Yi-1.5-9B-Chat",
-             "context_window": 4096}, ],
+             "context_window": 131072},],
     }

@@ -1,6 +1,8 @@
 import os.path
 from math import sqrt
-
+from typing import List, Dict
+from GlucoseLLM.prompts import (SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY_INSTRUCTION_PROMPT,
+                                LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt)
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from GlucoseLLM.model.Embed import PatchEmbedding
 import transformers
@@ -145,13 +147,50 @@ class ReprogrammingLayer(nn.Module):
 
         return reprogramming_embedding
 
+
+class LLMInference(torch.nn.Module):
+    def __init__(self, llm="Qwen2-0.5B-Instruct", context_window=896,
+                 device="cuda" if torch.cuda.is_available() else "cpu", model_dir=None):
+        super().__init__()
+        self.llm = llm
+        self.max_length = context_window
+        self.device = device
+        model_dir = "model_hub" if model_dir is None else model_dir
+        self.tokenizer = AutoTokenizer.from_pretrained(f'{model_hf[self.llm]}',
+                                                       cache_dir=f'{model_dir}/{self.llm}',
+                                                       trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(f'{model_hf[self.llm]}',
+                                                          cache_dir=f'{model_dir}/{self.llm}',
+                                                          trust_remote_code=True).to(self.device)
+
+    def forward(self, messages:List[Dict]):
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
+                                                    add_generation_prompt=True)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(
+                inputs.input_ids,
+                max_length=self.max_length, #todo: change to max new tokens
+                do_sample=True,
+                temperature=1,# todo
+                top_k=50, # todo
+            )
+
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        cutoff_index = generated_text.rfind("assistant\n")
+        if cutoff_index != -1:  # answer cutoff
+            generated_text = generated_text[cutoff_index + len("assistant\n"):]
+        return generated_text
+
+
 class catLLM(nn.Module):
     pass
 
 
 class timeLLM(nn.Module):
     def __init__(self, llm, seq_len, d_model, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
-                 keep_old=False, dropout: float = 0., model_dir=None,):
+                 keep_old=False, dropout: float = 0., model_dir=None, ):
         super(timeLLM, self).__init__()
         self.llm = llm
         self.seq_len = seq_len
@@ -171,7 +210,7 @@ class timeLLM(nn.Module):
         self.head_nf = self.d_ff * self.patch_nums
 
         # find the LLM model and tokenizer
-        model_dir = "downloaded_models" if model_dir is None else model_dir
+        model_dir = "model_hub" if model_dir is None else model_dir
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
@@ -287,7 +326,8 @@ class timeLLM(nn.Module):
         # Check the type of the prompt
         if isinstance(prompt, list):
             # If the prompt is a list of dictionaries, convert each conversation into a string format
-            prompt = [self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True) for message in prompt]
+            prompt = [self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True) for
+                      message in prompt]
             prompt = ' '.join(prompt)
         elif isinstance(prompt, str):
             # If the prompt is a string, use it as it is
