@@ -13,6 +13,7 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
+    "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
 }
@@ -21,6 +22,7 @@ llm_context_window = {
     "internlm2_5-7b-chat": 32768,
     "Phi-3-small-128k-instruct": 131072,
     "Yi-1.5-9B-Chat": 4096,
+    "Qwen2-7B-Instruct": 32768,
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
 }
@@ -171,10 +173,11 @@ class LLMInference(torch.nn.Module):
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs.input_ids,
-                max_length=self.max_length, #todo: change to max new tokens
+                max_new_tokens=512,
                 do_sample=True,
-                temperature=1,# todo
-                top_k=50, # todo
+                temperature=0.7,
+                top_k=50,
+                top_p=0.95,
             )
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -205,7 +208,7 @@ class timeLLM(nn.Module):
         self.enc_in = enc_in
         self.keep_old = keep_old
 
-        self.num_tokens = 1000  # todo: change
+        self.num_tokens = 8192
         self.patch_nums = int((self.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
 
