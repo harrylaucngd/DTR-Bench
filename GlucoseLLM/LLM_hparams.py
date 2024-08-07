@@ -80,6 +80,6 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
              "context_window": 32768},
             {"llm": "internlm2_5-7b-chat",
              "context_window": 32768},
-            {"llm": "Phi-3-small-128k-instruct",
+            {"llm": "Meta-Llama-3.1-8B-Instruct",
              "context_window": 131072},],
     }

@@ -198,7 +198,7 @@ class SinglePatientEnv(gymnasium.Env):
             raise ValueError(f"action should be in [{self.action_space.low}, {self.action_space.high}]")
         self.t += self.env.sample_time
         self.step_counter += 1
-        print("env act", action)
+        # print("env act", action)
         # This gym only controls basal insulin
         act = Action(basal=action, bolus=0)  # U/h -> U/min
         obs, _, _, info = self.env.step(act)

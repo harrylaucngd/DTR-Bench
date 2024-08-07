@@ -13,6 +13,7 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
+    "Meta-Llama-3.1-8B-Instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct",
     "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
@@ -22,6 +23,7 @@ llm_context_window = {
     "internlm2_5-7b-chat": 32768,
     "Phi-3-small-128k-instruct": 131072,
     "Yi-1.5-9B-Chat": 4096,
+    "Meta-Llama-3.1-8B-Instruct": 131072,
     "Qwen2-7B-Instruct": 32768,
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
@@ -158,12 +160,18 @@ class LLMInference(torch.nn.Module):
         self.max_length = context_window
         self.device = device
         model_dir = "model_hub" if model_dir is None else model_dir
-        self.tokenizer = AutoTokenizer.from_pretrained(f'{model_hf[self.llm]}',
-                                                       cache_dir=f'{model_dir}/{self.llm}',
-                                                       trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(f'{model_hf[self.llm]}',
-                                                          cache_dir=f'{model_dir}/{self.llm}',
-                                                          trust_remote_code=True).to(self.device)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(f'{model_dir}/{self.llm}',
+                                                        trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(f'{model_dir}/{self.llm}',
+                                                            trust_remote_code=True).to(self.device)
+        except:
+            self.tokenizer = AutoTokenizer.from_pretrained(f'{model_hf[self.llm]}',
+                                                        cache_dir=f'{model_dir}/{self.llm}',
+                                                        trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(f'{model_hf[self.llm]}',
+                                                            cache_dir=f'{model_dir}/{self.llm}',
+                                                            trust_remote_code=True).to(self.device)
 
     def forward(self, messages:List[Dict]):
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,

@@ -269,7 +269,7 @@ class LLMInference_Policy(BasePolicy):
             act = self.action_space.sample()
 
         result = Batch(act=[act], state=state)
-        print("policy act", act)
+        # print("policy act", act)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
