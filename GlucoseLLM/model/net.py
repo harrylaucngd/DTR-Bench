@@ -14,6 +14,7 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
+    "Meta-Llama-3.1-8B-Instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct",
     "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
@@ -23,6 +24,8 @@ llm_context_window = {
     "internlm2_5-7b-chat": 32768,
     "Phi-3-small-128k-instruct": 131072,
     "Yi-1.5-9B-Chat": 4096,
+    "Meta-Llama-3.1-8B-Instruct": 131072,
+    "Qwen2-7B-Instruct": 32768,
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
 }
@@ -158,12 +161,18 @@ class LLMInference(torch.nn.Module):
         self.max_length = context_window
         self.device = device
         model_dir = "model_hub" if model_dir is None else model_dir
-        self.tokenizer = AutoTokenizer.from_pretrained(f'{model_hf[self.llm]}',
-                                                       cache_dir=f'{model_dir}/{self.llm}',
-                                                       trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(f'{model_hf[self.llm]}',
-                                                          cache_dir=f'{model_dir}/{self.llm}',
-                                                          trust_remote_code=True).to(self.device)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(f'{model_dir}/{self.llm}',
+                                                        trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(f'{model_dir}/{self.llm}',
+                                                            trust_remote_code=True).to(self.device)
+        except:
+            self.tokenizer = AutoTokenizer.from_pretrained(f'{model_hf[self.llm]}',
+                                                        cache_dir=f'{model_dir}/{self.llm}',
+                                                        trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(f'{model_hf[self.llm]}',
+                                                            cache_dir=f'{model_dir}/{self.llm}',
+                                                            trust_remote_code=True).to(self.device)
 
     def forward(self, messages: List[Dict]):
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
@@ -177,6 +186,7 @@ class LLMInference(torch.nn.Module):
                 do_sample=True,
                 temperature=1,  # todo
                 top_k=50,  # todo
+
             )
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -220,7 +230,7 @@ class timeLLM(nn.Module):
         self.enc_in = enc_in
         self.keep_old = keep_old
         self.n_vars = n_vars
-        self.num_tokens = 1000  # todo: change
+        self.n_prototypes = 500
         self.patch_nums = int((self.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
         self.max_new_tokens = max_new_tokens
@@ -274,14 +284,14 @@ class timeLLM(nn.Module):
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
 
-        self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
+        self.mapping_layer = nn.Linear(self.vocab_size, self.n_prototypes)
         self.reprogramming_layer = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
         self.output_projection = FlattenHead(self.enc_in, self.head_nf)
 
         # define old reprogramming model
         if keep_old:
             self.patch_embedding_old = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride, self.dropout)
-            self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
+            self.mapping_layer_old = nn.Linear(self.vocab_size, self.n_prototypes)
             self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
             self.output_projection_old = FlattenHead(self.enc_in, self.head_nf)
 
