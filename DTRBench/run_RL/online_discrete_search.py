@@ -41,7 +41,7 @@ def parse_args():
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=10)
+    parser.add_argument("--test_num", type=int, default=1)
     parser.add_argument("--epoch", type=int, default=60)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)

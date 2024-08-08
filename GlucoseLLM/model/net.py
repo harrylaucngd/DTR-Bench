@@ -183,6 +183,7 @@ class LLMInference(torch.nn.Module):
             outputs = self.model.generate(
                 inputs.input_ids,
                 max_length=self.max_length,  #todo: change to max new tokens
+                # length_penalty=-0.1,
                 do_sample=True,
                 temperature=1,  # todo
                 top_k=50,  # todo
@@ -231,7 +232,7 @@ class timeLLM(nn.Module):
         self.n_heads = n_heads
         self.keep_old = keep_old
         self.n_vars = n_vars
-        self.n_prototypes = 500
+        self.n_prototypes = 100
         self.patch_nums = int((self.seq_len - self.patch_len) / self.stride + 2)
         self.decoder_len = decoder_len
         self.head_nf = self.d_ff * self.decoder_len
@@ -298,7 +299,7 @@ class timeLLM(nn.Module):
                                                       self.dropout)
             self.mapping_layer_old = nn.Linear(self.vocab_size, self.n_prototypes)
             self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
-            self.output_projection = FlattenHead(self.head_nf, self.output_dim)
+            self.output_projection_old = FlattenHead(self.head_nf, self.output_dim)
 
     def freeze_llm_model(self):
         """Ensure all llm_model parameters are frozen."""
@@ -359,7 +360,7 @@ class timeLLM(nn.Module):
         # Tokenization and embedding
 
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(
-            prompt.to(x_enc.device if x_enc is not None else 'cpu'))  # (batch, prompt_token, dim)
+            prompt.to(self.device))  # (batch, prompt_token, dim)
 
         if x_enc is None:
             llama_enc_out = prompt_embeddings

@@ -22,17 +22,19 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step, target_update_freq, is_double,
                       # llm prompt
-                      llm_mode, summary_prob,
+                      llm_mode, summary_prob, gradient_accumulation,
                       *args, **kwargs
                       ):
         # define model
         net = timeLLM(llm=llm_mode["llm"], n_vars=self.state_shape, output_dim=self.action_shape,
                       seq_len=12, d_model=16, max_new_tokens=512,
-                      d_ff=32, patch_len=6, stride=3, token_dim=llm_mode["token_dim"], n_heads=8, decoder_len=20,
+                      d_ff=32, patch_len=6, stride=3, token_dim=llm_mode["token_dim"], n_heads=8,
+                      decoder_len=1,
                       keep_old=True, dropout=0.,
                       model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub",
                       device=self.device).to(self.device)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
+
         # define policy
         policy = LLM_DQN_Policy(
             net,
@@ -44,6 +46,7 @@ class LLM_DQN_Objective(DQNObjective):
             action_space=self.action_space,
             observation_space=self.state_space,
             summary_prob=summary_prob,
+            gradient_accumulation=gradient_accumulation
         )
         return policy
 

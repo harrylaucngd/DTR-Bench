@@ -1,5 +1,5 @@
 from typing import Any, Literal, cast, List
-
+from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 import random
 import gymnasium as gym
 import numpy as np
@@ -13,12 +13,13 @@ from tianshou.data.types import (
     RolloutBatchProtocol,
     DistBatchProtocol,
 )
+from tianshou.policy.modelfree.dqn import DQNTrainingStats, TDQNTrainingStats
 from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 from GlucoseLLM.model.net import timeLLM
-from GlucoseLLM.model.llm_net import  LLMPPO
+from GlucoseLLM.model.llm_net import LLMPPO
 from GlucoseLLM.prompts import (obs2text, SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY_INSTRUCTION_PROMPT,
                                 LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt,
                                 LLM_INFERENCE_RETRY_PROMPT)
@@ -26,10 +27,6 @@ from GlucoseLLM.prompt_utils import text2act, Conversation
 
 
 class LLM_DQN_Policy(DQNPolicy):
-    """
-    Implementation of LLM-DQN policy.
-    """
-
     def __init__(
             self,
             model: timeLLM,
@@ -43,8 +40,12 @@ class LLM_DQN_Policy(DQNPolicy):
             action_space: gym.spaces.Discrete | None = None,
             observation_space: gym.Space | None = None,
             lr_scheduler: TLearningRateScheduler | None = None,
+            gradient_accumulation: int = 1,
             summary_prob=0,
     ) -> None:
+        """
+        gradient_accumulation will divide the loss by the number of accumulation steps, and accumulate the gradient.
+        """
         BasePolicy.__init__(
             self,
             action_space=action_space,
@@ -72,6 +73,8 @@ class LLM_DQN_Policy(DQNPolicy):
         self.clip_loss_grad = clip_loss_grad
         self.sum_prob = summary_prob
         self.q_prompt = get_Q_instruction(self.action_space.n, 0.5)
+        self.max_action_num = self.action_space.n
+        self.gradient_accumulation = gradient_accumulation
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
@@ -100,7 +103,7 @@ class LLM_DQN_Policy(DQNPolicy):
             summaries = [None] * batch_size
         # Q value prediction
 
-        logits = self.get_q(batch, summaries, model)
+        logits, _ = self.get_q(batch, summaries, model)
         q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
@@ -109,7 +112,7 @@ class LLM_DQN_Policy(DQNPolicy):
         result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
 
-    def get_q(self, batch:ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
+    def get_q(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
         """Compute Q value over the given batch data."""
         prompt_list = []
         ts = torch.from_numpy(batch.obs).bfloat16().to(self.model.device)
@@ -135,6 +138,53 @@ class LLM_DQN_Policy(DQNPolicy):
             prompt_list.append(messages.get())
         summary = self.model.generate_text(None, prompt_list)
         return summary
+
+    def learn(self, batch: RolloutBatchProtocol, *args: Any,
+              **kwargs: Any) -> TDQNTrainingStats:
+        if self._target and self._iter % self.freq == 0:
+            self.sync_weight()
+
+        # Calculate the chunk size
+        chunk_size = len(batch) // self.gradient_accumulation
+
+        # Initialize overall loss
+        total_loss = 0.0
+
+        for i in range(self.gradient_accumulation):
+            # Get the current chunk
+            start_idx = i * chunk_size
+            end_idx = (i + 1) * chunk_size if (i + 1) * chunk_size < len(batch) else len(batch)
+            chunk = batch[start_idx:end_idx]
+
+            weight = chunk.pop("weight", 1.0)
+            q = self(chunk).logits
+            q = q[np.arange(len(q)), chunk.act]
+            returns = to_torch_as(chunk.returns.flatten(), q)
+            td_error = returns - q
+
+            if self.clip_loss_grad:
+                y = q.reshape(-1, 1)
+                t = returns.reshape(-1, 1)
+                loss = torch.nn.functional.huber_loss(y, t, reduction="mean")
+            else:
+                loss = (td_error.pow(2) * weight).mean()
+
+            chunk.weight = td_error  # prio-buffer
+
+            # Accumulate loss and divide by accumulation_steps
+            total_loss += loss.item()
+            loss = loss / self.gradient_accumulation
+            loss.backward()
+
+            # Perform optimizer step after accumulating gradients over chunks
+            if (i + 1) % self.gradient_accumulation == 0 or (i + 1) == len(batch):
+                self.optim.step()
+                self.optim.zero_grad()
+
+        self._iter += 1
+
+        return DQNTrainingStats(loss=total_loss / self.gradient_accumulation)  # type: ignore[return-value]
+
 
 class LLM_PPO_Policy(PPOPolicy):
     """
@@ -271,7 +321,7 @@ class LLMInference_Policy(BasePolicy):
         obs_prompt = obs2text(batch[0])
         messages = Conversation()
         messages.insert_component("system", SYSTEM_PROMPT, 0)
-        if self.need_summary and (batch.obs[:,:,0] == -1).mean() < 0.8:
+        if self.need_summary and (batch.obs[:, :, 0] == -1).mean() < 0.8:
             messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
             summary = model(messages.get())
             messages.insert_component("assistant", summary, -1)

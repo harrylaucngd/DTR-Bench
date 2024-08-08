@@ -74,7 +74,7 @@ def obs2text(batch: Union[Batch, BatchProtocol]) -> str:
 def get_Q_instruction(n_action, max_dose) -> str:
     doses = [i / n_action * max_dose for i in range(n_action)]
     return ("[instruction]: Please predict the expected discounted reward (i.e., Q(s, a)) for insulin "
-            f"dosage in the order of {doses}")
+            f"dosage in the order of {doses} without any additional information.")
 
 
 def get_patient_info_prompt(age, CF, TIR, ) -> str:
