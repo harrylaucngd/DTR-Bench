@@ -4,7 +4,7 @@ from pathlib import Path
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLMInference_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
 from GlucoseLLM.model.net import LLMInference
-from GlucoseLLM.model.llm_net import define_llm_dqn
+from GlucoseLLM.model.net import timeLLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
 from DTRBench.src.base_obj import RLObjective
@@ -26,8 +26,12 @@ class LLM_DQN_Objective(DQNObjective):
                       *args, **kwargs
                       ):
         # define model
-        net = define_llm_dqn(self.state_shape, self.action_shape,
-                             device=self.device, llm=llm_mode["llm"], token_dim=llm_mode["token_dim"])
+        net = timeLLM(llm=llm_mode["llm"], n_vars=self.state_shape, output_dim=self.action_shape,
+                      seq_len=12, d_model=16, max_new_tokens=512,
+                      d_ff=32, patch_len=6, stride=3, token_dim=llm_mode["token_dim"], n_heads=8, decoder_len=20,
+                      keep_old=True, dropout=0.,
+                      model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub",
+                      device=self.device).to(self.device)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(

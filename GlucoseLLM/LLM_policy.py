@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, List
 
 import random
 import gymnasium as gym
@@ -17,8 +17,8 @@ from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
-
-from GlucoseLLM.model.llm_net import LLMDQN, LLMPPO
+from GlucoseLLM.model.net import timeLLM
+from GlucoseLLM.model.llm_net import  LLMPPO
 from GlucoseLLM.prompts import (obs2text, SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY_INSTRUCTION_PROMPT,
                                 LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt,
                                 LLM_INFERENCE_RETRY_PROMPT)
@@ -32,7 +32,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def __init__(
             self,
-            model: LLMDQN,
+            model: timeLLM,
             optim: torch.optim.Optimizer,
             discount_factor: float = 0.99,
             estimation_step: int = 1,
@@ -71,6 +71,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
         self.sum_prob = summary_prob
+        self.q_prompt = get_Q_instruction(self.action_space.n, 0.5)
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
@@ -90,17 +91,17 @@ class LLM_DQN_Policy(DQNPolicy):
     ) -> ModelOutputBatchProtocol:
         """Compute action over the given batch data and summarize rules."""
 
-        batch_size = len(batch.obs)
+        batch_size = len(batch)
         need_summary = np.random.choice([True, False], p=[self.sum_prob, 1 - self.sum_prob], size=batch_size)
         if self.sum_prob > 0 and need_summary.any():
-            summary = self.model.summarize(batch.obs[need_summary])
+            summary = self.text_summarize(batch[need_summary])
             summaries = [summary if need else None for need in need_summary]
         else:
             summaries = [None] * batch_size
         # Q value prediction
-        # series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
-        logits = model.q_pred(series, conversations, mode='Q')
-        q = self.compute_q_value(logits, getattr(obs, "mask", None))
+
+        logits = self.get_q(batch, summaries, model)
+        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
@@ -108,6 +109,32 @@ class LLM_DQN_Policy(DQNPolicy):
         result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
 
+    def get_q(self, batch:ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
+        """Compute Q value over the given batch data."""
+        prompt_list = []
+        ts = torch.from_numpy(batch.obs).bfloat16().to(self.model.device)
+        for i in range(len(batch)):
+            messages = Conversation()
+            messages.insert_component("system", SYSTEM_PROMPT, 0)
+            if summaries[i] is not None:
+                messages.insert_component("assistant", summaries[i], -1)
+            messages.insert_component("user", self.q_prompt, -1)
+            prompt_list.append(messages.get())
+        logits = self.model.forward(ts, prompt_list, model=model)
+        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
+        return q
+
+    def text_summarize(self, batch: Batch) -> List[str]:
+        """Summarize the rules based on the given observation."""
+        prompt_list = []
+        for i in range(len(batch)):
+            obs_prompt = obs2text(batch[i])
+            messages = Conversation()
+            messages.insert_component("system", SYSTEM_PROMPT, 0)
+            messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
+            prompt_list.append(messages.get())
+        summary = self.model.generate_text(None, prompt_list)
+        return summary
 
 class LLM_PPO_Policy(PPOPolicy):
     """
@@ -241,7 +268,7 @@ class LLMInference_Policy(BasePolicy):
             raise ValueError("LLMInference_Policy only supports batch size of 1 at inference time.")
         model = getattr(self, model)
 
-        obs_prompt = obs2text(batch)
+        obs_prompt = obs2text(batch[0])
         messages = Conversation()
         messages.insert_component("system", SYSTEM_PROMPT, 0)
         if self.need_summary and (batch.obs[:,:,0] == -1).mean() < 0.8:

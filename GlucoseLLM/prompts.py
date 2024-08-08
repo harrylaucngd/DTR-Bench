@@ -31,6 +31,7 @@ SYSTEM_PROMPT = ("You are a clinical specialist managing patients with Type-1 Di
 ACTOR_INSTRUCTION_PROMPT = ("[Instruction]: Please generate the action to administer "
                             "insulin dosage for the next 5 minutes. "
                             )
+
 LLM_INFERENCE_INSTRUCTION_PROMPT = ("[Instruction]: Please generate the action to administer "
                                     "insulin dosage for the next 5 minutes. Only provide a numerical value "
                                     "between 0 and 0.5 without any additional information."
@@ -46,10 +47,10 @@ SUMMARY_INSTRUCTION_PROMPT = (
 
 def obs2text(batch: Union[Batch, BatchProtocol]) -> str:
     obs = batch.obs
-    length = obs.shape[1]
-    time = batch.info["time"][0]
-    glucose = obs[0, :, 0]
-    insulin = obs[0, :, 1]
+    length = obs.shape[0]
+    time = batch.info["time"]
+    glucose = obs[:, 0]
+    insulin = obs[:, 1]
 
     def adjust_time(datetime_input, min):
         adjusted_time = datetime_input + timedelta(minutes=min)
@@ -71,7 +72,7 @@ def obs2text(batch: Union[Batch, BatchProtocol]) -> str:
 
 
 def get_Q_instruction(n_action, max_dose) -> str:
-    doses = [i / n_action * max_dose for i in range(n_action + 1)]
+    doses = [i / n_action * max_dose for i in range(n_action)]
     return ("[instruction]: Please predict the expected discounted reward (i.e., Q(s, a)) for insulin "
             f"dosage in the order of {doses}")
 
