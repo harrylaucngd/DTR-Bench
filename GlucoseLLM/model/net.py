@@ -6,6 +6,7 @@ from GlucoseLLM.prompts import (SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from GlucoseLLM.model.Embed import PatchEmbedding
 import transformers
+import numpy as np
 
 transformers.logging.set_verbosity_error()
 
@@ -13,6 +14,7 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
+    "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
 }
@@ -163,7 +165,7 @@ class LLMInference(torch.nn.Module):
                                                           cache_dir=f'{model_dir}/{self.llm}',
                                                           trust_remote_code=True).to(self.device)
 
-    def forward(self, messages:List[Dict]):
+    def forward(self, messages: List[Dict]):
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
                                                     add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
@@ -171,10 +173,10 @@ class LLMInference(torch.nn.Module):
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs.input_ids,
-                max_length=self.max_length, #todo: change to max new tokens
+                max_length=self.max_length,  #todo: change to max new tokens
                 do_sample=True,
-                temperature=1,# todo
-                top_k=50, # todo
+                temperature=1,  # todo
+                top_k=50,  # todo
             )
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -189,8 +191,21 @@ class catLLM(nn.Module):
 
 
 class timeLLM(nn.Module):
-    def __init__(self, llm, seq_len, d_model, d_ff, patch_len, stride, token_dim, n_heads, enc_in,
+    def __init__(self, llm, n_vars,
+                 seq_len,
+                 d_model, d_ff, patch_len, stride, token_dim, n_heads, enc_in, max_new_tokens=512,
                  keep_old=False, dropout: float = 0., model_dir=None, ):
+        """
+        :param llm: the name of the LLM model
+        :param seq_len: the length of the input sequence
+        :param d_model: the dimension of the PatchEmbedding output
+        :param d_ff: the dimension of the feed forward layer
+        :param patch_len: the length of each patch
+        :param stride: the stride of the patch
+        :param token_dim: the dimension of the token embedding for LLM
+        :param n_heads: the number of heads in the reprogramming layer
+        :param enc_in: the number of input features to the encoder
+        """
         super(timeLLM, self).__init__()
         self.llm = llm
         self.seq_len = seq_len
@@ -204,11 +219,11 @@ class timeLLM(nn.Module):
         self.n_heads = n_heads
         self.enc_in = enc_in
         self.keep_old = keep_old
-
+        self.n_vars = n_vars
         self.num_tokens = 1000  # todo: change
         self.patch_nums = int((self.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
-
+        self.max_new_tokens = max_new_tokens
         # find the LLM model and tokenizer
         model_dir = "model_hub" if model_dir is None else model_dir
         os.makedirs(model_dir, exist_ok=True)
@@ -254,7 +269,7 @@ class timeLLM(nn.Module):
         self.freeze_llm_model()
 
         # define reprogramming model
-        self.patch_embedding = PatchEmbedding(self.d_model, self.patch_len, self.stride, self.dropout)
+        self.patch_embedding = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride, self.dropout)
 
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
@@ -265,7 +280,7 @@ class timeLLM(nn.Module):
 
         # define old reprogramming model
         if keep_old:
-            self.patch_embedding_old = PatchEmbedding(self.d_model, self.patch_len, self.stride, self.dropout)
+            self.patch_embedding_old = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride, self.dropout)
             self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
             self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
             self.output_projection_old = FlattenHead(self.enc_in, self.head_nf)
@@ -280,7 +295,7 @@ class timeLLM(nn.Module):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def forward(self, x_enc, prompt, model="current", state=None, info={}):
+    def forward(self, x_enc, prompt:List[List[Dict]], model="current", state=None, info={}):
         # decide which model to use, current or old
         if model == "current":
             mapping_layer = self.mapping_layer
@@ -322,22 +337,16 @@ class timeLLM(nn.Module):
         dec_out = dec_out.permute(0, 2, 1).contiguous()
         return dec_out[:, -self.pred_len:, :], None
 
-    def generate_text(self, x_enc, prompt, max_length=256):
-        # Check the type of the prompt
-        if isinstance(prompt, list):
-            # If the prompt is a list of dictionaries, convert each conversation into a string format
-            prompt = [self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True) for
-                      message in prompt]
-            prompt = ' '.join(prompt)
-        elif isinstance(prompt, str):
-            # If the prompt is a string, use it as it is
-            pass
-        else:
-            raise ValueError("Unsupported prompt type! The prompt should be either a string or a list of dictionaries.")
-
-        # Tokenization and embedding
+    def generate_text(self, x_enc: np.array, prompt_list: List[List[Dict]]):
+        """
+        Generate text using the LLM model. We allow time series data as prefix.
+        """
+        # convert conversation into a list of string
+        prompt = self.tokenizer.apply_chat_template(prompt_list, tokenize=False, add_generation_prompt=True)
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
                                 max_length=llm_context_window[self.llm]).input_ids
+        # Tokenization and embedding
+
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(
             prompt.to(x_enc.device if x_enc is not None else 'cpu'))  # (batch, prompt_token, dim)
 
@@ -349,12 +358,12 @@ class timeLLM(nn.Module):
             x_enc = x_enc.permute(0, 2, 1).contiguous()
             enc_out, _ = self.patch_embedding(x_enc)
             enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
-            llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+            llama_enc_out = torch.cat([enc_out, prompt_embeddings], dim=1)
 
         # Generate text using LLM
         outputs = self.llm_model.generate(
             inputs_embeds=llama_enc_out,
-            max_length=self.max_length,
+            max_new_tokens=self.max_new_tokens,
             do_sample=True,
             temperature=1
         )

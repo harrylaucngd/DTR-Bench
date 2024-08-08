@@ -32,6 +32,9 @@ common_hparams = {
     "eps_train": 0.1,
     "eps_train_final": 0.1,
     "eps_test": 0.001,
+
+    # LLM generation length
+    "max_new_tokens": 512,
 }
 
 
