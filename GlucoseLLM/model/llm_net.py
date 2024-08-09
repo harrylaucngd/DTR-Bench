@@ -25,6 +25,7 @@ llm_context_window = {
     "Yi-1.5-9B-Chat": 4096,
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
+    "Qwen2-0.5B-Instruct-int4-inc": 32768,
 }
 
 

@@ -22,7 +22,7 @@ class LLM_DQN_Objective(DQNObjective):
                       # dqn hp
                       n_step, target_update_freq, is_double,
                       # llm prompt
-                      llm_mode, summary_prob, gradient_accumulation,
+                      llm_mode, llm_modal, summary_prob, gradient_accumulation,
                       *args, **kwargs
                       ):
         # define model
@@ -45,6 +45,8 @@ class LLM_DQN_Objective(DQNObjective):
             is_double=is_double,
             action_space=self.action_space,
             observation_space=self.state_space,
+            # llm hparam
+            llm_modal=llm_modal,
             summary_prob=summary_prob,
             gradient_accumulation=gradient_accumulation
         )

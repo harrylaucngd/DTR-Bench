@@ -83,12 +83,14 @@ class OffPolicyRLHyperParameterSpace:
         search_space.update(self._policy_hparams)
         space = {}
         for k, v in search_space.items():
-            if isinstance(v, (int, float, bool, str, dict, list, tuple)):
+            if isinstance(v, (int, float, bool, dict, list, tuple)):
                 if not hasattr(v, "__len__") or len(v) == 1 or isinstance(v, dict):
                     space[k] = {"value": v}
                 else:
                     space[k] = {"values": v}
             elif v is None:
+                space[k] = {"value": v}
+            elif isinstance(v, str):
                 space[k] = {"value": v}
             else:
                 raise NotImplementedError(f"unsupported type {type(v)} for hyperparameter {k}")

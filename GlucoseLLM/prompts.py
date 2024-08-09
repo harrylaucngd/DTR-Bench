@@ -73,7 +73,7 @@ def obs2text(batch: Union[Batch, BatchProtocol]) -> str:
 
 
 def get_Q_instruction(n_action, max_dose) -> str:
-    doses = [i / n_action * max_dose for i in range(n_action)]
+    doses = [round(i / (n_action - 1) * max_dose, 3) for i in range(n_action)]
     return ("[instruction]: Please predict the expected discounted reward (i.e., Q(s, a)) for insulin "
             f"dosage in the order of {doses} without any additional information.")
 

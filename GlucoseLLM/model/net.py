@@ -18,6 +18,7 @@ model_hf = {
     "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
+    "Qwen2-0.5B-Instruct-int4-inc": "Intel/Qwen2-0.5B-Instruct-int4-inc",
 }
 
 llm_context_window = {
@@ -28,6 +29,7 @@ llm_context_window = {
     "Qwen2-7B-Instruct": 32768,
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
+    "Qwen2-0.5B-Instruct-int4-inc": 32768,
 }
 
 import torch
@@ -242,6 +244,10 @@ class timeLLM(nn.Module):
         # find the LLM model and tokenizer
         model_dir = "model_hub" if model_dir is None else model_dir
         os.makedirs(model_dir, exist_ok=True)
+        os.environ['HF_HOME'] = os.path.abspath(model_dir)
+        os.environ['XDG_CACHE_HOME'] = os.path.abspath(model_dir)
+        os.environ['HUGGINGFACE_HUB_CACHE'] = os.path.abspath(model_dir)
+        os.environ['TRANSFORMERS_CACHE'] = os.path.abspath(model_dir)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
                 f'{model_dir}/{self.llm}',
@@ -333,17 +339,19 @@ class timeLLM(nn.Module):
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
                                 max_length=llm_context_window[self.llm]).input_ids
         prompt_embeddings = self.llm_model.model.get_input_embeddings()(
-            prompt.to(x_enc.device))  # (batch, prompt_token, dim)
+            prompt.to(self.device))  # (batch, prompt_token, dim)
 
-        # reprogramming time series
-        x_enc = torch.tensor(x_enc, dtype=torch.float32).to(self.device)
-        source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
-        x_enc = x_enc.permute(0, 2, 1).contiguous()
-        enc_out, n_vars = patch_embedding(x_enc)
-        enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        # reprogramming time series. In text-only mode, x_enc is None
+        if x_enc is not None:
+            x_enc = torch.tensor(x_enc, dtype=torch.float32).to(self.device)
+            source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+            x_enc = x_enc.permute(0, 2, 1).contiguous()
+            enc_out, n_vars = patch_embedding(x_enc)
+            enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+            llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+        else:
+            llama_enc_out = prompt_embeddings
 
-        llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        # llama_enc_out = torch.cat([torch.cat([prompt_embeddings, enc_out[0, :, :].unsqueeze(0)], dim=1), enc_out[1, :, :].unsqueeze(0)], dim=1)
         dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, -self.decoder_len:, :self.d_ff]
         dec_out = output_projection(dec_out)

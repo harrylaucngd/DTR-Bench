@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast, List
+from typing import Any, Literal, cast, List, Literal
 from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
 import random
 import gymnasium as gym
@@ -40,6 +40,7 @@ class LLM_DQN_Policy(DQNPolicy):
             action_space: gym.spaces.Discrete | None = None,
             observation_space: gym.Space | None = None,
             lr_scheduler: TLearningRateScheduler | None = None,
+            llm_modal: Literal['concat', 'text_only', 'timellm'] = "timellm",
             gradient_accumulation: int = 1,
             summary_prob=0,
     ) -> None:
@@ -71,6 +72,11 @@ class LLM_DQN_Policy(DQNPolicy):
         self.rew_norm = reward_normalization
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
+
+        # llm related parameters
+        if llm_modal not in ["concat", "text_only", "timellm"]:
+            raise ValueError("llm_modal not in ['concat', 'text_only', 'timellm']")
+        self.obs_mode = llm_modal
         self.sum_prob = summary_prob
         self.q_prompt = get_Q_instruction(self.action_space.n, 0.5)
         self.max_action_num = self.action_space.n
@@ -114,16 +120,43 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def get_q(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
         """Compute Q value over the given batch data."""
+        if self.obs_mode == "timellm":
+            return self._get_q_timellm(batch, summaries, model)
+        elif self.obs_mode == "text_only":
+            return self._get_q_text_only(batch, summaries, model)
+        else:
+            return self.get_q_concat(batch, summaries, model)
+
+    def _get_q_timellm(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
+        """Compute Q value over the given batch data."""
         prompt_list = []
         ts = torch.from_numpy(batch.obs).bfloat16().to(self.model.device)
         for i in range(len(batch)):
             messages = Conversation()
             messages.insert_component("system", SYSTEM_PROMPT, 0)
             if summaries[i] is not None:
-                messages.insert_component("assistant", summaries[i], -1)
-            messages.insert_component("user", self.q_prompt, -1)
+                messages.insert_component("user", summaries[i] + self.q_prompt, -1)
+            else:
+                messages.insert_component("user", self.q_prompt, -1)
             prompt_list.append(messages.get())
         logits = self.model.forward(ts, prompt_list, model=model)
+        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
+        return q
+
+    def _get_q_text_only(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
+        """Compute Q value over the given batch data."""
+        prompt_list = []
+        for i in range(len(batch)):
+            messages = Conversation()
+            messages.insert_component("system", SYSTEM_PROMPT, 0)
+
+            obs_prompt = obs2text(batch[i])
+            if summaries[i] is not None:
+                messages.insert_component("user", obs_prompt + summaries[i] + self.q_prompt, -1)
+            else:
+                messages.insert_component("user", obs_prompt + self.q_prompt, -1)
+            prompt_list.append(messages.get())
+        logits = self.model.forward(None, prompt_list, model=model)
         q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
         return q
 
