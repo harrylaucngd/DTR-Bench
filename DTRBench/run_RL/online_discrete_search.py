@@ -41,10 +41,10 @@ def parse_args():
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=1)
-    parser.add_argument("--epoch", type=int, default=60)
+    parser.add_argument("--test_num", type=int, default=10)
+    parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--num_actions", type=int, default=11)
-    parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
+    parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 24)
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument("--policy_name", type=str, default="LLM-DQN",  # Change this for different sweep!
