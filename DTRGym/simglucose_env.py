@@ -405,13 +405,13 @@ class RandomPatientEnv(gymnasium.Env):
         return self._obs_space
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5,
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 24 * 60, discrete: bool = False, n_act: int = 11,
                                         **kwargs):
     env = SinglePatientEnv(
         patient_name,
         max_t=max_t,
         sample_time=1,
-        start_time=5 * 60,
+        start_time=0,
         random_init_bg=True,
         random_obs=True, random_meal=True,
         missing_rate=0)
@@ -422,8 +422,8 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
-    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
-                           random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
+    env = SinglePatientEnv('adult#001', 24 * 60, random_init_bg=True,
+                           random_obs=True, random_meal=True, start_time=0, obs_window=obs_window,
                            missing_rate=0.0)
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -436,10 +436,10 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
                                        "adult#002",
                                        "adult#003",
                                        "adult#004", ],
-                           max_t=16 * 60,
+                           max_t=24 * 60,
                            sample_time=1,
                            random_init_bg=True,
-                           start_time=5 * 60,
+                           start_time=0,
                            random_obs=True, random_meal=True,
                            missing_rate=0.)
     if discrete:
@@ -461,10 +461,10 @@ def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
                                        "adolescent#002",
                                        "adolescent#003",
                                        "adolescent#004"],
-                           max_t=16 * 60,
+                           max_t=24 * 60,
                            sample_time=1,
                            random_init_bg=True,
-                           start_time=5 * 60,
+                           start_time=0,
                            random_obs=True, random_meal=True,
                            missing_rate=0.)
     if discrete:
