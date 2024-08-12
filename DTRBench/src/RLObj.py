@@ -54,6 +54,7 @@ class DQNObjective(RLObjective):
             is_double=is_double,  # we will have a separate runner for double dqn
             action_space=self.action_space,
             observation_space=self.state_space,
+            clip_loss_grad=True,
         )
         return policy
 
@@ -320,6 +321,7 @@ class PPOObjective(RLObjective):
             gae_lambda=float(gae_lambda),
             vf_coef=vf_coef,
             ent_coef=ent_coef,
+            max_grad_norm=1.,
             action_scaling=True,
             action_bound_method='clip',
             action_space=self.action_space,

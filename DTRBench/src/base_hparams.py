@@ -5,7 +5,7 @@
 
 common_hparams = {
     "seed": [2732, 9845, 3264, 4859],
-    "lr": [1e-3, 1e-4],
+    "lr": [3e-3, 1e-3, 3e-4],
     "batch_size": 256,
     "obs_mode": ["cat", "stack"],
 

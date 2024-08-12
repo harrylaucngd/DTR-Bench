@@ -12,10 +12,10 @@ wandb.require("core")
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL2")
-    parser.add_argument("--sweep_id", type=str, default="3mis2z1p", help="sweep id for wandb,"
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
+    parser.add_argument("--sweep_id", type=str, default="4whbjbd5", help="sweep id for wandb,"
                                                                          " only used in agent mode")
-    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
+    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
     return args
 
@@ -38,7 +38,7 @@ def call_agent():
 
 if __name__ == "__main__":
     args = parse_args()
-    hparam = BaselineHyperParams()
+    hparam = BaselineHyperParams(obs_window=1)
     if args.role == "sweep":
         sweep_configuration = {
             "method": "grid",

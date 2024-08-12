@@ -3,7 +3,7 @@ from DTRBench.src.base_hparams import common_hparams
 
 
 class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
-    _meta_hparams = [
+    _meta_hparams = ["obs_window",
     ]
 
     # general hyperparameter search space
@@ -12,12 +12,12 @@ class BaselineHyperParams(OffPolicyRLHyperParameterSpace):
         "seed": common_hparams["seed"],
         "policy_name": ["zero_drug", "constant0.02", "random0.1", "random0.5",
                         "pulse60-0.05", "pulse60-0.1", "pulse60-0.2"],
-        "env_name": ["SimGlucoseEnv-adult1", "SimGlucoseEnv-adult4", "SimGlucoseEnv-all4"]
+        "env_name": "SimGlucoseEnv-adult1" # final evaluation is the same so we only need one
     }
     # policy hyperparameter search space
     _policy_hparams = {
     }
     _supported_algos = ("zero_drug", "constant0.02", "random0.1", "random0.5", "pulse60-0.05", "pulse60-0.1")
 
-    def __init__(self):
-        pass
+    def __init__(self, obs_window):
+        self.obs_window = obs_window
