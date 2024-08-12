@@ -43,7 +43,8 @@ baselineLOOKUP = {"zero_drug": {"policy": ConstantPolicy, "policy_args": {"dose"
                   "constant0.02": {"policy": ConstantPolicy, "policy_args": {"dose": 0.02}},
                   "random0.1": {"policy": RandomPolicy, "policy_args": {"min_act": 0, "max_act": 0.1}},
                   "random0.5": {"policy": RandomPolicy, "policy_args": {"min_act": 0, "max_act": 0.5}},
-                  "pulse30-0.1": {"policy": PulsePolicy, "policy_args": {"dose": 0.1, "interval": 6}},
+                  "pulse60-0.05": {"policy": PulsePolicy, "policy_args": {"dose": 0.05, "interval": 12}},
+                  "pulse60-0.1": {"policy": PulsePolicy, "policy_args": {"dose": 0.1, "interval": 12}},
                   "pulse60-0.2": {"policy": PulsePolicy, "policy_args": {"dose": 0.2, "interval": 12}}}
 
 def get_policy_class(algo_name) -> BasePolicy:
