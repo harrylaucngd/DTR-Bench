@@ -79,14 +79,16 @@ def get_Q_instruction(n_action, max_dose) -> str:
 
 
 def get_patient_info_prompt(age, CR, CF, TDI, ) -> str:
-    META_PROMPT = (f" [Patient]: You are treating a {int(age)}-year-old patient. "
-                   f"This patient's TDI is {TDI:.1f} units, "
-                   "where TDI represents the total amount of insulin a patient needs in a 24-hour period. "
-                   f"This patient's Carbohydrate Ratio (CR) is {int(CR)}, "
-                   "where CR indicates how many grams of carbohydrate are covered by 1 unit of insulin. "
-                   "A larger CR means that a smaller amount of insulin is required to cover a given amount of carbohydrates,"
-                   " and vice versa. "
+    age = int(age)
+    CR = int(CR)
+    META_PROMPT = (f"[Patient]: You are treating a {age}-year-old patient with a Total Daily Insulin (TDI) requirement "
+                   f"of {TDI:.1f} units over 24 hours. "
 
-                   f"The Correction Factor for this patient is {CF:.1f}. "
-                   f"This means that 1 unit of insulin is expected to reduce the blood glucose level by {1700/TDI:.2f} mg/dL.")
+                   f"The patient's Carbohydrate Ratio (CR) is {CR}, "
+                   f"meaning 1 unit of insulin covers {CR} grams of carbohydrate. "
+                   f"A higher CR indicates less insulin is needed for a given amount of carbohydrates, and vice versa. "
+                   
+                   f"The Correction Factor (CF) for this patient is {CF:.1f}, "
+                   f"meaning 1 unit of insulin is expected to lower blood glucose by {1700/TDI:.2f} mg/dL.")
+
     return META_PROMPT
