@@ -14,6 +14,7 @@ class OffPolicyRLHyperParameterSpace:
         "buffer_size",  # size of replay buffer
         "num_actions",  # number of actions, only used for discrete action space
         "linear",  # whether to use linear approximation as network
+        "obs_window", # number of frames to concatenate or stack, depending on obs_mode
     ]
 
     # general hyperparameter search space
@@ -41,6 +42,7 @@ class OffPolicyRLHyperParameterSpace:
                  epoch,
                  step_per_epoch,  # number of training steps per epoch
                  buffer_size,  # size of replay buffer
+                 obs_window,
                  num_actions=None,  # number of actions, only used for discrete action space
                  linear=False
                  ):
@@ -53,6 +55,7 @@ class OffPolicyRLHyperParameterSpace:
         self.epoch = epoch
         self.step_per_epoch = step_per_epoch
         self.buffer_size = buffer_size
+        self.obs_window = obs_window
         self.num_actions = num_actions
         self.linear = linear
 

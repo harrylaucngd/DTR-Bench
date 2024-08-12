@@ -37,10 +37,12 @@ class DQNObjective(RLObjective):
                       **kwargs
                       ):
         # define model
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
-            "stack_num"]
+        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
+        elif obs_mode == "stack": cat_num, use_rnn = 1, True
+        else: raise NotImplementedError("obs_mode not supported")
+
         net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
-                                    use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num)
+                                    use_rnn=use_rnn, device=self.device, linear=linear, cat_num=cat_num)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = DQNPolicy(
@@ -149,11 +151,14 @@ class TD3Objective(RLObjective):
                       linear,
                       **kwargs, ):
         actor_lr = critic_lr * 0.1
-        cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"],
-                              obs_mode[list(obs_mode.keys())[0]]["stack_num"])
+
+        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
+        elif obs_mode == "stack": cat_num, use_rnn = 1, True
+        else: raise NotImplementedError("obs_mode not supported")
+
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
         net_a = define_single_network(self.state_shape, 128,
-                                      use_rnn=stack_num > 1, device=self.device, linear=linear, cat_num=cat_num,
+                                      use_rnn=use_rnn, device=self.device, linear=linear, cat_num=cat_num,
                                       use_dueling=False, )
         actor = Actor(net_a, action_shape=self.action_shape, device=self.device,
                       # last_layer_init=-10,
@@ -275,12 +280,14 @@ class PPOObjective(RLObjective):
 
     def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
                       advantage_normalization, recompute_advantage, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
-        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]][
-            "stack_num"]
+        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
+        elif obs_mode == "stack": cat_num, use_rnn = 1, True
+        else: raise NotImplementedError("obs_mode not supported")
+
         net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3, hidden_size=128,
-                                      use_rnn=stack_num > 1, device=self.device, cat_num=cat_num)
+                                      use_rnn=use_rnn, device=self.device, cat_num=cat_num)
         actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
-        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
                                           cat_num=cat_num, use_action_net=False, state_net_hidden_size=128, 
                                           device=self.device)
         actor_critic = ActorCritic(actor, critic)
@@ -324,7 +331,7 @@ class PPOObjective(RLObjective):
         )
         return policy
 
-    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
+    def run(self, policy, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 

@@ -340,6 +340,7 @@ class RandomPatientEnv(gymnasium.Env):
 
     def __init__(self, candidates: list,
                  max_t: int = 16 * 60,
+                 obs_window: int = 48,
                  reward_fn=risk_reward_fn,
                  random_init_bg: bool = False,
                  random_obs: bool = False,
@@ -350,6 +351,7 @@ class RandomPatientEnv(gymnasium.Env):
         self.env = None
         self.reward_fn = reward_fn
         self.max_t = max_t
+        self.obs_window = obs_window
         self.candidates = candidates
         self.random_init_bg = random_init_bg
         self.random_obs = random_obs
@@ -374,6 +376,7 @@ class RandomPatientEnv(gymnasium.Env):
         self.env = SinglePatientEnv(patient_name=self.patient_name,
                                     max_t=self.max_t, reward_fn=self.reward_fn,
                                     random_init_bg=self.random_init_bg,
+                                    obs_window=self.obs_window,
                                     random_obs=self.random_obs,
                                     random_meal=self.random_meal,
                                     start_time=self.start_time,
@@ -405,12 +408,15 @@ class RandomPatientEnv(gymnasium.Env):
         return self._obs_space
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 24 * 60, discrete: bool = False, n_act: int = 11,
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 24 * 60, discrete: bool = False,
+                                        obs_window: int = 12,
+                                        n_act: int = 11,
                                         **kwargs):
     env = SinglePatientEnv(
         patient_name,
         max_t=max_t,
         sample_time=1,
+        obs_window=obs_window,
         start_time=0,
         random_init_bg=True,
         random_obs=True, random_meal=True,
@@ -431,12 +437,13 @@ def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, 
     return env
 
 
-def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
+def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = RandomPatientEnv(candidates=["adult#001",
                                        "adult#002",
                                        "adult#003",
                                        "adult#004", ],
                            max_t=24 * 60,
+                           obs_window=obs_window,
                            sample_time=1,
                            random_init_bg=True,
                            start_time=0,
@@ -448,7 +455,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
     return env
 
 
-def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
+def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = RandomPatientEnv(candidates=["adult#001",
                                        "adult#002",
                                        "adult#003",
@@ -462,6 +469,7 @@ def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
                                        "adolescent#003",
                                        "adolescent#004"],
                            max_t=24 * 60,
+                           obs_window=obs_window,
                            sample_time=1,
                            random_init_bg=True,
                            start_time=0,

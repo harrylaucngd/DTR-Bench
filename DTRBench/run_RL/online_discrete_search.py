@@ -33,27 +33,26 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-real")
-    parser.add_argument("--sweep_id", type=str, default="pbnc6xqk", help="sweep id for wandb,"
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL")
+    parser.add_argument("--sweep_id", type=str, default="mvm1jm25", help="sweep id for wandb,"
                                                                          " only used in agent mode")
+    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
     parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
-    parser.add_argument("--training_num", type=int, default=1)
-    parser.add_argument("--test_num", type=int, default=10)
-    parser.add_argument("--epoch", type=int, default=50)
+    parser.add_argument("--epoch", type=int, default=1)
     parser.add_argument("--num_actions", type=int, default=11)
-    parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 24)
-    parser.add_argument("--buffer_size", type=int, default=1e6)
-    parser.add_argument("--linear", type=to_bool, default=False)
-    parser.add_argument("--policy_name", type=str, default="LLM-DQN",  # Change this for different sweep!
+    parser.add_argument("--step_per_epoch", type=int, default=1)
+    parser.add_argument("--obs_window", type=int, default=12)
+    parser.add_argument("--buffer_size", type=int, default=1e5)
+    parser.add_argument("--policy_name", type=str, default="DQN",  # Change this for different sweep!
                         choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "TD3"],
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
+
     args = parser.parse_known_args()[0]
     return args
 
@@ -73,13 +72,14 @@ if __name__ == "__main__":
     log_dir = os.path.join(args.log_dir, env_name + '-' + args.policy_name)
     hparam_space = hparam_class(args.policy_name,
                                 log_dir,
-                                args.training_num,  # number of training envs
-                                args.test_num,  # number of test envs
+                                1,  # number of training envs
+                                1,  # number of test envs
                                 args.epoch,
                                 args.step_per_epoch,  # number of training steps per epoch
                                 args.buffer_size,
+                                args.obs_window,
                                 args.num_actions,
-                                linear=args.linear
+                                linear=False
                                 )
     search_space = hparam_space.get_search_space()
 

@@ -17,9 +17,12 @@ class RLObjective:
         # define high level parameters
         self.env_name = env_name
         self.env_args = env_args
+
         self.hyperparam = hyperparam
         self.meta_param = self.hyperparam.get_meta_params()
         self.device = device
+
+        self.env_args["obs_window"] = self.meta_param["obs_window"]
 
     def get_search_space(self):
         return self.hyperparam.get_search_space()

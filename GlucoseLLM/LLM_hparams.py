@@ -44,6 +44,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "llm_mode":
             {"llm": "Qwen2-0.5B-Instruct",
              "token_dim": 896},
+        "llm_modal": "text_only",
         # {"llm": "Qwen2-1.5B-Instruct",
         #            "token_dim": 1536},
 
