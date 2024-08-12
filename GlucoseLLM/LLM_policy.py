@@ -325,6 +325,7 @@ class LLMInference_Policy(BasePolicy):
             action_space: gym.Space,
             observation_space: gym.Space | None = None,
             need_summary: bool = False,
+            need_meta_info: bool = False,
             num_try: int = 1,
     ) -> None:
         super().__init__(
@@ -335,9 +336,12 @@ class LLMInference_Policy(BasePolicy):
         )
         self.model = model
         self.need_summary = need_summary
+        self.need_meta_info = need_meta_info
         self.num_try = num_try
         if num_try < 1:
             raise ValueError("num_try should be greater than 0")
+
+        self.meta_info_fn = get_patient_info_prompt if need_meta_info else lambda *args: ""
 
     def forward(
             self,
@@ -352,8 +356,12 @@ class LLMInference_Policy(BasePolicy):
         model = getattr(self, model)
 
         obs_prompt = obs2text(batch[0])
+        meta_prompt = self.meta_info_fn(batch[0].info["Age"],
+                                        batch[0].info["CR"],
+                                        batch[0].info["CF"],
+                                        batch[0].info["TDI"])
         messages = Conversation()
-        messages.insert_component("system", SYSTEM_PROMPT, 0)
+        messages.insert_component("system", SYSTEM_PROMPT + meta_prompt, 0)
         if self.need_summary and (batch.obs[:, :, 0] == -1).mean() < 0.8:
             messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
             summary = model(messages.get())

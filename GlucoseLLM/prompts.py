@@ -78,14 +78,15 @@ def get_Q_instruction(n_action, max_dose) -> str:
             f"dosage in the order of {doses} without any additional information.")
 
 
-def get_patient_info_prompt(age, CF, TIR, ) -> str:
-    # todo: add more
-    META_PROMPT = ("CR was calculated through a simulation where each subject received 50 g of CHO from their basal "
-                   "level. The optimal insulin bolus was determined based on these criteria: (1) glucose concentration "
-                   "3 hours post-meal is between 85% and 110% of the basal level; (2) minimum glucose concentration "
-                   "stays above 90 mg/dl; (3) maximum glucose concentration is 40-80 mg/dl above the basal level. CR is "
-                   "then the ratio of ingested CHO to the optimal insulin bolus (CR = ingestedCHO/optimalbolus). CF was "
-                   "determined using the 1700 rule (CF = 1700/TDI), where TDI is the total daily insulin, calculated "
-                   "using the optimal CR and basal infusion rate, assuming an average diet of 180 g of CHO for "
-                   "adolescents and adults, and 135 g for children.")
-    return f"[Patient]: {age} years old, with a correction factor of {CF} and a target insulin range of {TIR}.\n"
+def get_patient_info_prompt(age, CR, CF, TDI, ) -> str:
+    META_PROMPT = (f" [Patient]: You are treating a {int(age)}-year-old patient. "
+                   f"This patient's TDI is {TDI:.1f} units, "
+                   "where TDI represents the total amount of insulin a patient needs in a 24-hour period. "
+                   f"This patient's Carbohydrate Ratio (CR) is {int(CR)}, "
+                   "where CR indicates how many grams of carbohydrate are covered by 1 unit of insulin. "
+                   "A larger CR means that a smaller amount of insulin is required to cover a given amount of carbohydrates,"
+                   " and vice versa. "
+
+                   f"The Correction Factor for this patient is {CF:.1f}. "
+                   f"This means that 1 unit of insulin is expected to reduce the blood glucose level by {1700/TDI:.2f} mg/dL.")
+    return META_PROMPT

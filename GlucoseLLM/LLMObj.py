@@ -61,7 +61,7 @@ class LLM_Inference_Objective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: LLMInference_HyperParams, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
-    def define_policy(self, llm_mode, num_try, need_summary, **kwargs):
+    def define_policy(self, llm_mode, num_try, need_summary, need_meta_info, **kwargs):
         net = LLMInference(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
                            device=self.device,
                            model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub").to(self.device)
@@ -70,7 +70,8 @@ class LLM_Inference_Objective(RLObjective):
             action_space=self.action_space,
             observation_space=self.state_space,
             num_try=num_try,
-            need_summary=need_summary
+            need_summary=need_summary,
+            need_meta_info=need_meta_info
         )
 
     def wandb_search(self):

@@ -75,6 +75,7 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "need_summary": [True, False],
+        "need_meta_info": [True, False],
         "num_try": 2,
         "llm_mode":
             [
