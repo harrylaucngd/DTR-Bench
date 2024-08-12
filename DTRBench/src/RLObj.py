@@ -173,11 +173,11 @@ class TD3Objective(RLObjective):
 
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
-        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
                                            cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
-        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,
+        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
                                            cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
                                            device=self.device)
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)

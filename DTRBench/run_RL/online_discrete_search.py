@@ -41,9 +41,10 @@ def parse_args():
                         help="remember to change this for different tasks! "
                              "Wandb sweep won't work correctly if this is not changed!")
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
-    parser.add_argument("--epoch", type=int, default=1)
+    parser.add_argument("--n_test_in_train", type=int, default=5)
+    parser.add_argument("--epoch", type=int, default=50)
     parser.add_argument("--num_actions", type=int, default=11)
-    parser.add_argument("--step_per_epoch", type=int, default=1)
+    parser.add_argument("--step_per_epoch", type=int, default=10*288)
     parser.add_argument("--obs_window", type=int, default=12)
     parser.add_argument("--buffer_size", type=int, default=1e5)
     parser.add_argument("--policy_name", type=str, default="DQN",  # Change this for different sweep!
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     hparam_space = hparam_class(args.policy_name,
                                 log_dir,
                                 1,  # number of training envs
-                                1,  # number of test envs
+                                args.n_test_in_train,  # number of test envs
                                 args.epoch,
                                 args.step_per_epoch,  # number of training steps per epoch
                                 args.buffer_size,
