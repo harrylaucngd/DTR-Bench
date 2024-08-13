@@ -91,6 +91,22 @@ class LLM_DQN_Policy(DQNPolicy):
             attr_obj = getattr(self.model, attr)
             old_attr_obj.load_state_dict(attr_obj.state_dict())
 
+    def _target_q(self, buffer, indices) -> torch.Tensor:
+        obs_next_batch = Batch(
+            obs=buffer[indices].obs_next,
+            info=buffer[indices].info,
+        )  # obs_next: s_{t+n}
+        result = self(obs_next_batch)
+        if self._target:
+            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
+            target_q = self(obs_next_batch, model="model_old").logits
+        else:
+            target_q = result.logits
+        if self.is_double:
+            return target_q[np.arange(len(result.act)), result.act]
+        # Nature DQN, over estimate
+        return target_q.max(dim=1)[0]
+
     def forward(
             self,
             batch: ObsBatchProtocol,

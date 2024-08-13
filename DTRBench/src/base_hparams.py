@@ -11,7 +11,7 @@ common_hparams = {
 
     "batch_norm": False,
     "dropout": 0,
-    "target_update_freq": [0, 200],  #
+    "target_update_freq": [50, 200],  #
     "update_per_step": 1,  # off-policy only
     "update_actor_freq": 1,
     "step_per_collect": [1, 100],  # off-policy only

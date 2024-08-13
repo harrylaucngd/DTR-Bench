@@ -23,7 +23,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
-        "batch_size": 64,  #common_hparams["batch_size"],
+        "batch_size": common_hparams["batch_size"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -37,7 +37,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "eps_train_final": common_hparams["eps_train_final"],
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
-        "is_double": False,
+        "is_double": True,
         "use_dueling": False,
 
         # llm hparam
@@ -49,8 +49,8 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         #            "token_dim": 1536},
 
         # prompt hparam
-        "summary_prob": 1.,
-        "gradient_accumulation": 7,
+        "summary_prob": 0.,
+        "gradient_accumulation": 5,
     }
 
 
@@ -75,14 +75,9 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "need_summary": [True, False],
-        "need_meta_info": [True, False],
+        "need_meta_info": True,
         "num_try": 2,
         "llm_mode":
-            [
             {"llm": "Qwen2-7B-Instruct",
              "context_window": 32768},
-            {"llm": "internlm2_5-7b-chat",
-             "context_window": 32768},
-            {"llm": "Meta-Llama-3.1-8B-Instruct",
-             "context_window": 131072},],
     }
