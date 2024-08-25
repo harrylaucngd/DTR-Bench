@@ -100,16 +100,13 @@ class DQNObjective(RLObjective):
                                   ignore_obs_next=False,
                                   save_only_last_obs=False,
                                   stack_num=1)
-        if start_timesteps > 0:
-            print(f"warmup with random policy for {start_timesteps} steps..")
-            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
-                                         action_space=self.action_space)
-            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
-            warmup_collector.collect(n_step=start_timesteps)
-
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=True)
+
+        if start_timesteps > 0:
+            print(f"start to warmup with random policy for {start_timesteps} steps..")
+            train_collector.collect(n_step=start_timesteps, random=True)
 
         OffpolicyTrainer(
             policy,
@@ -233,7 +230,6 @@ class TD3Objective(RLObjective):
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
-            # todo: collect with random
             train_collector.collect(n_step=start_timesteps, random=True)
 
         # def train_fn(epoch, env_step):
@@ -354,13 +350,11 @@ class PPOObjective(RLObjective):
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=True)
+
         if start_timesteps > 0:
-            print(f"warmup with random policy for {start_timesteps} steps..")
-            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1,
-                                         action_space=self.action_space)
-            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
-            warmup_collector.collect(n_step=start_timesteps)
+            print(f"start to warmup with random policy for {start_timesteps} steps..")
+            train_collector.collect(n_step=start_timesteps, random=True)
 
         OnpolicyTrainer(
             policy,

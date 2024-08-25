@@ -18,7 +18,7 @@ common_hparams = {
     "onpolicy_step_per_collect": 288,  # for on-policy only
     "repeat_per_collect": 20,  # for on-policy only
     "n_step": 1,
-    "start_timesteps": 1000,
+    "start_timesteps": 5000,
     "gamma": 0.99,
     "tau": 0.005,
     "exploration_noise": 0.1,
