@@ -3,7 +3,7 @@ import warnings
 import wandb
 from DTRBench.src.helper_fn import baselineLOOKUP
 from DTRBench.src.base_obj import RLObjective
-from DTRBench.utils.wandb import WandbLogger
+from DTRBench.utils.wandb_fn import WandbLogger
 from DTRBench.utils.misc import set_global_seed
 from DTRBench.naive_baselines.baselineHparams import BaselineHyperParams
 

@@ -8,7 +8,7 @@ from GlucoseLLM.model.net import timeLLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
 from DTRBench.src.base_obj import RLObjective
-from DTRBench.utils.wandb import WandbLogger
+from DTRBench.utils.wandb_fn import WandbLogger
 from DTRBench.utils.misc import set_global_seed
 
 

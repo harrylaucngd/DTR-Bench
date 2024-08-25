@@ -4,7 +4,7 @@ import wandb
 from DTRBench.src.collector import GlucoseCollector as Collector
 from dataclasses import asdict
 from tianshou.policy.base import BasePolicy
-from DTRBench.utils.wandb import WandbLogger
+from DTRBench.utils.wandb_fn import WandbLogger
 from torch.utils.tensorboard import SummaryWriter
 from tianshou.trainer.utils import test_episode
 from DTRGym.base import make_env

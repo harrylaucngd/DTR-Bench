@@ -35,11 +35,12 @@ def hash_seed(seed):
 def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # insulin is in U/min
 
-    # if terminated:
-    #     reward = -100
-    # # elif truncated:
-    # #     reward = 100
-    # else:
+    if terminated:
+        termination_reward = -100
+    elif truncated:
+        termination_reward = 100
+    else:
+        termination_reward = 0
 
     X_MAX, X_MIN = 0, -100
     r = -risk_index([bg_next], 1)[-1]
@@ -61,7 +62,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
 
 
     # reward = risk_reward + delta_reward + insulin_penalty
-    reward = risk_reward + insulin_penalty
+    reward = termination_reward + risk_reward + insulin_penalty
 
     return reward
 
