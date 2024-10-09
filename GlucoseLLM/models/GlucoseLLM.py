@@ -28,11 +28,11 @@ llm_context_window = {
 
 
 class FlattenHead(nn.Module):
-    def __init__(self, n_vars, nf, target_window, head_dropout=0):
+    def __init__(self, n_vars, nf, target_window, head_dropout=0, dtype=torch.float32):
         super().__init__()
         self.n_vars = n_vars
         self.flatten = nn.Flatten(start_dim=-2)
-        self.linear = nn.Linear(nf, target_window)
+        self.linear = nn.Linear(nf, target_window, dtype=dtype)
         self.dropout = nn.Dropout(head_dropout)
 
     def forward(self, x):
@@ -43,7 +43,7 @@ class FlattenHead(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, configs, need_llm=True):
+    def __init__(self, configs, need_llm=True, dtype=torch.float32):
         super(Model, self).__init__()
         self.pred_len = configs.pred_len
         self.seq_len = configs.seq_len
@@ -53,7 +53,8 @@ class Model(nn.Module):
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         self.need_llm = need_llm
-        self.llm = configs.llm
+        self.llm_name = configs.llm
+        self.dtype = dtype
 
         model_dir = os.path.join("model_hub")
         os.makedirs(model_dir, exist_ok=True)
@@ -63,6 +64,7 @@ class Model(nn.Module):
                     f'{model_dir}/{configs.llm}',
                     trust_remote_code=True,
                     local_files_only=True,
+                    torch_dtype=self.dtype
                 )
             except EnvironmentError:  # downloads model from HF if not already done
                 print("Local model files not found. Attempting to download...")
@@ -70,6 +72,7 @@ class Model(nn.Module):
                     f'{model_hf[configs.llm]}',
                     trust_remote_code=True,
                     local_files_only=False,
+                    torch_dtype=self.dtype
                 )
 
             try:
@@ -87,7 +90,7 @@ class Model(nn.Module):
                     trust_remote_code=True,
                     local_files_only=False
                 )
-            
+
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             else:
@@ -101,36 +104,46 @@ class Model(nn.Module):
         self.dropout = nn.Dropout(configs.dropout)
 
         self.patch_embedding = PatchEmbedding(
-            configs.d_model, self.patch_len, self.stride, configs.dropout)
+            configs.d_model, self.patch_len, self.stride, configs.dropout, dtype=self.dtype)
         self.patch_embedding_old = PatchEmbedding(
-            configs.d_model, self.patch_len, self.stride, configs.dropout)
+            configs.d_model, self.patch_len, self.stride, configs.dropout, dtype=self.dtype)
 
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
+        self.word_embeddings = self.word_embeddings.to(dtype=self.dtype)
+
         self.vocab_size = self.word_embeddings.shape[0]
         self.num_tokens = 1000
-        self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
-        self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens)
+        self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens, dtype=self.dtype)
+        self.mapping_layer_old = nn.Linear(self.vocab_size, self.num_tokens, dtype=self.dtype)
 
-        self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
-        self.reprogramming_layer_old = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
+        self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm, dtype=self.dtype)
+        self.reprogramming_layer_old = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm, dtype=self.dtype)
 
         self.patch_nums = int((configs.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
 
         self.output_projection = FlattenHead(configs.enc_in, self.head_nf, self.pred_len,
-                                                 head_dropout=configs.dropout)
+                                             head_dropout=configs.dropout, dtype=self.dtype)
         self.output_projection_old = FlattenHead(configs.enc_in, self.head_nf, self.pred_len,
-                                                 head_dropout=configs.dropout)
+                                                 head_dropout=configs.dropout, dtype=self.dtype)
 
         self.active_branch = "model"
 
+        # Convert the entire model to the desired dtype
+        self.to(dtype=self.dtype)
+
     def forward(self, x_enc, prompt):
+        x_enc = x_enc.to(dtype=self.dtype)
         dec_out = self.forecast(x_enc, prompt)
         return dec_out[:, -self.pred_len:, :]
 
     def forecast(self, x_enc, prompt):
-        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=llm_context_window[self.llm]).input_ids
-        prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
+        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, padding_side="left",
+                                max_length=llm_context_window[self.llm_name]).input_ids
+        prompt = prompt.to(device=x_enc.device)
+
+        prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt)
+        prompt_embeddings = prompt_embeddings.to(dtype=self.dtype)
 
         if self.active_branch == "model":
             source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
@@ -149,7 +162,6 @@ class Model(nn.Module):
         else:
             raise ValueError("Not supported branch!")
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        # llama_enc_out = torch.cat([torch.cat([prompt_embeddings, enc_out[0, :, :].unsqueeze(0)], dim=1), enc_out[1, :, :].unsqueeze(0)], dim=1)
         dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
 
@@ -167,17 +179,18 @@ class Model(nn.Module):
 
 
 class ReprogrammingLayer(nn.Module):
-    def __init__(self, d_model, n_heads, d_keys=None, d_llm=None, attention_dropout=0.1):
+    def __init__(self, d_model, n_heads, d_keys=None, d_llm=None, attention_dropout=0.1, dtype=torch.float32):
         super(ReprogrammingLayer, self).__init__()
 
         d_keys = d_keys or (d_model // n_heads)
 
-        self.query_projection = nn.Linear(d_model, d_keys * n_heads)
-        self.key_projection = nn.Linear(d_llm, d_keys * n_heads)
-        self.value_projection = nn.Linear(d_llm, d_keys * n_heads)
-        self.out_projection = nn.Linear(d_keys * n_heads, d_llm)
+        self.query_projection = nn.Linear(d_model, d_keys * n_heads, dtype=dtype)
+        self.key_projection = nn.Linear(d_llm, d_keys * n_heads, dtype=dtype)
+        self.value_projection = nn.Linear(d_llm, d_keys * n_heads, dtype=dtype)
+        self.out_projection = nn.Linear(d_keys * n_heads, d_llm, dtype=dtype)
         self.n_heads = n_heads
         self.dropout = nn.Dropout(attention_dropout)
+        self.dtype = dtype
 
     def forward(self, target_embedding, source_embedding, value_embedding):
         B, L, _ = target_embedding.shape
@@ -200,7 +213,7 @@ class ReprogrammingLayer(nn.Module):
         scale = 1. / sqrt(E)
 
         scores = torch.einsum("blhe,she->bhls", target_embedding, source_embedding)
-
+        scores = scores.to(dtype=self.dtype)
         A = self.dropout(torch.softmax(scale * scores, dim=-1))
         reprogramming_embedding = torch.einsum("bhls,she->blhe", A, value_embedding)
 

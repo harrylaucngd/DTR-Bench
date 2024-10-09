@@ -299,6 +299,9 @@ def define_llm_ppo(input_shape: int, output_shape: int, unbounded=True,
 
 
 class LLM(torch.nn.Module):
+    """
+    LLM inference only
+    """
     def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768,
                  device="cuda" if torch.cuda.is_available() else "cpu",
                  system_prompt=False):
