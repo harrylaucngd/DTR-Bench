@@ -184,7 +184,7 @@ class LLMInference(torch.nn.Module):
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs.input_ids,
-                max_length=self.max_length,  #todo: change to max new tokens
+                max_length=self.max_length,  # todo: change to max new tokens
                 # length_penalty=-0.1,
                 do_sample=True,
                 temperature=1,  # todo
@@ -205,23 +205,14 @@ class catLLM(nn.Module):
 
 class timeLLM(nn.Module):
     def __init__(self, llm, n_vars, output_dim,
-                 seq_len,
-                 d_model, d_ff, patch_len, stride, token_dim, n_heads, decoder_len, max_new_tokens=512,
+                 seq_len, d_model, d_ff, patch_len, stride, token_dim, n_heads, decoder_len, max_new_tokens=512,
                  keep_old=False, dropout: float = 0., model_dir=None,
-                 device="cuda" if torch.cuda.is_available() else "cpu"):
-        """
-        :param llm: the name of the LLM model
-        :param seq_len: the length of the input sequence
-        :param d_model: the dimension of the PatchEmbedding output
-        :param d_ff: the dimension of the feed forward layer
-        :param patch_len: the length of each patch
-        :param stride: the stride of the patch
-        :param token_dim: the dimension of the token embedding for LLM
-        :param n_heads: the number of heads in the reprogramming layer
-        :param enc_in: the number of input features to the encoder
-        """
+                 device="cuda" if torch.cuda.is_available() else "cpu", torch_dtype=torch.float32):
         super(timeLLM, self).__init__()
+        self.torch_dtype = torch_dtype
+        self.device = device
         self.llm = llm
+        self.max_new_tokens = max_new_tokens
         self.seq_len = seq_len
         self.output_dim = output_dim
         self.d_ff = d_ff
@@ -239,8 +230,6 @@ class timeLLM(nn.Module):
         self.decoder_len = decoder_len
         self.head_nf = self.d_ff * self.decoder_len
 
-        self.max_new_tokens = max_new_tokens
-        self.device = device
         # find the LLM model and tokenizer
         model_dir = "model_hub" if model_dir is None else model_dir
         os.makedirs(model_dir, exist_ok=True)
@@ -253,14 +242,16 @@ class timeLLM(nn.Module):
                 f'{model_dir}/{self.llm}',
                 trust_remote_code=True,
                 local_files_only=True,
+                torch_dtype=self.torch_dtype,
             )
-        except EnvironmentError:  # downloads model from HF if not already done
+        except EnvironmentError:
             print("Local model files not found. Attempting to download...")
             self.llm_model = AutoModelForCausalLM.from_pretrained(
                 f'{model_hf[self.llm]}',
                 trust_remote_code=True,
                 local_files_only=False,
                 device_map="auto",
+                torch_dtype=self.torch_dtype,
             )
 
         try:
@@ -271,7 +262,7 @@ class timeLLM(nn.Module):
                 local_files_only=True,
                 device_map="auto",
             )
-        except EnvironmentError:  # downloads the tokenizer from HF if not already done
+        except EnvironmentError:
             print("Local tokenizer files not found. Attempting to download them...")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 f'{model_hf[self.llm]}',
@@ -287,25 +278,37 @@ class timeLLM(nn.Module):
             pad_token = '[PAD]'
             self.tokenizer.add_special_tokens({'pad_token': pad_token})
             self.tokenizer.pad_token = pad_token
+
+        # Move model to device if not using device_map
+        if not hasattr(self.llm_model, 'hf_device_map'):
+            self.llm_model.to(self.device)
+
         self.freeze_llm_model()
 
-        # define reprogramming model
-        self.patch_embedding = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride, self.dropout)
-
+        # Initialize custom layers with specified dtype
         self.word_embeddings = self.llm_model.model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
 
-        self.mapping_layer = nn.Linear(self.vocab_size, self.n_prototypes)
-        self.reprogramming_layer = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
-        self.output_projection = FlattenHead(self.head_nf, self.output_dim)
+        self.patch_embedding = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride, self.dropout).to(
+            dtype=self.torch_dtype, device=self.device)
+        self.mapping_layer = nn.Linear(self.vocab_size, self.n_prototypes).to(
+            dtype=self.torch_dtype, device=self.device)
+        self.reprogramming_layer = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm).to(
+            dtype=self.torch_dtype, device=self.device)
+        self.output_projection = FlattenHead(self.head_nf, self.output_dim).to(
+            dtype=self.torch_dtype, device=self.device)
 
-        # define old reprogramming model
+        # Initialize old model components if needed
         if keep_old:
             self.patch_embedding_old = PatchEmbedding(self.d_model, self.n_vars, self.patch_len, self.stride,
-                                                      self.dropout)
-            self.mapping_layer_old = nn.Linear(self.vocab_size, self.n_prototypes)
-            self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm)
-            self.output_projection_old = FlattenHead(self.head_nf, self.output_dim)
+                                                      self.dropout).to(
+                dtype=self.torch_dtype, device=self.device)
+            self.mapping_layer_old = nn.Linear(self.vocab_size, self.n_prototypes).to(
+                dtype=self.torch_dtype, device=self.device)
+            self.reprogramming_layer_old = ReprogrammingLayer(self.d_model, self.n_heads, self.d_ff, self.d_llm).to(
+                dtype=self.torch_dtype, device=self.device)
+            self.output_projection_old = FlattenHead(self.head_nf, self.output_dim).to(
+                dtype=self.torch_dtype, device=self.device)
 
     def freeze_llm_model(self):
         """Ensure all llm_model parameters are frozen."""
@@ -318,80 +321,114 @@ class timeLLM(nn.Module):
             param.requires_grad = True
 
     def forward(self, x_enc: torch.Tensor, prompt: List[List[Dict]], model="model", state=None, info={}):
-        # decide which model to use, current or old
+        # Decide which model to use
         if model == "model":
             mapping_layer = self.mapping_layer
             patch_embedding = self.patch_embedding
             reprogramming_layer = self.reprogramming_layer
             output_projection = self.output_projection
-
         elif model == "model_old":
-            assert self.keep_old, "Old model is not initialised!"
+            assert self.keep_old, "Old model is not initialized!"
             mapping_layer = self.mapping_layer_old
             patch_embedding = self.patch_embedding_old
             reprogramming_layer = self.reprogramming_layer_old
             output_projection = self.output_projection_old
         else:
-            raise ValueError("Not supported model!")
+            raise ValueError("Unsupported model!")
 
-        # tokenization and embedding
-        prompt = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
-                                max_length=llm_context_window[self.llm]).input_ids
-        prompt_embeddings = self.llm_model.model.get_input_embeddings()(
-            prompt.to(self.device))  # (batch, prompt_token, dim)
+        # Tokenization and embedding
+        prompt_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        prompt_input_ids = self.tokenizer(prompt_text, return_tensors="pt", padding=True, truncation=True,
+                                          max_length=llm_context_window[self.llm]).input_ids.to(self.device)
+        prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt_input_ids)
 
-        # reprogramming time series. In text-only mode, x_enc is None
-        if x_enc is not None:
-            x_enc = torch.tensor(x_enc, dtype=torch.float32).to(self.device)
-            source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
-            x_enc = x_enc.permute(0, 2, 1).contiguous()
-            enc_out, n_vars = patch_embedding(x_enc)
-            enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
-            llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+        # Use autocast if using mixed-precision
+        if self.torch_dtype in [torch.float16, torch.bfloat16]:
+            with torch.cuda.amp.autocast(dtype=self.torch_dtype):
+                # Reprogramming time series
+                if x_enc is not None:
+                    x_enc = x_enc.to(self.device, dtype=self.torch_dtype)
+                    source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+                    x_enc = x_enc.permute(0, 2, 1).contiguous()
+                    enc_out, _ = patch_embedding(x_enc)
+                    enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+                    llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+                else:
+                    llama_enc_out = prompt_embeddings
+
+                dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
+                dec_out = dec_out[:, -self.decoder_len:, :self.d_ff]
+                dec_out = output_projection(dec_out)
         else:
-            llama_enc_out = prompt_embeddings
+            # Standard precision
+            if x_enc is not None:
+                x_enc = x_enc.to(self.device, dtype=self.torch_dtype)
+                source_embeddings = mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+                x_enc = x_enc.permute(0, 2, 1).contiguous()
+                enc_out, _ = patch_embedding(x_enc)
+                enc_out = reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+                llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
+            else:
+                llama_enc_out = prompt_embeddings
 
-        dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
-        dec_out = dec_out[:, -self.decoder_len:, :self.d_ff]
-        dec_out = output_projection(dec_out)
+            dec_out = self.llm_model.model(inputs_embeds=llama_enc_out).last_hidden_state
+            dec_out = dec_out[:, -self.decoder_len:, :self.d_ff]
+            dec_out = output_projection(dec_out)
+
         return dec_out, None
 
-    def generate_text(self, x_enc: np.array, prompt: List[List[Dict]]):
+    def generate_text(self, x_enc: torch.Tensor, prompt: List[List[Dict]]):
         """
         Generate text using the LLM model. We allow time series data as prefix.
         """
-        # convert conversation into a list of string
-        prompt = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
-                                max_length=llm_context_window[self.llm]).input_ids
         # Tokenization and embedding
+        prompt_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        prompt_input_ids = self.tokenizer(prompt_text, return_tensors="pt", padding=True, truncation=True,
+                                          max_length=llm_context_window[self.llm]).input_ids.to(self.device)
+        prompt_embeddings = self.llm_model.model.get_input_embeddings()(prompt_input_ids)
 
-        prompt_embeddings = self.llm_model.model.get_input_embeddings()(
-            prompt.to(self.device))  # (batch, prompt_token, dim)
+        # Use autocast if using mixed-precision
+        if self.torch_dtype in [torch.float16, torch.bfloat16]:
+            with torch.cuda.amp.autocast(dtype=self.torch_dtype):
+                if x_enc is not None:
+                    x_enc = x_enc.to(self.device, dtype=self.torch_dtype)
+                    source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+                    x_enc = x_enc.permute(0, 2, 1).contiguous()
+                    enc_out, _ = self.patch_embedding(x_enc)
+                    enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+                    llama_enc_out = torch.cat([enc_out, prompt_embeddings], dim=1)
+                else:
+                    llama_enc_out = prompt_embeddings
 
-        if x_enc is None:
-            llama_enc_out = prompt_embeddings
+                # Generate text using LLM
+                outputs = self.llm_model.generate(
+                    inputs_embeds=llama_enc_out,
+                    max_new_tokens=self.max_new_tokens,
+                    do_sample=True,
+                    temperature=1
+                )
         else:
-            # Reprogramming time series
-            source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
-            x_enc = x_enc.permute(0, 2, 1).contiguous()
-            enc_out, _ = self.patch_embedding(x_enc)
-            enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
-            llama_enc_out = torch.cat([enc_out, prompt_embeddings], dim=1)
+            if x_enc is not None:
+                x_enc = x_enc.to(self.device, dtype=self.torch_dtype)
+                source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
+                x_enc = x_enc.permute(0, 2, 1).contiguous()
+                enc_out, _ = self.patch_embedding(x_enc)
+                enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+                llama_enc_out = torch.cat([enc_out, prompt_embeddings], dim=1)
+            else:
+                llama_enc_out = prompt_embeddings
 
-        # Generate text using LLM
-        outputs = self.llm_model.generate(
-            inputs_embeds=llama_enc_out,
-            max_new_tokens=self.max_new_tokens,
-            do_sample=True,
-            temperature=1
-        )
+            # Generate text using LLM
+            outputs = self.llm_model.generate(
+                inputs_embeds=llama_enc_out,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=True,
+                temperature=1
+            )
 
         # Decode the generated text
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         cutoff_index = generated_text.rfind("assistant\n")
         if cutoff_index != -1:  # answer cutoff
             generated_text = generated_text[cutoff_index + len("assistant\n"):]
-
         return generated_text
