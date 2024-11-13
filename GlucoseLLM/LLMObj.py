@@ -2,7 +2,7 @@ import torch
 import wandb
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.models.llm_net import define_llm_dqn, define_llm_ppo, LLM
+from GlucoseLLM.models.llm_net import LLM, LLMDQN, LLMPPO
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
@@ -51,6 +51,25 @@ class LLM_DQN_Objective(DQNObjective):
                       *args, **kwargs
                       ):
         # define model
+        # todo: define params here directly
+        configs = argparse.Namespace(
+            d_ff=32,
+            patch_len=9,  # TODO: TBD
+            stride=8,  # TODO: TBD
+            llm_layers=6,
+            d_model=16,
+            dropout=0.1,
+            n_heads=8,
+            enc_in=7,
+            prompt_domain=0,
+            content="",
+            token_dim=token_dim,
+            llm=llm,
+        )
+        net = LLMDQN(configs=configs, state_shape=input_shape, action_shape=output_shape,
+                     device=device, need_llm=True,
+                     # prompt options
+                     summary_prompt=summary_prompt, Q_prompt=Q_prompt).to(device)
         net = define_llm_dqn(self.action_shape, device=self.device, llm=llm_mode["llm"],
                              token_dim=llm_mode["token_dim"], Q_prompt=sys_Q_prompt,
                              summary_prompt=sys_summary_prompt)
@@ -77,7 +96,7 @@ class LLM_PPO_Objective(PPOObjective):
     def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
                       advantage_normalization, recompute_advantage, n_step, epoch, batch_size, linear, llm_mode, sum_prob, **kwargs):
         cat_num, stack_num = 48, 1
-        actor = define_llm_ppo(self.action_shape, unbounded=True,
+        actor = define_llm_ppo(self.state_shape, self.action_shape, unbounded=True,
                                device=self.device, llm=llm_mode["llm"], token_dim=llm_mode["token_dim"],
                                summary_prompt=sys_summary_prompt, act_prompt=sys_act_prompt).to(self.device)
         critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=stack_num > 1,

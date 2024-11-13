@@ -1,6 +1,5 @@
 import argparse
-from GlucoseLLM.models import GlucoseLLM
-from GlucoseLLM.prompt_pipeline import Conversation
+import warnings
 from typing import (
     Any,
     Dict,
@@ -9,12 +8,15 @@ from typing import (
     Type,
     Union,
 )
+
 import numpy as np
-import warnings
 import torch
+from tianshou.utils.net.common import MLP
 from torch import nn
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from tianshou.utils.net.common import MLP
+
+from GlucoseLLM.models.timeLLM import (timeLLM)
+from GlucoseLLM.prompt_pipeline import Conversation
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
@@ -32,20 +34,18 @@ llm_context_window = {
 }
 
 
-class LLMDQN(GlucoseLLM.Model):
+class LLMDQN(timeLLM):
     def __init__(
             self,
-            configs: argparse.Namespace,
-            action_shape: Union[int, Sequence[int]] = 0,
-            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-            need_llm: bool = False,
+            llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout=0,
+            n_heads=8, d_ff=-1, dtype=torch.bfloat16,
+            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", max_new_tokens=256,
             # prompt options
             summary_prompt=False, Q_prompt=False, 
     ) -> None:
-        configs.pred_len = action_shape
-        configs.seq_len = 96
-        super().__init__(configs, need_llm=need_llm)
-        self.llm = configs.llm
+        super().__init__(llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout,
+                         n_heads, d_ff, dtype)
+        self.max_new_tokens = max_new_tokens
         self.device = device
         self.summary_prompt = summary_prompt
         self.Q_prompt = Q_prompt
@@ -55,11 +55,11 @@ class LLMDQN(GlucoseLLM.Model):
         dec_out = self.forecast(series, prompts)
         return dec_out[:, -self.pred_len:, :].squeeze(-1), []
 
-    def forward_text(self, prompts, max_length=256):
+    def forward_text(self, prompts):
         inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)
         outputs = self.llm_model.generate(
             **inputs,
-            max_new_tokens=max_length,
+            max_new_tokens=self.max_new_tokens,
             do_sample=False,
             temperature=1
         )
@@ -72,7 +72,7 @@ class LLMDQN(GlucoseLLM.Model):
             generated_texts.append(generated_text)
         return generated_texts
 
-    def forward(self, series, messages, max_length=256, mode='Q'):
+    def forward(self, series, messages, mode='Q'):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
@@ -88,7 +88,7 @@ class LLMDQN(GlucoseLLM.Model):
             logits, state = self.forward_Q(series, prompts)
             llm_output = ""
         elif mode == 'str':
-            llm_output = self.forward_text(prompts, max_length=max_length)
+            llm_output = self.forward_text(prompts)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
         return logits, state, llm_output
@@ -103,53 +103,28 @@ class LLMDQN(GlucoseLLM.Model):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def q_pred(self, series, conversations, mode='Q'):
+    def q_pred(self, series, conversations):
         prompts = []
         for conversation in conversations:
-            prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
+            prompt = conversation.clip(self.tokenizer.model_max_len - self.max_new_tokens, self.tokenizer)
             prompt.insert_component("system", self.Q_prompt, 0)
             prompts.append(prompt)
         series = torch.stack(series, dim=0).to(self.device)
-        q_list, _, _ = self.forward(series, prompts, max_length=256, mode=mode)
+        q_list, _, _ = self.forward(series, prompts, mode="Q")
         return q_list
 
-    def summarize(self, conversations, mode='str'):
+    def summarize(self, conversations):
         prompts = []
         for conversation in conversations:
-            prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
+            prompt = conversation.clip(self.tokenizer.model_max_len - self.max_new_tokens, self.tokenizer)
             prompt.insert_component("system", self.summary_prompt, 0)
             prompts.append(prompt)
         series = torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompts, max_length=256, mode=mode)
+        _, _, response = self.forward(series, prompts, mode="str")
         return response
 
 
-def define_llm_dqn(input_shape: int, output_shape: int,
-                       device="cuda" if torch.cuda.is_available() else "cpu", llm="Qwen2-1.5B-Instruct", token_dim=1536,
-                       Q_prompt=False, summary_prompt=False,
-                       ):
-    configs = argparse.Namespace(
-        d_ff=32,
-        patch_len=9,  # TODO: TBD
-        stride=8,  # TODO: TBD
-        llm_layers=6,
-        d_model=16,
-        dropout=0.1,
-        n_heads=8,
-        enc_in=7,
-        prompt_domain=0,
-        content="",
-        token_dim=token_dim,
-        llm=llm,
-    )
-    net = LLMDQN(configs=configs, state_shape=input_shape, action_shape=output_shape,
-                 device=device, need_llm=True,
-                 # prompt options
-                 summary_prompt=summary_prompt, Q_prompt=Q_prompt).to(device)
-    return net
-
-
-class LLMPPO(GlucoseLLM.Model):
+class LLMPPO(timeLLM):
     def __init__(
             self,
             configs: argparse.Namespace,
@@ -165,7 +140,7 @@ class LLMPPO(GlucoseLLM.Model):
     ) -> None:
         configs.pred_len = action_shape
         configs.seq_len = 96
-        super().__init__(configs, need_llm=need_llm)
+        super().__init__(configs)
         self.llm = configs.llm
         self.device = device
         self.summary_prompt = summary_prompt
@@ -291,8 +266,8 @@ def define_llm_ppo(input_shape: int, output_shape: int, unbounded=True,
         token_dim=token_dim,
         llm=llm,
     )
-    net = LLMPPO(configs=configs, state_shape=input_shape, action_shape=output_shape,
-                 unbounded=True, device=device, need_llm=True,
+    net = LLMPPO(configs=configs, action_shape=output_shape,
+                 unbounded=unbounded, device=device, need_llm=True,
                  # prompt options
                  summary_prompt=summary_prompt, act_prompt=act_prompt).to(device)
     return net

@@ -1,7 +1,8 @@
 import re
+from datetime import timedelta
+
 import numpy as np
 import torch
-from datetime import timedelta
 
 
 class Conversation:
@@ -121,15 +122,13 @@ def q_prompt_reprogramming(obs, act, summaries):
         ser = ser.unsqueeze(1)
         series.append(ser)
         prompt = Conversation()
-        if summ == "":
-            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
-                " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
-                " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
-        else:
-            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
-                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
-                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
-                " 0.4-0.45, 0.45-0.5]. ")
+
+        message = ("Please generate the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order "
+                   "of the following insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3,"
+                   " 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
+        if summ != "":
+            message = f"Extracted information from history is provided: {summ}" + message
+        prompt.add_component("user", message)
         history_prompt.append(prompt)
     return series, history_prompt
 
@@ -145,15 +144,12 @@ def act_prompt_reprogramming(obs, act, summaries):
         ser = ser.unsqueeze(1)
         series.append(ser)
         prompt = Conversation()
-        if summ == "":
-            prompt.add_component("user", "Please generate the expected discounted reward (i.e., Q(s, a))"
+        message = ("Please generate the expected discounted reward (i.e., Q(s, a))"
                 " for each insulin bins in the order of the following insulin dosage bins: [0, 0-0.05,"
                 " 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. ")
-        else:
-            prompt.add_component("user", f"Extracted information from history is provided: {summ} Please generate"
-                " the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of the following"
-                " insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25, 0.25-0.3, 0.3-0.35, 0.35-0.4,"
-                " 0.4-0.45, 0.45-0.5]. ")
+        if summ != "":
+            message = f"Extracted information from history is provided: {summ}" + message
+        prompt.add_component("user", message)
         history_prompt.append(prompt)
     return series, history_prompt
 
