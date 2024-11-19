@@ -3,14 +3,14 @@ from DTRBench.src.offpolicyRLHparams import common_hparams
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 import DTRBench.src.onpolicyRLHparams as onpolicyRLHparams
 
-'''
+"""
 Open LLM Leaderboard Top 3 Average Performance Model under 10B (2024.7.7):
 1. internlm/internlm2_5-7b-chat
 2. microsoft/Phi-3-small-128k-instruct
 3. 01-ai/Yi-1.5-9B-Chat
 Open LLM Leaderboard Top 1 Average Performance Model under 1B (2024.7.7):
 1. Qwen/Qwen2-1.5B-Instruct
-'''
+"""
 
 
 class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
@@ -24,6 +24,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         # general parameters
         "seed": common_hparams["llm_seed"],
         "batch_size": 64,
+        "obs_mode": common_hparams["obs_mode"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
@@ -39,14 +40,11 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "target_update_freq": common_hparams["target_update_freq"],
         "is_double": False,
         "use_dueling": False,
-
         # llm hparam
         "llm_mode": [
-        {"llm": "Qwen2-0.5B-Instruct",
-                   "token_dim": 896},
-        {"llm": "Qwen2-1.5B-Instruct",
-                   "token_dim": 1536},],
-
+            {"llm": "Qwen2-0.5B-Instruct", "token_dim": 896},
+            {"llm": "Qwen2-1.5B-Instruct", "token_dim": 1536},
+        ],
         # prompt hparam
         "sum_prob": [0, 0.1, 0.2, 0.4],
     }
@@ -77,21 +75,18 @@ class LLM_PPO_HyperParams(onpolicyRLHparams.PPOHyperParams):
         "dual_clip": None,
         "advantage_normalization": True,
         "recompute_advantage": False,
-                       
         # llm hparam
         "llm_mode": [
-        {"llm": "Qwen2-0.5B-Instruct",
-                   "token_dim": 896},
-        {"llm": "Qwen2-1.5B-Instruct",
-                   "token_dim": 1536},],
-
+            {"llm": "Qwen2-0.5B-Instruct", "token_dim": 896},
+            {"llm": "Qwen2-1.5B-Instruct", "token_dim": 1536},
+        ],
         # prompt hparam
         "sum_prob": [0, 0.1, 0.2, 0.4],
     }
 
 
 class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
-    _supported_algos = ("llm", )
+    _supported_algos = ("llm",)
     _general_hparams = {
         # general parameters
         "seed": common_hparams["seed"],
@@ -99,12 +94,9 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "llm_mode": [
-        {"llm": "Qwen2-1.5B-Instruct",
-                   "context_window": 32768},
-        {"llm": "internlm2_5-7b-chat",
-                   "context_window": 32768},
-        {"llm": "Phi-3-small-128k-instruct",
-                   "context_window": 131072},
-        {"llm": "Yi-1.5-9B-Chat",
-                   "context_window": 4096},],
+            {"llm": "Qwen2-1.5B-Instruct", "context_window": 32768},
+            {"llm": "internlm2_5-7b-chat", "context_window": 32768},
+            {"llm": "Phi-3-small-128k-instruct", "context_window": 131072},
+            {"llm": "Yi-1.5-9B-Chat", "context_window": 4096},
+        ],
     }

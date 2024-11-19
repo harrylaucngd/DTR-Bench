@@ -22,6 +22,7 @@ class FlattenHead(nn.Module):
     """
     A module to flatten the output from the LLM and project it to the target window size.
     """
+
     def __init__(self, n_vars, nf, target_window, head_dropout=0, dtype=torch.float32):
         super().__init__()
         self.n_vars = n_vars
@@ -109,7 +110,7 @@ class ReprogrammingLayer(nn.Module):
         """
         B, L, H, E = target_embedding.shape  # Batch size, sequence length, num_heads, d_keys
 
-        scale = 1. / sqrt(E)
+        scale = 1.0 / sqrt(E)
 
         # Compute attention scores
         scores = torch.einsum("blhe,she->bhls", target_embedding, source_embedding)  # [B, H, L, S]
@@ -128,19 +129,19 @@ class TokenEmbedding(nn.Module):
 
     def __init__(self, c_in, d_model, dtype=torch.float32):
         super(TokenEmbedding, self).__init__()
-        padding = 1 if torch.__version__ >= '1.5.0' else 2
+        padding = 1 if torch.__version__ >= "1.5.0" else 2
         self.tokenConv = nn.Conv1d(
             in_channels=c_in,  # Number of input channels (patch length)
             out_channels=d_model,  # Number of output channels (embedding dimension)
             kernel_size=3,
             padding=padding,
-            padding_mode='circular',
-            dtype=dtype
+            padding_mode="circular",
+            dtype=dtype,
         )
         # Initialize convolution weights
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="leaky_relu")
         self.dtype = dtype
 
     def forward(self, x):
@@ -195,8 +196,7 @@ class PatchEmbedding(nn.Module):
         x = self.padding_patch_layer(x)  # Shape: [batch_size, n_vars, seq_len + stride]
 
         # Unfold to create patches
-        x = x.unfold(dimension=-1, size=self.patch_len,
-                     step=self.stride)  # Shape: [batch_size, n_vars, num_patches, patch_len]
+        x = x.unfold(dimension=-1, size=self.patch_len, step=self.stride)  # Shape: [batch_size, n_vars, num_patches, patch_len]
         num_patches = x.shape[2]  # Number of patches
 
         # Reshape for convolution
@@ -209,8 +209,7 @@ class PatchEmbedding(nn.Module):
         x = x.permute(0, 2, 1)  # Shape: [batch_size * n_vars, num_patches, d_model]
 
         # Reshape to combine batch_size and n_vars
-        x = x.contiguous().view(-1, n_vars * num_patches,
-                                x.shape[-1])  # Shape: [batch_size, L, d_model], L = n_vars * num_patches
+        x = x.contiguous().view(-1, n_vars * num_patches, x.shape[-1])  # Shape: [batch_size, L, d_model], L = n_vars * num_patches
 
         return self.dropout(x), n_vars, num_patches  # Return number of patches for later use
 
@@ -234,8 +233,9 @@ class timeLLM(nn.Module):
         dtype (torch.dtype): Data type for computations.
     """
 
-    def __init__(self, llm_name, pred_len, seq_len, n_time, token_dim, patch_len, stride, d_model, dropout=0,
-                 n_heads=8, d_ff=-1, dtype=torch.bfloat16):
+    def __init__(
+        self, llm_name, pred_len, seq_len, n_time, token_dim, patch_len, stride, d_model, dropout=0, n_heads=8, d_ff=-1, dtype=torch.bfloat16
+    ):
         super(timeLLM, self).__init__()
         self.pred_len = pred_len  # Prediction length
         self.seq_len = seq_len  # Input sequence length
@@ -251,43 +251,31 @@ class timeLLM(nn.Module):
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
-                f'{model_dir}/{llm_name}',
-                trust_remote_code=True,
-                local_files_only=True,
-                torch_dtype=self.dtype
+                f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True, torch_dtype=self.dtype
             )
         except EnvironmentError:
             print("Local model files not found. Attempting to download...")
             self.llm_model = AutoModelForCausalLM.from_pretrained(
-                f'{model_hf[llm_name]}',
-                trust_remote_code=True,
-                local_files_only=False,
-                torch_dtype=self.dtype
+                f"{model_hf[llm_name]}", trust_remote_code=True, local_files_only=False, torch_dtype=self.dtype
             )
 
         # Load or download the tokenizer
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                f'{model_dir}/{llm_name}',
-                cache_dir=f'{model_dir}/{llm_name}',
-                trust_remote_code=True,
-                local_files_only=True
+                f"{model_dir}/{llm_name}", cache_dir=f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True
             )
         except EnvironmentError:
             print("Local tokenizer files not found. Attempting to download them...")
             self.tokenizer = AutoTokenizer.from_pretrained(
-                f'{model_hf[llm_name]}',
-                cache_dir=f'{model_dir}/{llm_name}',
-                trust_remote_code=True,
-                local_files_only=False
+                f"{model_hf[llm_name]}", cache_dir=f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=False
             )
 
         # Handle padding token
         if self.tokenizer.eos_token:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         else:
-            pad_token = '[PAD]'
-            self.tokenizer.add_special_tokens({'pad_token': pad_token})
+            pad_token = "[PAD]"
+            self.tokenizer.add_special_tokens({"pad_token": pad_token})
             self.tokenizer.pad_token = pad_token
 
         # Freeze LLM parameters
@@ -316,8 +304,7 @@ class timeLLM(nn.Module):
 
         # Output projection
         self.head_nf = self.d_ff * self.patch_nums  # Flattened dimension
-        self.output_projection = FlattenHead(n_time, self.head_nf, self.pred_len,
-                                             head_dropout=dropout, dtype=self.dtype)
+        self.output_projection = FlattenHead(n_time, self.head_nf, self.pred_len, head_dropout=dropout, dtype=self.dtype)
 
         self.active_branch = "model"
         self.to(dtype=self.dtype)
@@ -335,9 +322,9 @@ class timeLLM(nn.Module):
         """
         x_enc = x_enc.to(dtype=self.dtype)
         dec_out = self.forecast(x_enc, prompt)
-        return dec_out[:, -self.pred_len:, :]
+        return dec_out[:, -self.pred_len :, :]
 
-    def forecast(self, x_enc, prompt):
+    def forecast(self, x_enc, prefix_prompt, suffix_prompt):
         """
         Performs the forecasting by integrating time series data with the LLM.
 
@@ -349,9 +336,13 @@ class timeLLM(nn.Module):
             Tensor: Forecasted output, shape [batch_size, pred_len, n_vars]
         """
         # Tokenize the prompt
-        prompt_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
-                                       padding_side="left",
-                                       max_length=self.tokenizer.model_max_length).input_ids
+        prefix_prompt_tokens = self.tokenizer(
+            prefix_prompt, return_tensors="pt", padding=True, truncation=True, max_length=self.tokenizer.model_max_length
+        ).input_ids
+        suffix_prompt_tokens = self.tokenizer(
+            suffix_prompt, return_tensors="pt", padding=True, truncation=True,
+            max_length=self.tokenizer.model_max_length
+        ).input_ids
         prompt_tokens = prompt_tokens.to(device=x_enc.device)  # Shape: [batch_size, prompt_len]
 
         # Get prompt embeddings
@@ -383,7 +374,7 @@ class timeLLM(nn.Module):
         dec_out = dec_out[:, prompt_len:, :]  # Shape: [batch_size, L, d_llm]
 
         # Optionally reduce dimensionality
-        dec_out = dec_out[:, :, :self.d_ff]  # Shape: [batch_size, L, d_ff]
+        dec_out = dec_out[:, :, : self.d_ff]  # Shape: [batch_size, L, d_ff]
 
         # Reshape for output projection
         dec_out = dec_out.view(-1, n_vars, num_patches, self.d_ff)  # Shape: [batch_size, n_vars, num_patches, d_ff]

@@ -15,12 +15,11 @@ from tianshou.utils.net.common import MLP
 from torch import nn
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from GlucoseLLM.models.timeLLM import (timeLLM)
+from GlucoseLLM.models.timeLLM import timeLLM
 from GlucoseLLM.prompt_pipeline import Conversation
 
 ModuleType = Type[nn.Module]
-ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]],
-Sequence[Dict[Any, Any]]]
+ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]], Sequence[Dict[Any, Any]]]
 
 SIGMA_MIN = -20
 SIGMA_MAX = 2
@@ -36,15 +35,26 @@ llm_context_window = {
 
 class LLMDQN(timeLLM):
     def __init__(
-            self,
-            llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout=0,
-            n_heads=8, d_ff=-1, dtype=torch.bfloat16,
-            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", max_new_tokens=256,
-            # prompt options
-            summary_prompt=False, Q_prompt=False, 
+        self,
+        llm_name,
+        action_shape,
+        seq_len,
+        enc_in,
+        token_dim,
+        patch_len,
+        stride,
+        d_model,
+        dropout=0,
+        n_heads=8,
+        d_ff=-1,
+        dtype=torch.bfloat16,
+        device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
+        max_new_tokens=256,
+        # prompt options
+        summary_prompt=False,
+        Q_prompt=False,
     ) -> None:
-        super().__init__(llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout,
-                         n_heads, d_ff, dtype)
+        super().__init__(llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout, n_heads, d_ff, dtype)
         self.max_new_tokens = max_new_tokens
         self.device = device
         self.summary_prompt = summary_prompt
@@ -53,41 +63,34 @@ class LLMDQN(timeLLM):
     def forward_Q(self, series, prompts):
         # Inference the whole network
         dec_out = self.forecast(series, prompts)
-        return dec_out[:, -self.pred_len:, :].squeeze(-1), []
+        return dec_out[:, -self.pred_len :, :].squeeze(-1), []
 
     def forward_text(self, prompts):
         inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)
-        outputs = self.llm_model.generate(
-            **inputs,
-            max_new_tokens=self.max_new_tokens,
-            do_sample=False,
-            temperature=1
-        )
+        outputs = self.llm_model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False, temperature=1)
         generated_texts = []
         for output in outputs:
             generated_text = self.tokenizer.decode(output, skip_special_tokens=True)
             cutoff_index = generated_text.rfind("assistant\n")
             if cutoff_index != -1:  # answer cutoff
-                generated_text = generated_text[cutoff_index + len("assistant\n"):]
+                generated_text = generated_text[cutoff_index + len("assistant\n") :]
             generated_texts.append(generated_text)
         return generated_texts
 
-    def forward(self, series, messages, mode='Q'):
+    def forward(self, series, messages, mode="Q"):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
         if isinstance(messages, Conversation):
-            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False,
-                                                         add_generation_prompt=True)
+            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
         else:
             for message in messages:
-                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False,
-                                                            add_generation_prompt=True)
+                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
                 prompts.append(prompt)
-        if mode == 'Q':
+        if mode == "Q":
             logits, state = self.forward_Q(series, prompts)
             llm_output = ""
-        elif mode == 'str':
+        elif mode == "str":
             llm_output = self.forward_text(prompts)
         else:
             raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
@@ -106,7 +109,7 @@ class LLMDQN(timeLLM):
     def q_pred(self, series, conversations):
         prompts = []
         for conversation in conversations:
-            prompt = conversation.clip(self.tokenizer.model_max_len - self.max_new_tokens, self.tokenizer)
+            prompt = conversation.clip(self.tokenizer.model_max_length - self.max_new_tokens, self.tokenizer)
             prompt.insert_component("system", self.Q_prompt, 0)
             prompts.append(prompt)
         series = torch.stack(series, dim=0).to(self.device)
@@ -126,17 +129,18 @@ class LLMDQN(timeLLM):
 
 class LLMPPO(timeLLM):
     def __init__(
-            self,
-            configs: argparse.Namespace,
-            action_shape: Union[int, Sequence[int]] = 0,
-            hidden_sizes: Sequence[int] = 128,
-            max_action: float = 1.0,
-            device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-            unbounded: bool = False,
-            conditioned_sigma: bool = False,
-            need_llm: bool = False,
-            # prompt options
-            summary_prompt=False, act_prompt=False, 
+        self,
+        configs: argparse.Namespace,
+        action_shape: Union[int, Sequence[int]] = 0,
+        hidden_sizes: Sequence[int] = 128,
+        max_action: float = 1.0,
+        device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
+        unbounded: bool = False,
+        conditioned_sigma: bool = False,
+        need_llm: bool = False,
+        # prompt options
+        summary_prompt=False,
+        act_prompt=False,
     ) -> None:
         configs.pred_len = action_shape
         configs.seq_len = 96
@@ -163,42 +167,35 @@ class LLMPPO(timeLLM):
             self.sigma_param = nn.Parameter(torch.zeros(self.output_dim, 1))
         self.max_action = max_action
         self._unbounded = unbounded
-    
+
     def forward_act(self, series, prompts):
         # Inference the whole network
         dec_out = self.forecast(series, prompts)
-        return dec_out[:, -self.pred_len:, :].squeeze(-1), []
+        return dec_out[:, -self.pred_len :, :].squeeze(-1), []
 
     def forward_text(self, prompts, max_length=256):
         inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)
-        outputs = self.llm_model.generate(
-            **inputs,
-            max_new_tokens=max_length,
-            do_sample=False,
-            temperature=1
-        )
+        outputs = self.llm_model.generate(**inputs, max_new_tokens=max_length, do_sample=False, temperature=1)
         generated_texts = []
         for output in outputs:
             generated_text = self.tokenizer.decode(output, skip_special_tokens=True)
             cutoff_index = generated_text.rfind("assistant\n")
             if cutoff_index != -1:  # answer cutoff
-                generated_text = generated_text[cutoff_index + len("assistant\n"):]
+                generated_text = generated_text[cutoff_index + len("assistant\n") :]
             generated_texts.append(generated_text)
         return generated_texts
 
-    def forward(self, series, messages, max_length=256, mode='act'):
+    def forward(self, series, messages, max_length=256, mode="act"):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
         if isinstance(messages, Conversation):
-            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False,
-                                                         add_generation_prompt=True)
+            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
         else:
             for message in messages:
-                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False,
-                                                            add_generation_prompt=True)
+                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
                 prompts.append(prompt)
-        if mode == 'act':
+        if mode == "act":
             logits, state = self.forward_act(series, prompts)
             llm_output = ""
             mu = self.mu(logits)
@@ -211,7 +208,7 @@ class LLMPPO(timeLLM):
                 shape[1] = -1
                 sigma = (self.sigma_param.view(shape) + torch.zeros_like(mu)).exp()
             return (mu, sigma), state, llm_output
-        elif mode == 'str':
+        elif mode == "str":
             llm_output = self.forward_text(prompts, max_length=max_length)
             return logits, state, llm_output
         else:
@@ -227,7 +224,7 @@ class LLMPPO(timeLLM):
         for param in self.llm_model.parameters():
             param.requires_grad = True
 
-    def act_pred(self, series, conversations, mode='act'):
+    def act_pred(self, series, conversations, mode="act"):
         prompts = []
         for conversation in conversations:
             prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
@@ -237,7 +234,7 @@ class LLMPPO(timeLLM):
         (mu, sigma), _, _ = self.forward(series, prompts, max_length=256, mode=mode)
         return (mu, sigma)
 
-    def summarize(self, conversations, mode='str'):
+    def summarize(self, conversations, mode="str"):
         prompts = []
         for conversation in conversations:
             prompt = conversation.clip(llm_context_window[self.llm] - 300, self.tokenizer)
@@ -248,10 +245,16 @@ class LLMPPO(timeLLM):
         return response
 
 
-def define_llm_ppo(input_shape: int, output_shape: int, unbounded=True,
-                device="cuda" if torch.cuda.is_available() else "cpu", 
-                llm="Qwen2-1.5B-Instruct", token_dim=1536, act_prompt=False, summary_prompt=False,
-                ):
+def define_llm_ppo(
+    input_shape: int,
+    output_shape: int,
+    unbounded=True,
+    device="cuda" if torch.cuda.is_available() else "cpu",
+    llm="Qwen2-1.5B-Instruct",
+    token_dim=1536,
+    act_prompt=False,
+    summary_prompt=False,
+):
     configs = argparse.Namespace(
         d_ff=32,
         patch_len=9,  # TODO: TBD
@@ -266,10 +269,16 @@ def define_llm_ppo(input_shape: int, output_shape: int, unbounded=True,
         token_dim=token_dim,
         llm=llm,
     )
-    net = LLMPPO(configs=configs, action_shape=output_shape,
-                 unbounded=unbounded, device=device, need_llm=True,
-                 # prompt options
-                 summary_prompt=summary_prompt, act_prompt=act_prompt).to(device)
+    net = LLMPPO(
+        configs=configs,
+        action_shape=output_shape,
+        unbounded=unbounded,
+        device=device,
+        need_llm=True,
+        # prompt options
+        summary_prompt=summary_prompt,
+        act_prompt=act_prompt,
+    ).to(device)
     return net
 
 
@@ -277,43 +286,40 @@ class LLM(torch.nn.Module):
     """
     LLM inference only
     """
-    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768,
-                 device="cuda" if torch.cuda.is_available() else "cpu",
-                 system_prompt=False):
+
+    def __init__(
+        self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu", system_prompt=False
+    ):
         super().__init__()
         self.llm = llm
         self.max_length = context_window
         self.device = device
         self.system_prompt = system_prompt
-        
+
         self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
         self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
-    
+
     def forward(self, input_text):
         messages = [{"role": "system", "content": self.system_prompt}]
-        messages.append({"role":"user", "content": input_text})
-        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False,
-                                                            add_generation_prompt=True)
+        messages.append({"role": "user", "content": input_text})
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
+
         with torch.no_grad():
-            outputs = self.model.generate(
-                inputs.input_ids,
-                max_length=self.max_length,
-                do_sample=False,
-                temperature=1
-            )
-        
+            outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False, temperature=1)
+
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         cutoff_index = generated_text.rfind("assistant\n")
         if cutoff_index != -1:  # answer cutoff
-            generated_text = generated_text[cutoff_index + len("assistant\n"):]
+            generated_text = generated_text[cutoff_index + len("assistant\n") :]
         return generated_text
 
 
-def define_llm(llm="Qwen2-1.5B-Instruct", context_window=32768,
-               device="cuda" if torch.cuda.is_available() else "cpu",
-               system_prompt=False,
-    ):
+def define_llm(
+    llm="Qwen2-1.5B-Instruct",
+    context_window=32768,
+    device="cuda" if torch.cuda.is_available() else "cpu",
+    system_prompt=False,
+):
     net = LLM(llm=llm, context_window=context_window, device=device, system_prompt=system_prompt).to(device)
     return net

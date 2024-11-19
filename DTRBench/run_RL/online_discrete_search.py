@@ -13,6 +13,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 wandb.require("core")
 
+
 def call_agent():
     try:
         obj = obj_class(env_name, env_args, hparam_space, device=args.device)
@@ -28,6 +29,7 @@ def call_agent():
         wandb.finish()
     return
 
+
 # todo: timeLLM forward fixed
 # todo: fixed LLMDQN
 # todo: fixed LLMPPO
@@ -36,11 +38,13 @@ def parse_args():
 
     # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-debug")
-    parser.add_argument("--sweep_id", type=str, default="1did1f4s", help="sweep id for wandb,"
-                                                                         " only used in agent mode")
-    parser.add_argument("--task", type=str, default="SimGlucoseEnv-adult1",
-                        help="remember to change this for different tasks! "
-                             "Wandb sweep won't work correctly if this is not changed!")
+    parser.add_argument("--sweep_id", type=str, default="1did1f4s", help="sweep id for wandb," " only used in agent mode")
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="SimGlucoseEnv-adult1",
+        help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
+    )
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--test_num", type=int, default=10)
@@ -49,10 +53,13 @@ def parse_args():
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
     parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
-    parser.add_argument("--policy_name", type=str, default="LLM-PPO",  # Change this for different sweep!
-                        choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "TD3"],
-                        help="remember to change this for different tasks! "
-                             "Wandb sweep won't work correctly if this is not changed!")
+    parser.add_argument(
+        "--policy_name",
+        type=str,
+        default="LLM-DQN",  # Change this for different sweep!
+        choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "TD3"],
+        help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
+    )
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
@@ -68,21 +75,24 @@ if __name__ == "__main__":
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
     policy_type = get_policy_type(args.policy_name, offline=False)
-    env_args = {"discrete": policy_type == "discrete",
-                "n_act": args.num_actions,}
+    env_args = {
+        "discrete": policy_type == "discrete",
+        "n_act": args.num_actions,
+    }
 
     env_name = args.task
-    log_dir = os.path.join(args.log_dir, env_name + '-' + args.policy_name)
-    hparam_space = hparam_class(args.policy_name,
-                                log_dir,
-                                args.training_num,  # number of training envs
-                                args.test_num,  # number of test envs
-                                args.epoch,
-                                args.step_per_epoch,  # number of training steps per epoch
-                                args.buffer_size,
-                                args.num_actions,
-                                linear=args.linear
-                                )
+    log_dir = os.path.join(args.log_dir, env_name + "-" + args.policy_name)
+    hparam_space = hparam_class(
+        args.policy_name,
+        log_dir,
+        args.training_num,  # number of training envs
+        args.test_num,  # number of test envs
+        args.epoch,
+        args.step_per_epoch,  # number of training steps per epoch
+        args.buffer_size,
+        args.num_actions,
+        linear=args.linear,
+    )
     search_space = hparam_space.get_search_space()
 
     print("All prepared. Start to experiment")
@@ -92,7 +102,7 @@ if __name__ == "__main__":
             "project": args.wandb_project_name,
             "name": env_name + f"-{args.policy_name}",
             "metric": {"goal": "maximize", "name": "test/returns_stat/mean"},
-            "parameters": search_space
+            "parameters": search_space,
         }
         sweep_id = wandb.sweep(sweep_configuration, project=args.wandb_project_name)
         wandb.agent(sweep_id=sweep_id, function=call_agent, project=args.wandb_project_name)

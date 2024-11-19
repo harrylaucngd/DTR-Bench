@@ -29,19 +29,19 @@ class LLM_DQN_Policy(DQNPolicy):
     """
 
     def __init__(
-            self,
-            model: LLMDQN,
-            optim: torch.optim.Optimizer,
-            discount_factor: float = 0.99,
-            estimation_step: int = 1,
-            target_update_freq: int = 0,
-            reward_normalization: bool = False,
-            is_double: bool = True,
-            clip_loss_grad: bool = False,
-            action_space: gym.spaces.Discrete | None = None,
-            observation_space: gym.Space | None = None,
-            lr_scheduler: TLearningRateScheduler | None = None,
-            sum_prob=0,
+        self,
+        model: LLMDQN,
+        optim: torch.optim.Optimizer,
+        discount_factor: float = 0.99,
+        estimation_step: int = 1,
+        target_update_freq: int = 0,
+        reward_normalization: bool = False,
+        is_double: bool = True,
+        clip_loss_grad: bool = False,
+        action_space: gym.spaces.Discrete | None = None,
+        observation_space: gym.Space | None = None,
+        lr_scheduler: TLearningRateScheduler | None = None,
+        sum_prob=0,
     ) -> None:
         BasePolicy.__init__(
             self,
@@ -54,13 +54,9 @@ class LLM_DQN_Policy(DQNPolicy):
         self.model = model
         self.optim = optim
         self.eps = 0.0
-        assert (
-                0.0 <= discount_factor <= 1.0
-        ), f"discount factor should be in [0, 1] but got: {discount_factor}"
+        assert 0.0 <= discount_factor <= 1.0, f"discount factor should be in [0, 1] but got: {discount_factor}"
         self.gamma = discount_factor
-        assert (
-                estimation_step > 0
-        ), f"estimation_step should be greater than 0 but got: {estimation_step}"
+        assert estimation_step > 0, f"estimation_step should be greater than 0 but got: {estimation_step}"
         self.n_step = estimation_step
         self._target = target_update_freq > 0
         self.freq = target_update_freq
@@ -97,11 +93,11 @@ class LLM_DQN_Policy(DQNPolicy):
             old_attr_obj.load_state_dict(attr_obj.state_dict())
 
     def forward(
-            self,
-            batch: ObsBatchProtocol,
-            state: dict | BatchProtocol | np.ndarray | None = None,
-            model: Literal["model", "model_old"] = "model",
-            **kwargs: Any,
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        model: Literal["model", "model_old"] = "model",
+        **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Compute action over the given batch data and summarize rules."""
         model = getattr(self, model)
@@ -112,7 +108,7 @@ class LLM_DQN_Policy(DQNPolicy):
         need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
         conversations = summary_reprogramming(batch)
         conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
-        summaries_T = model.summarize(conversations_T, mode='str') if conversations_T!=[] else []
+        summaries_T = model.summarize(conversations_T, mode="str") if conversations_T != [] else []
         summaries = ["" for _ in range(batch_size)]
         true_index = 0
         for i in range(batch_size):
@@ -122,7 +118,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
         # Q value prediction
         series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
-        logits = model.q_pred(series, conversations, mode='Q')
+        logits = model.q_pred(series, conversations)
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
@@ -136,6 +132,7 @@ class LLM_PPO_Policy(PPOPolicy):
     """
     Implementation of LLM-DQN policy.
     """
+
     def __init__(
         self,
         *,
@@ -163,9 +160,7 @@ class LLM_PPO_Policy(PPOPolicy):
         lr_scheduler: TLearningRateScheduler | None = None,
         sum_prob=0,
     ) -> None:
-        assert (
-            dual_clip is None or dual_clip > 1.0
-        ), f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
+        assert dual_clip is None or dual_clip > 1.0, f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
 
         super().__init__(
             actor=actor,
@@ -192,7 +187,7 @@ class LLM_PPO_Policy(PPOPolicy):
             lr_scheduler=lr_scheduler,
         )
         self.sum_prob = sum_prob
-    
+
     def forward(
         self,
         batch: ObsBatchProtocol,
@@ -216,7 +211,7 @@ class LLM_PPO_Policy(PPOPolicy):
         need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
         conversations = summary_reprogramming(batch)
         conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
-        summaries_T = self.actor.summarize(conversations_T, mode='str') if conversations_T!=[] else []
+        summaries_T = self.actor.summarize(conversations_T, mode="str") if conversations_T != [] else []
         summaries = ["" for _ in range(batch_size)]
         true_index = 0
         for i in range(batch_size):
@@ -226,7 +221,7 @@ class LLM_PPO_Policy(PPOPolicy):
 
         # assumptions about the order of the output and on distribution type
         series, conversations = act_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
-        logits = self.actor.act_pred(series, conversations, mode='act')
+        logits = self.actor.act_pred(series, conversations, mode="act")
         if isinstance(logits, tuple):
             dist = self.dist_fn(*logits)
         else:
@@ -247,10 +242,10 @@ class LLM_Policy(BasePolicy):
     """
 
     def __init__(
-            self,
-            model: torch.nn.Module,
-            action_space: gym.Space,
-            observation_space: gym.Space | None = None,
+        self,
+        model: torch.nn.Module,
+        action_space: gym.Space,
+        observation_space: gym.Space | None = None,
     ) -> None:
         super().__init__(
             action_space=action_space,
@@ -261,11 +256,11 @@ class LLM_Policy(BasePolicy):
         self.model = model
 
     def forward(
-            self,
-            batch: ObsBatchProtocol,
-            state: dict | BatchProtocol | np.ndarray | None = None,
-            model: Literal["model", "model_old"] = "model",
-            **kwargs: Any,
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        model: Literal["model", "model_old"] = "model",
+        **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Decide action over the given batch data."""
         model = getattr(self, model)
