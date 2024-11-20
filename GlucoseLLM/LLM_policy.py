@@ -17,10 +17,11 @@ from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
-
-from GlucoseLLM.models.llm_net import LLMDQN, LLMPPO
-
-from GlucoseLLM.prompt_pipeline import summary_reprogramming, q_prompt_reprogramming, act_prompt_reprogramming, obs2text, text2act
+from datetime import timedelta
+from GlucoseLLM.models.timeLLM import timeLLM
+from GlucoseLLM.models.llm_net import LLMPPO
+from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT
+from GlucoseLLM.prompt import get_text_obs, text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
@@ -30,7 +31,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def __init__(
         self,
-        model: LLMDQN,
+        model: timeLLM,
         optim: torch.optim.Optimizer,
         discount_factor: float = 0.99,
         estimation_step: int = 1,
@@ -41,7 +42,7 @@ class LLM_DQN_Policy(DQNPolicy):
         action_space: gym.spaces.Discrete | None = None,
         observation_space: gym.Space | None = None,
         lr_scheduler: TLearningRateScheduler | None = None,
-        sum_prob=0,
+        summary_prob: float = 0.0,
     ) -> None:
         BasePolicy.__init__(
             self,
@@ -64,7 +65,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.rew_norm = reward_normalization
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
-        self.sum_prob = sum_prob
+        self.summary_prob = summary_prob
 
     def _target_q(self, buffer, indices) -> torch.Tensor:
         obs_next_batch = Batch(
@@ -102,23 +103,36 @@ class LLM_DQN_Policy(DQNPolicy):
         """Compute action over the given batch data and summarize rules."""
         model = getattr(self, model)
 
-        # rules summarization
+        # get summary
         obs = batch.obs
         batch_size = len(obs)
-        need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
-        conversations = summary_reprogramming(batch)
-        conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
-        summaries_T = model.summarize(conversations_T, mode="str") if conversations_T != [] else []
-        summaries = ["" for _ in range(batch_size)]
-        true_index = 0
-        for i in range(batch_size):
-            if need_summary[i]:
-                summaries[i] = summaries_T[true_index]
-                true_index += 1
+        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=batch_size)
+        txt_obs = get_text_obs(batch)
+        summary_prompts = [
+            f"### Observation\n{txt_obs[i]}\n\n### Request\n{SUMMARY_PROMPT}\n\n### Answer\n" for i in range(batch_size) if need_summary[i]
+        ]
 
-        # Q value prediction
-        series, conversations = q_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
-        logits = model.q_pred(series, conversations)
+        # Generate summaries only for the selected prompts
+        summaries = model.summarize(summary_prompts, system_prompt=SYS_PROMPT, inference_batch_size=1) if summary_prompts else []
+        summaries = iter(summaries)
+
+        # Formulate Q_prompts for each sample in the batch
+        Q_prompts = []
+        for i in range(batch_size):
+            messages = []
+            summary = f"### Summary of History\n{next(summaries)}\n\n" if need_summary[i] else ""
+            messages.append({"role": "system", "content": SYS_PROMPT})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"###Observations\n{txt_obs[i]}\n\n{summary}### Request{Q_PROMPT}\n\n ###Answer\n",
+                }
+            )
+            messages = self.model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            Q_prompts.append(messages)
+
+        # Get Q-values
+        logits = self.model(obs, Q_prompts)
         q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
@@ -209,7 +223,7 @@ class LLM_PPO_Policy(PPOPolicy):
         obs = batch.obs
         batch_size = len(obs)
         need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
-        conversations = summary_reprogramming(batch)
+        conversations = text_summary_prompt(batch)
         conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
         summaries_T = self.actor.summarize(conversations_T, mode="str") if conversations_T != [] else []
         summaries = ["" for _ in range(batch_size)]
@@ -220,7 +234,7 @@ class LLM_PPO_Policy(PPOPolicy):
                 true_index += 1
 
         # assumptions about the order of the output and on distribution type
-        series, conversations = act_prompt_reprogramming(obs[:, :, 0], obs[:, :, 1], summaries)
+        series, conversations = get_action_prompt(obs[:, :, 0], obs[:, :, 1], summaries)
         logits = self.actor.act_pred(series, conversations, mode="act")
         if isinstance(logits, tuple):
             dist = self.dist_fn(*logits)
@@ -246,6 +260,7 @@ class LLM_Policy(BasePolicy):
         model: torch.nn.Module,
         action_space: gym.Space,
         observation_space: gym.Space | None = None,
+        summary_prob: float = 0.0,
     ) -> None:
         super().__init__(
             action_space=action_space,
@@ -254,6 +269,7 @@ class LLM_Policy(BasePolicy):
             action_bound_method=None,
         )
         self.model = model
+        self.summary_prob = summary_prob
 
     def forward(
         self,
@@ -265,7 +281,14 @@ class LLM_Policy(BasePolicy):
         """Decide action over the given batch data."""
         model = getattr(self, model)
 
-        prompt = obs2text(batch)
+        txt_obs = get_text_obs(batch)
+        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=1)
+        summary_prompts = [summary_prompts[i] for i in range(batch_size) if need_summary[i]]
+
+        prompt = [
+            {"role": "system", "content": SYS_PROMPT},
+            {"role": "user", "content": f"###Observations\n{txt_obs}\n\n ###Request\n{Q_PROMPT}\n\n###Answer\n"},
+        ]
         logits = model(prompt)
         act = [text2act(logits)]
         result = Batch(act=act, state=state)

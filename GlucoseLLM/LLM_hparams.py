@@ -46,7 +46,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
             {"llm": "Qwen2-1.5B-Instruct", "token_dim": 1536},
         ],
         # prompt hparam
-        "sum_prob": [0, 0.1, 0.2, 0.4],
+        "sum_prob": 1.0,
     }
 
 

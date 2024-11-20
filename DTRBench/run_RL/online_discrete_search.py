@@ -47,6 +47,7 @@ def parse_args():
     )
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
+    parser.add_argument("--obs_window", type=int, default=48)
     parser.add_argument("--test_num", type=int, default=10)
     parser.add_argument("--epoch", type=int, default=60)
     parser.add_argument("--num_actions", type=int, default=11)
@@ -75,10 +76,6 @@ if __name__ == "__main__":
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
     policy_type = get_policy_type(args.policy_name, offline=False)
-    env_args = {
-        "discrete": policy_type == "discrete",
-        "n_act": args.num_actions,
-    }
 
     env_name = args.task
     log_dir = os.path.join(args.log_dir, env_name + "-" + args.policy_name)
@@ -93,6 +90,11 @@ if __name__ == "__main__":
         args.num_actions,
         linear=args.linear,
     )
+    env_args = {
+        "discrete": policy_type == "discrete",
+        "n_act": args.num_actions,
+        "obs_window": args.obs_window,
+    }
     search_space = hparam_space.get_search_space()
 
     print("All prepared. Start to experiment")

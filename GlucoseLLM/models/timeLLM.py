@@ -1,6 +1,6 @@
 import os.path
 from math import sqrt
-
+from typing import Union, List, Optional
 import torch
 import torch.nn as nn
 import transformers
@@ -234,7 +234,20 @@ class timeLLM(nn.Module):
     """
 
     def __init__(
-        self, llm_name, pred_len, seq_len, n_time, token_dim, patch_len, stride, d_model, dropout=0, n_heads=8, d_ff=-1, dtype=torch.bfloat16
+        self,
+        llm_name,
+        pred_len,
+        seq_len,
+        n_time,
+        token_dim,
+        patch_len,
+        stride,
+        d_model,
+        dropout=0,
+        n_heads=8,
+        d_ff=-1,
+        max_new_tokens=256,
+        dtype=torch.bfloat16,
     ):
         super(timeLLM, self).__init__()
         self.pred_len = pred_len  # Prediction length
@@ -245,24 +258,29 @@ class timeLLM(nn.Module):
         self.stride = stride  # Stride for patching
         self.llm_name = llm_name  # Name of the LLM
         self.dtype = dtype
+        self.max_new_tokens = max_new_tokens
 
         # Load or download the pre-trained LLM
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
-                f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True, torch_dtype=self.dtype
+                f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True, torch_dtype=self.dtype, output_hidden_states=True
             )
         except EnvironmentError:
             print("Local model files not found. Attempting to download...")
             self.llm_model = AutoModelForCausalLM.from_pretrained(
-                f"{model_hf[llm_name]}", trust_remote_code=True, local_files_only=False, torch_dtype=self.dtype
+                f"{model_hf[llm_name]}", trust_remote_code=True, local_files_only=False, torch_dtype=self.dtype, output_hidden_states=True
             )
 
         # Load or download the tokenizer
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                f"{model_dir}/{llm_name}", cache_dir=f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True
+                f"{model_dir}/{llm_name}",
+                cache_dir=f"{model_dir}/{llm_name}",
+                trust_remote_code=True,
+                local_files_only=True,
+                output_hidden_states=True,
             )
         except EnvironmentError:
             print("Local tokenizer files not found. Attempting to download them...")
@@ -270,13 +288,10 @@ class timeLLM(nn.Module):
                 f"{model_hf[llm_name]}", cache_dir=f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=False
             )
 
-        # Handle padding token
-        if self.tokenizer.eos_token:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        else:
-            pad_token = "[PAD]"
-            self.tokenizer.add_special_tokens({"pad_token": pad_token})
-            self.tokenizer.pad_token = pad_token
+        # Handle special tokens
+        assert self.tokenizer.eos_token_id is not None, "Tokenizer must have an end-of-sequence token"
+        assert self.tokenizer.pad_token_id is not None, "Tokenizer must have a padding token"
+        self.tokenizer.padding_side = "left"  # Padding is applied on the left side for pure text inference
 
         # Freeze LLM parameters
         for param in self.llm_model.parameters():
@@ -303,81 +318,94 @@ class timeLLM(nn.Module):
         self.patch_nums = ((seq_len + stride - patch_len) // stride) + 1  # Number of patches
 
         # Output projection
-        self.head_nf = self.d_ff * self.patch_nums  # Flattened dimension
+        self.head_nf = int(self.d_ff * self.patch_nums)  # Flattened dimension
         self.output_projection = FlattenHead(n_time, self.head_nf, self.pred_len, head_dropout=dropout, dtype=self.dtype)
 
         self.active_branch = "model"
         self.to(dtype=self.dtype)
 
-    def forward(self, x_enc, prompt):
+    def forward(self, x_enc, prompts: Union[str, List[str]]):
         """
         Forward pass for the model.
 
         Args:
             x_enc (Tensor): Time series input, shape [batch_size, seq_len, n_vars]
-            prompt (str): Textual prompt
+            prompts (Union[str, List[str]]): Textual prompts
 
         Returns:
             Tensor: Forecasted output, shape [batch_size, pred_len, n_vars]
         """
-        x_enc = x_enc.to(dtype=self.dtype)
-        dec_out = self.forecast(x_enc, prompt)
+        x_enc = torch.from_numpy(x_enc).to(dtype=self.dtype).to(self.embeddings.device)
+        dec_out = self.forecast(x_enc, prompts)
         return dec_out[:, -self.pred_len :, :]
 
-    def forecast(self, x_enc, prefix_prompt, suffix_prompt):
-        """
-        Performs the forecasting by integrating time series data with the LLM.
-
-        Args:
-            x_enc (Tensor): Time series input, shape [batch_size, seq_len, n_vars]
-            prompt (str): Textual prompt
-
-        Returns:
-            Tensor: Forecasted output, shape [batch_size, pred_len, n_vars]
-        """
-        # Tokenize the prompt
-        prefix_prompt_tokens = self.tokenizer(
-            prefix_prompt, return_tensors="pt", padding=True, truncation=True, max_length=self.tokenizer.model_max_length
+    def forecast(self, x_enc, prompts: Union[str, List[str]]):
+        ## Prepare text
+        prompt_tokens = self.tokenizer(
+            prompts, padding=True, return_tensors="pt", truncation=True, max_length=self.tokenizer.model_max_length
         ).input_ids
-        suffix_prompt_tokens = self.tokenizer(
-            suffix_prompt, return_tensors="pt", padding=True, truncation=True,
-            max_length=self.tokenizer.model_max_length
-        ).input_ids
-        prompt_tokens = prompt_tokens.to(device=x_enc.device)  # Shape: [batch_size, prompt_len]
+        prompt_tokens = prompt_tokens.to(self.embeddings.device)
+        prompt_embedding = self.llm_model.get_input_embeddings()(prompt_tokens).to(dtype=self.dtype)
 
-        # Get prompt embeddings
-        prompt_embeddings = self.llm_model.get_input_embeddings()(prompt_tokens).to(dtype=self.dtype)
-        # Shape: [batch_size, prompt_len, d_llm]
-
+        ## Prepare time series
         # Obtain text prototypes E' by linear probing E
         source_embeddings = self.prototype(self.embeddings.permute(1, 0)).permute(1, 0)
-
-        # Prepare time series input
         x_enc = x_enc.permute(0, 2, 1).contiguous()  # Shape: [batch_size, n_vars, seq_len]
-        enc_out, n_vars, num_patches = self.patch_embedding(x_enc)
-        # enc_out: [batch_size, L, d_model], L = n_vars * num_patches
-
-        # Reprogram time series patches using text prototypes
-        enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        ts_enc, n_vars, num_patches = self.patch_embedding(x_enc)
+        ts_enc = self.reprogramming_layer(ts_enc, source_embeddings, source_embeddings)
         # enc_out: [batch_size, L, d_llm]
 
-        # Concatenate prompt and reprogrammed embeddings
-        llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        # Shape: [batch_size, prompt_len + L, d_llm]
+        enc_out = torch.cat([prompt_embedding, ts_enc], dim=1)  # Shape: [batch_size, prompt_len + L, d_llm]
 
         # Pass through the frozen LLM
-        dec_out = self.llm_model(inputs_embeds=llama_enc_out).last_hidden_state
-        # Shape: [batch_size, prompt_len + L, d_llm]
+        dec_out = self.llm_model(inputs_embeds=enc_out).hidden_states[-1]  # Shape: [batch_size, prompt_len + L, d_llm]
 
         # Discard prompt outputs
-        prompt_len = prompt_embeddings.shape[1]
+        prompt_len = prompt_embedding.shape[1]
         dec_out = dec_out[:, prompt_len:, :]  # Shape: [batch_size, L, d_llm]
 
         # Optionally reduce dimensionality
         dec_out = dec_out[:, :, : self.d_ff]  # Shape: [batch_size, L, d_ff]
 
         # Reshape for output projection
-        dec_out = dec_out.view(-1, n_vars, num_patches, self.d_ff)  # Shape: [batch_size, n_vars, num_patches, d_ff]
+        dec_out = dec_out.view(-1, n_vars * num_patches * self.d_ff)  # Shape: [batch_size, n_vars, num_patches, d_ff]
         dec_out = dec_out.permute(0, 1, 3, 2).contiguous()  # Shape: [batch_size, n_vars, d_ff, num_patches]
 
         # Apply output pr
+        dec_out = self.output_projection(dec_out)
+        return dec_out
+
+    def forward_text(self, prompts: List[str]):
+        inputs = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.llm_model.device)
+        with torch.no_grad():
+            outputs = self.llm_model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
+        outputs = self.tokenizer.batch_decode(outputs, skip_special_tokens=False)
+        generated_texts = []
+        for prompt, output in zip(prompts, outputs):
+            if output.startswith(prompt):
+                output = output[len(prompt) :].strip()
+                for special_token in self.tokenizer.all_special_tokens:
+                    output = output.replace(special_token, "")
+                generated_texts.append(output)
+        return generated_texts
+
+    def summarize(self, summary_prompts: List[str], system_prompt: Optional[str] = None, inference_batch_size: int = 1):
+        prompts = []
+        for p in summary_prompts:
+            conversation = [] if system_prompt is None else [{"role": "system", "content": system_prompt}]
+            conversation += [{"role": "user", "content": p}]
+            prompt = self.tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+            prompts.append(prompt)
+
+        generated_texts = []
+        for i in range(0, len(prompts), inference_batch_size):
+            batch_prompts = prompts[i : i + inference_batch_size]
+            generated_texts += self.forward_text(batch_prompts)
+        return generated_texts
+
+
+#     final debug forward pass
+#     check buffer, if all these can be saved in buffer
+#     debug DQN line by line
+#     train
+#     decision alignment + reprogramming alignment in learn backward, controlled by a epsilon-alike hyperparameter

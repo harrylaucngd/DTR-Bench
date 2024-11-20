@@ -1,13 +1,6 @@
 import argparse
 import warnings
-from typing import (
-    Any,
-    Dict,
-    Sequence,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Any, Dict, Sequence, Tuple, Type, Union, List
 
 import numpy as np
 import torch
@@ -16,7 +9,7 @@ from torch import nn
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from GlucoseLLM.models.timeLLM import timeLLM
-from GlucoseLLM.prompt_pipeline import Conversation
+from GlucoseLLM.prompt import Q_PROMPT, SYS_PROMPT, SUMMARY_PROMPT, ACT_PROMPT
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]], Sequence[Dict[Any, Any]]]
@@ -31,100 +24,6 @@ llm_context_window = {
     "Qwen2-1.5B-Instruct": 32768,
     "Qwen2-0.5B-Instruct": 32768,
 }
-
-
-class LLMDQN(timeLLM):
-    def __init__(
-        self,
-        llm_name,
-        action_shape,
-        seq_len,
-        enc_in,
-        token_dim,
-        patch_len,
-        stride,
-        d_model,
-        dropout=0,
-        n_heads=8,
-        d_ff=-1,
-        dtype=torch.bfloat16,
-        device: Union[str, int, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-        max_new_tokens=256,
-        # prompt options
-        summary_prompt=False,
-        Q_prompt=False,
-    ) -> None:
-        super().__init__(llm_name, action_shape, seq_len, enc_in, token_dim, patch_len, stride, d_model, dropout, n_heads, d_ff, dtype)
-        self.max_new_tokens = max_new_tokens
-        self.device = device
-        self.summary_prompt = summary_prompt
-        self.Q_prompt = Q_prompt
-
-    def forward_Q(self, series, prompts):
-        # Inference the whole network
-        dec_out = self.forecast(series, prompts)
-        return dec_out[:, -self.pred_len :, :].squeeze(-1), []
-
-    def forward_text(self, prompts):
-        inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)
-        outputs = self.llm_model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False, temperature=1)
-        generated_texts = []
-        for output in outputs:
-            generated_text = self.tokenizer.decode(output, skip_special_tokens=True)
-            cutoff_index = generated_text.rfind("assistant\n")
-            if cutoff_index != -1:  # answer cutoff
-                generated_text = generated_text[cutoff_index + len("assistant\n") :]
-            generated_texts.append(generated_text)
-        return generated_texts
-
-    def forward(self, series, messages, mode="Q"):
-        logits, state = None, None
-        # prompt = messages.to_str()
-        prompts = []
-        if isinstance(messages, Conversation):
-            prompts = self.tokenizer.apply_chat_template(messages.conversation, tokenize=False, add_generation_prompt=True)
-        else:
-            for message in messages:
-                prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
-                prompts.append(prompt)
-        if mode == "Q":
-            logits, state = self.forward_Q(series, prompts)
-            llm_output = ""
-        elif mode == "str":
-            llm_output = self.forward_text(prompts)
-        else:
-            raise ValueError("Unsupported mode! Use 'Q' for full network inference or 'str' for llm_model inference.")
-        return logits, state, llm_output
-
-    def freeze_llm_model(self):
-        """Ensure all llm_model parameters are frozen."""
-        for param in self.llm_model.parameters():
-            param.requires_grad = False
-
-    def unfreeze_llm_model(self):
-        """Unfreeze all llm_model parameters, allowing them to be updated during training."""
-        for param in self.llm_model.parameters():
-            param.requires_grad = True
-
-    def q_pred(self, series, conversations):
-        prompts = []
-        for conversation in conversations:
-            prompt = conversation.clip(self.tokenizer.model_max_length - self.max_new_tokens, self.tokenizer)
-            prompt.insert_component("system", self.Q_prompt, 0)
-            prompts.append(prompt)
-        series = torch.stack(series, dim=0).to(self.device)
-        q_list, _, _ = self.forward(series, prompts, mode="Q")
-        return q_list
-
-    def summarize(self, conversations):
-        prompts = []
-        for conversation in conversations:
-            prompt = conversation.clip(self.tokenizer.model_max_len - self.max_new_tokens, self.tokenizer)
-            prompt.insert_component("system", self.summary_prompt, 0)
-            prompts.append(prompt)
-        series = torch.tensor([]).to(self.device)
-        _, _, response = self.forward(series, prompts, mode="str")
-        return response
 
 
 class LLMPPO(timeLLM):
@@ -185,7 +84,7 @@ class LLMPPO(timeLLM):
             generated_texts.append(generated_text)
         return generated_texts
 
-    def forward(self, series, messages, max_length=256, mode="act"):
+    def forward(self, ts, messages, max_length=256, mode="act"):
         logits, state = None, None
         # prompt = messages.to_str()
         prompts = []
@@ -196,7 +95,7 @@ class LLMPPO(timeLLM):
                 prompt = self.tokenizer.apply_chat_template(message.conversation, tokenize=False, add_generation_prompt=True)
                 prompts.append(prompt)
         if mode == "act":
-            logits, state = self.forward_act(series, prompts)
+            logits, state = self.forward_act(ts, prompts)
             llm_output = ""
             mu = self.mu(logits)
             if not self._unbounded:
@@ -287,31 +186,31 @@ class LLM(torch.nn.Module):
     LLM inference only
     """
 
-    def __init__(
-        self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu", system_prompt=False
-    ):
+    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
         super().__init__()
         self.llm = llm
         self.max_length = context_window
         self.device = device
-        self.system_prompt = system_prompt
+        self.system_prompt = SYS_PROMPT
 
         self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
         self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
 
     def forward(self, input_text):
-        messages = [{"role": "system", "content": self.system_prompt}]
+        messages = [{"role": "system", "content": self.system_prompt}] if self.system_prompt else []
         messages.append({"role": "user", "content": input_text})
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
-            outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False, temperature=1)
+            outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False)
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        cutoff_index = generated_text.rfind("assistant\n")
-        if cutoff_index != -1:  # answer cutoff
-            generated_text = generated_text[cutoff_index + len("assistant\n") :]
+
+        # Clip by prompt
+        if generated_text.startswith(prompt):
+            generated_text = generated_text[len(prompt) :].strip()  # Remove the prompt from the generated text
+
         return generated_text
 
 

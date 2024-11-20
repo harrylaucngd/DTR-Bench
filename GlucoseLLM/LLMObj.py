@@ -2,7 +2,8 @@ import torch
 import wandb
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.models.llm_net import LLM, LLMDQN, LLMPPO
+from GlucoseLLM.models.llm_net import LLM, LLMPPO
+from GlucoseLLM.models.timeLLM import timeLLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
@@ -12,37 +13,6 @@ from DTRBench.utils.misc import set_global_seed
 from tianshou.utils.net.common import ActorCritic
 from DTRBench.utils.network import define_continuous_critic
 from torch.distributions import Distribution, Independent, Normal
-
-universal_sys_prompt = (
-    "You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
-    " maintain a patient's blood glucose levels (the observation, received every 5 minutes) within"
-    " 70-140 mg/dL through the administration of insulin (the action). Insulin will reduce blood "
-    "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will"
-    "be penalized for blood glucose <70 or >140, and high insulin doses. Notably, low blood glucose"
-    "levels are much more dangerous. You should take caution to avoid overdosing insulin, thus"
-    "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units/hour, ranging from 0 to 0.5. "
-)
-
-sys_Q_prompt = universal_sys_prompt + (
-    "Please generate the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
-    "the following insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25,"
-    " 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. "
-)  # expertised system prompt for series information description and Q value prediction
-
-sys_act_prompt = universal_sys_prompt + (
-    "Please generate the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
-    "the following insulin dosage bins: [0, 0-0.05, 0.05-0.1, 0.1-0.15, 0.15-0.2, 0.2-0.25,"
-    " 0.25-0.3, 0.3-0.35, 0.35-0.4, 0.4-0.45, 0.45-0.5]. "
-)  # expertised system prompt for series information description and action prediction
-
-sys_summary_prompt = (
-    "You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to"
-    "summarize history glucose record and drug usage. You need to extract information such as"
-    " glucose record trend, drug dosage history, abnormal glucose signs and possible misuse of insulin."
-    " Please extract as much information as possible while keeping the answer short. "
-)  # expertised system prompt of background knowledge for regulation summary
-
-sys_llm_only_prompt = universal_sys_prompt  # expertised system prompt of background knowledge for action decision
 
 
 class LLM_DQN_Objective(DQNObjective):
@@ -66,13 +36,13 @@ class LLM_DQN_Objective(DQNObjective):
         **kwargs
     ):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        seq_len = cat_num * stack_num
+        seq_len = cat_num * stack_num / self.state_shape  # calculate sequence length
         # define model
-        net = LLMDQN(
+        net = timeLLM(
             llm_name=llm_mode["llm"],
-            action_shape=self.action_shape,
+            pred_len=self.action_shape,
             seq_len=seq_len,
-            enc_in=2,
+            n_time=2,
             token_dim=llm_mode["token_dim"],
             patch_len=12,
             stride=2,
@@ -81,11 +51,7 @@ class LLM_DQN_Objective(DQNObjective):
             n_heads=4,
             d_ff=32,
             dtype=torch.bfloat16,
-            device=self.device,
             max_new_tokens=256,
-            # prompt options
-            summary_prompt=sys_Q_prompt,
-            Q_prompt=sys_summary_prompt,
         ).to(self.device)
 
         optim = torch.optim.Adam(net.parameters(), lr=lr)
@@ -99,7 +65,7 @@ class LLM_DQN_Objective(DQNObjective):
             is_double=is_double,
             action_space=self.action_space,
             observation_space=self.state_space,
-            sum_prob=sum_prob,
+            summary_prob=sum_prob,
         )
         return policy
 
@@ -197,7 +163,7 @@ class LLM_Objective(RLObjective):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
     def define_policy(self, llm_mode, **kwargs):
-        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"], device=self.device, system_prompt=sys_llm_only_prompt).to(
+        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"], device=self.device, system_prompt=universal_sys_prompt).to(
             self.device
         )
         return LLM_Policy(
