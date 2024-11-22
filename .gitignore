@@ -13,7 +13,7 @@ __pycache__
 GlucoseLLM/dataset
 model_hub
 GlucoseLLM/checkpoints
-
+GlucoseLLM/models/pretrained_models
 # others
 _*/
 *log/

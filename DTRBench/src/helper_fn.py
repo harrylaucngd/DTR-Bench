@@ -1,8 +1,8 @@
 import torch
 from tianshou.policy import BasePolicy
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLMInference_Policy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLM_DQN_HyperParams, LLM_PPO_HyperParams, LLMInference_HyperParams
-from GlucoseLLM.LLMObj import LLM_DQN_Objective, LLM_PPO_Objective, LLM_Inference_Objective
+from GlucoseLLM.LLMObj import LLM_DQN_Objective, LLM_PPO_Objective, LLM_Objective
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace, PPOHyperParams
 from DTRBench.naive_baselines.naive_baselines import RandomPolicy, ConstantPolicy, PulsePolicy
 from typing import Union
@@ -34,7 +34,7 @@ policyLOOKUP = {
     "dqn": {"hparam": DQNHyperParams, "policy": DQNPolicy, "obj": DQNObjective, "type": "discrete"},
     "td3": {"hparam": TD3HyperParams, "policy": TD3Policy, "obj": TD3Objective, "type": "continuous"},
     "llm-dqn": {"hparam": LLM_DQN_HyperParams, "policy": LLM_DQN_Policy, "obj": LLM_DQN_Objective, "type": "discrete"},
-    "llm": {"hparam": LLMInference_HyperParams, "policy": LLMInference_Policy, "obj": LLM_Inference_Objective, "type": "continuous"},
+    "llm": {"hparam": LLMInference_HyperParams, "policy": LLM_Policy, "obj": LLM_Objective, "type": "continuous"},
     "llm-ppo": {"hparam": LLM_PPO_HyperParams, "policy": LLM_PPO_Policy, "obj": LLM_PPO_Objective,
                 "type": "continuous"},
 }

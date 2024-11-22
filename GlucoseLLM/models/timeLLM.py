@@ -318,8 +318,6 @@ class timeLLM(nn.Module):
 
     def forecast(self, x_enc, prompts: Union[str, List[str]]):
         ## Prepare text
-        # todo: define a new padding token, and do left padding.
-        # todo: attention_mask should be applied
         encoding = self.tokenizer(
             prompts,
             padding=True,
