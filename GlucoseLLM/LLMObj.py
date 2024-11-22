@@ -36,7 +36,7 @@ class LLM_DQN_Objective(DQNObjective):
         **kwargs
     ):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
-        seq_len = cat_num * stack_num / self.state_shape  # calculate sequence length
+        seq_len = cat_num * stack_num  # calculate sequence length
         # define model
         net = timeLLM(
             llm_name=llm_mode["llm"],
@@ -44,9 +44,9 @@ class LLM_DQN_Objective(DQNObjective):
             seq_len=seq_len,
             n_time=2,
             token_dim=llm_mode["token_dim"],
-            patch_len=12,
+            patch_len=24,
             stride=2,
-            d_model=1,
+            d_model=2,
             dropout=0,
             n_heads=4,
             d_ff=32,

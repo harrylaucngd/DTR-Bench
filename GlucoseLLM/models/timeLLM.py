@@ -18,37 +18,6 @@ model_hf = {
 }
 
 
-class FlattenHead(nn.Module):
-    """
-    A module to flatten the output from the LLM and project it to the target window size.
-    """
-
-    def __init__(self, n_vars, nf, target_window, head_dropout=0, dtype=torch.float32):
-        super().__init__()
-        self.n_vars = n_vars
-        self.flatten = nn.Flatten(start_dim=-2)  # Flatten the last two dimensions
-        self.linear = nn.Linear(nf, target_window, dtype=dtype)  # Project to target window
-        self.dropout = nn.Dropout(head_dropout)
-
-    def forward(self, x):
-        """
-        Forward pass for FlattenHead.
-
-        Args:
-            x (Tensor): Shape [batch_size, n_vars, d_ff, num_patches]
-
-        Returns:
-            Tensor: Shape [batch_size, n_vars, target_window]
-        """
-        # x shape: [batch_size, n_vars, d_ff, num_patches]
-        x = self.flatten(x)
-        # x shape after flatten: [batch_size, n_vars, d_ff * num_patches]
-        x = self.linear(x)
-        # x shape after linear: [batch_size, n_vars, target_window]
-        x = self.dropout(x)
-        return x
-
-
 class ReprogrammingLayer(nn.Module):
     """
     A multi-head cross-attention layer to reprogram time series patches using text prototypes.
@@ -141,7 +110,7 @@ class TokenEmbedding(nn.Module):
         # Initialize convolution weights
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="leaky_relu")
+                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="relu")
         self.dtype = dtype
 
     def forward(self, x):
@@ -289,6 +258,13 @@ class timeLLM(nn.Module):
             )
 
         # Handle special tokens
+        if self.tokenizer.pad_token_id is not None and self.tokenizer.eos_token_id == self.tokenizer.pad_token_id:
+            print("Adding a new padding token to the tokenizer to avoid conflicts with the end-of-sequence token")
+            # Define a new padding token
+            self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+            self.llm_model.resize_token_embeddings(len(self.tokenizer))
+        self.tokenizer.padding_side = "left"  # Padding is applied on the left side for pure text inference
+
         assert self.tokenizer.eos_token_id is not None, "Tokenizer must have an end-of-sequence token"
         assert self.tokenizer.pad_token_id is not None, "Tokenizer must have a padding token"
         self.tokenizer.padding_side = "left"  # Padding is applied on the left side for pure text inference
@@ -314,12 +290,13 @@ class timeLLM(nn.Module):
         # Reprogramming layer
         self.reprogramming_layer = ReprogrammingLayer(d_model, n_heads, self.d_ff, self.token_dim, dtype=self.dtype)
 
-        # Calculate number of patches
-        self.patch_nums = ((seq_len + stride - patch_len) // stride) + 1  # Number of patches
-
         # Output projection
-        self.head_nf = int(self.d_ff * self.patch_nums)  # Flattened dimension
-        self.output_projection = FlattenHead(n_time, self.head_nf, self.pred_len, head_dropout=dropout, dtype=self.dtype)
+        self.output_projection = nn.Linear(self.d_ff, self.pred_len, dtype=self.dtype)
+        nn.init.kaiming_normal_(self.output_projection.weight, mode="fan_in", nonlinearity="relu")  # qwen uses SwiGLU, which is similar to ReLU
+
+        # define a old output projection for target network
+        self.output_projection_old = nn.Linear(self.d_ff, self.pred_len, dtype=self.dtype)
+        nn.init.kaiming_normal_(self.old_output_projection.weight, mode="fan_in", nonlinearity="relu")
 
         self.active_branch = "model"
         self.to(dtype=self.dtype)
@@ -341,10 +318,17 @@ class timeLLM(nn.Module):
 
     def forecast(self, x_enc, prompts: Union[str, List[str]]):
         ## Prepare text
-        prompt_tokens = self.tokenizer(
-            prompts, padding=True, return_tensors="pt", truncation=True, max_length=self.tokenizer.model_max_length
-        ).input_ids
-        prompt_tokens = prompt_tokens.to(self.embeddings.device)
+        # todo: define a new padding token, and do left padding.
+        # todo: attention_mask should be applied
+        encoding = self.tokenizer(
+            prompts,
+            padding=True,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+        )
+        prompt_tokens = encoding.input_ids.to(self.embeddings.device)
+        attention_mask = encoding.attention_mask.to(self.embeddings.device)
         prompt_embedding = self.llm_model.get_input_embeddings()(prompt_tokens).to(dtype=self.dtype)
 
         ## Prepare time series
@@ -357,21 +341,20 @@ class timeLLM(nn.Module):
 
         enc_out = torch.cat([prompt_embedding, ts_enc], dim=1)  # Shape: [batch_size, prompt_len + L, d_llm]
 
+        # Create attention mask for the concatenated embeddings
+        batch_size = prompt_tokens.shape[0]
+        prompt_len = prompt_tokens.shape[1]
+        ts_len = ts_enc.shape[1]
+        ts_attention_mask = torch.ones((batch_size, ts_len), device=self.embeddings.device, dtype=attention_mask.dtype)
+        attention_mask = torch.cat([attention_mask, ts_attention_mask], dim=1)
+
         # Pass through the frozen LLM
-        dec_out = self.llm_model(inputs_embeds=enc_out).hidden_states[-1]  # Shape: [batch_size, prompt_len + L, d_llm]
+        dec_out = self.llm_model(inputs_embeds=enc_out, attention_mask=attention_mask).hidden_states[
+            -1
+        ]  # Shape: [batch_size, prompt_len + L, d_llm]
 
-        # Discard prompt outputs
-        prompt_len = prompt_embedding.shape[1]
         dec_out = dec_out[:, prompt_len:, :]  # Shape: [batch_size, L, d_llm]
-
-        # Optionally reduce dimensionality
-        dec_out = dec_out[:, :, : self.d_ff]  # Shape: [batch_size, L, d_ff]
-
-        # Reshape for output projection
-        dec_out = dec_out.view(-1, n_vars * num_patches * self.d_ff)  # Shape: [batch_size, n_vars, num_patches, d_ff]
-        dec_out = dec_out.permute(0, 1, 3, 2).contiguous()  # Shape: [batch_size, n_vars, d_ff, num_patches]
-
-        # Apply output pr
+        dec_out = dec_out[:, -1, : self.d_ff]  # Shape: [batch_size, d_ff] Only take the last token, https://arxiv.org/pdf/2403.17031
         dec_out = self.output_projection(dec_out)
         return dec_out
 
@@ -405,7 +388,7 @@ class timeLLM(nn.Module):
 
 
 #     final debug forward pass
-#     check buffer, if all these can be saved in buffer
+#     check buffer, if all these can be saved in buffer, find the version where the buffer is fine
 #     debug DQN line by line
 #     train
 #     decision alignment + reprogramming alignment in learn backward, controlled by a epsilon-alike hyperparameter

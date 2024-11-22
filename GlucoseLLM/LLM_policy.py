@@ -86,7 +86,7 @@ class LLM_DQN_Policy(DQNPolicy):
 
     def sync_weight(self) -> None:
         """Synchronize the non-LLM weights for the target network."""
-        attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection"]
+        attributes = ["output_projection"]
         for attr in attributes:
             old_attr = f"{attr}_old"
             old_attr_obj = getattr(self.model, old_attr)
@@ -125,7 +125,7 @@ class LLM_DQN_Policy(DQNPolicy):
             messages.append(
                 {
                     "role": "user",
-                    "content": f"###Observations\n{txt_obs[i]}\n\n{summary}### Request{Q_PROMPT}\n\n ###Answer\n",
+                    "content": f"###Observations\n{txt_obs[i]}\n\n{summary}### Request\n{Q_PROMPT}\n\n###Answer\n",
                 }
             )
             messages = self.model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
