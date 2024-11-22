@@ -296,7 +296,7 @@ class timeLLM(nn.Module):
 
         # define a old output projection for target network
         self.output_projection_old = nn.Linear(self.d_ff, self.pred_len, dtype=self.dtype)
-        nn.init.kaiming_normal_(self.old_output_projection.weight, mode="fan_in", nonlinearity="relu")
+        nn.init.kaiming_normal_(self.output_projection_old.weight, mode="fan_in", nonlinearity="relu")
 
         self.active_branch = "model"
         self.to(dtype=self.dtype)

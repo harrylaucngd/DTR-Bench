@@ -29,7 +29,7 @@ def hash_seed(seed):
         seed = str(seed).encode("utf8")
     else:
         raise ValueError(f"seed must be str or int, got {type(seed)}")
-    return int(hashlib.sha256(seed).hexdigest(), 16) % (2 ** 31)
+    return int(hashlib.sha256(seed).hexdigest(), 16) % (2**31)
 
 
 def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
@@ -41,13 +41,12 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # #     reward = 100
     # else:
 
-    X_MAX, X_MIN = 0, -100
-    r = -risk_index([bg_next], 1)[-1]
-    rew = ((r - X_MIN) / (X_MAX - X_MIN))
     if bg_next < 40:
-        risk_reward = -15
+        risk_reward = -20
     else:
-        risk_reward = rew
+        X_MAX, X_MIN = 50, -50
+        r = -risk_index([bg_next], 1)[-1]
+        risk_reward = (r - X_MIN) / (X_MAX - X_MIN)
 
     # delta_bg = bg_next - bg_current
     # if delta_bg < 30:
@@ -57,8 +56,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # else:
     #     delta_reward = -1
 
-    insulin_penalty = 0
-
+    insulin_penalty = -insulin * 0.1
 
     # reward = risk_reward + delta_reward + insulin_penalty
     reward = risk_reward + insulin_penalty
@@ -72,11 +70,11 @@ def TIR_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # elif truncated:
     #     reward = 100
     # else:
-        # bg reward
+    # bg reward
     if 100 < bg_next < 140:
         bg_reward = 1
     elif 70 < bg_next < 100 or 140 < bg_next < 180:
-        bg_reward = - 0.5
+        bg_reward = -0.5
     elif 54 < bg_next < 70 or 180 < bg_next < 250:
         bg_reward = -1
     else:
@@ -90,40 +88,70 @@ def TIR_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
     # else:
     #     delta_reward = -1
 
-    insulin_penalty = - (insulin * 50)**2
+    insulin_penalty = -((insulin * 50) ** 2)
     #
     reward = bg_reward + insulin_penalty
     return reward
 
 
 class SinglePatientEnv(gymnasium.Env):
-    '''
+    """
     A wrapper of simglucose.simulation.env.T1DSimEnv to support gym API
     randomly choose from 30 patients provided by the simulator
     Time unit is 5 minute by default. The max_t will change according to the sensor's sample time.
-    '''
-    metadata = {'render.modes': ['human']}
-    # Accessing resources with files() in Python 3.9+
-    patient_list = ['adolescent#001', 'adolescent#002', 'adolescent#003', 'adolescent#004', 'adolescent#005',
-                    'adolescent#006', 'adolescent#007', 'adolescent#008', 'adolescent#009', 'adolescent#010',
-                    'adult#001', 'adult#002', 'adult#003', 'adult#004', 'adult#005',
-                    'adult#006', 'adult#007', 'adult#008', 'adult#009', 'adult#010',
-                    'child#001', 'child#002', 'child#003', 'child#004', 'child#005',
-                    'child#006', 'child#007', 'child#008', 'child#009', 'child#010']
-    all_patient_meta = pd.read_csv(str(resources.files("simglucose").joinpath("params/Quest.csv")))
-    INSULIN_PUMP_HARDWARE = 'Insulet'
+    """
 
-    def __init__(self, patient_name: str,
-                 max_t: int = 16 * 60,
-                 obs_window: int = 48,
-                 reward_fn=risk_reward_fn,
-                 random_init_bg: bool = False,
-                 random_obs: bool = False,
-                 random_meal: bool = False,
-                 missing_rate=0.0,
-                 sample_time=1,
-                 start_time=0,
-                 **kwargs):
+    metadata = {"render.modes": ["human"]}
+    # Accessing resources with files() in Python 3.9+
+    patient_list = [
+        "adolescent#001",
+        "adolescent#002",
+        "adolescent#003",
+        "adolescent#004",
+        "adolescent#005",
+        "adolescent#006",
+        "adolescent#007",
+        "adolescent#008",
+        "adolescent#009",
+        "adolescent#010",
+        "adult#001",
+        "adult#002",
+        "adult#003",
+        "adult#004",
+        "adult#005",
+        "adult#006",
+        "adult#007",
+        "adult#008",
+        "adult#009",
+        "adult#010",
+        "child#001",
+        "child#002",
+        "child#003",
+        "child#004",
+        "child#005",
+        "child#006",
+        "child#007",
+        "child#008",
+        "child#009",
+        "child#010",
+    ]
+    all_patient_meta = pd.read_csv(str(resources.files("simglucose").joinpath("params/Quest.csv")))
+    INSULIN_PUMP_HARDWARE = "Insulet"
+
+    def __init__(
+        self,
+        patient_name: str,
+        max_t: int = 16 * 60,
+        obs_window: int = 48,
+        reward_fn=risk_reward_fn,
+        random_init_bg: bool = False,
+        random_obs: bool = False,
+        random_meal: bool = False,
+        missing_rate=0.0,
+        sample_time=1,
+        start_time=0,
+        **kwargs,
+    ):
         self.env = None
         self.reward_fn = reward_fn
         self.max_t = max_t
@@ -141,12 +169,14 @@ class SinglePatientEnv(gymnasium.Env):
         self.episode_id = -1
 
         # pump_upper_act = self.pump_params[self.pump_params["Name"] == self.INSULIN_PUMP_HARDWARE]["max_basal"].values
-        self.env_info = {'action_type': 'continuous', 'reward_range': (-np.inf, np.inf),
-                         "state_key": ["Continuous Glucose Monitoring", "Blood Glucose", "Risk"],
-                         "obs_key": ["Continuous Glucose Monitoring (mg/dL)"],
-                         "act_key": ["Insulin Dose (U/h)"],
-                         "metric_key": ["TIR", "Hypo", "Hyper", "CV"],
-                         }
+        self.env_info = {
+            "action_type": "continuous",
+            "reward_range": (-np.inf, np.inf),
+            "state_key": ["Continuous Glucose Monitoring", "Blood Glucose", "Risk"],
+            "obs_key": ["Continuous Glucose Monitoring (mg/dL)"],
+            "act_key": ["Insulin Dose (U/h)"],
+            "metric_key": ["TIR", "Hypo", "Hyper", "CV"],
+        }
         self._action_space = None  # Backing attribute for lazy loading
         self._obs_space = None  # Backing attribute for lazy loading
         self.patient_meta_info = None
@@ -156,18 +186,17 @@ class SinglePatientEnv(gymnasium.Env):
         self.t = 0
         self.step_counter = 0
 
-        '''
+        """
         patient_name must be 'adolescent#001' to 'adolescent#010',
         or 'adult#001' to 'adult#010', or 'child#001' to 'child#010'
-        '''
+        """
         self.terminated = False
         self.truncated = False
         self.episode_id += 1
         if self.patient_name not in self.patient_list:
             raise ValueError(f"patient_name must be in {self.patient_list}")
 
-        self.patient_meta_info = (self.all_patient_meta[self.all_patient_meta["Name"] == self.patient_name]
-                                  .squeeze(axis=0).to_dict())
+        self.patient_meta_info = self.all_patient_meta[self.all_patient_meta["Name"] == self.patient_name].squeeze(axis=0).to_dict()
         self.env, _, _, _ = self._create_env(random_init_bg=self.random_init_bg)
         obs, _, _, info = self.env.reset()
         bg = info["bg"]
@@ -185,8 +214,8 @@ class SinglePatientEnv(gymnasium.Env):
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
         bg[bg == 0] = -1
-        bg[-len(self.bg_history):] = self.bg_history
-        act[-len(self.drug_history):] = self.drug_history
+        bg[-len(self.bg_history) :] = self.bg_history
+        act[-len(self.drug_history) :] = self.drug_history
         obs = np.stack([bg, act], axis=1)
         return obs, all_info
 
@@ -211,20 +240,18 @@ class SinglePatientEnv(gymnasium.Env):
             self.terminated = False
             self.truncated = True
 
-
         if not (40 < bg_next < 600):  # we define the lower bound of bg to be 54 since <54 is severe hypoglycemia
             self.terminated = True
             self.truncated = False
 
-        reward = self.reward_fn(bg_current=self.bg_history[-1], bg_next=bg_next,
-                                terminated=self.terminated, truncated=self.truncated,
-                                insulin=action)
+        reward = self.reward_fn(
+            bg_current=self.bg_history[-1], bg_next=bg_next, terminated=self.terminated, truncated=self.truncated, insulin=action
+        )
 
         self.bg_history.append(float(obs))
         self.drug_history.append(float(action))
 
-        all_info = {"action": float(action), "instantaneous_reward": float(reward), "step": self.step_counter,
-                    "episode_id": self.episode_id}
+        all_info = {"action": float(action), "instantaneous_reward": float(reward), "step": self.step_counter, "episode_id": self.episode_id}
         info.pop("patient_state")
         all_info.update(info)
 
@@ -233,8 +260,8 @@ class SinglePatientEnv(gymnasium.Env):
         bg = np.zeros([self.obs_window], dtype=np.float32)
         act = np.zeros([self.obs_window], dtype=np.float32)
         bg[bg == 0] = -1
-        bg[-len(self.bg_history):] = self.bg_history[-self.obs_window:]
-        act[-len(self.drug_history):] = self.drug_history[-self.obs_window:]
+        bg[-len(self.bg_history) :] = self.bg_history[-self.obs_window :]
+        act[-len(self.drug_history) :] = self.drug_history[-self.obs_window :]
         obs = np.stack([bg, act], axis=1)
         return obs, float(reward), self.terminated, self.truncated, all_info
 
@@ -254,13 +281,13 @@ class SinglePatientEnv(gymnasium.Env):
         # Derive a random seed. This gets passed as a uint, but gets
         # checked as an int elsewhere, so we need to keep it below
         # 2**31.
-        seed2 = hash_seed(int(self.np_random.integers(0, 1000))) % 2 ** 31
-        seed3 = hash_seed(seed2 + 1) % 2 ** 31
-        seed4 = hash_seed(seed3 + 1) % 2 ** 31
+        seed2 = hash_seed(int(self.np_random.integers(0, 1000))) % 2**31
+        seed3 = hash_seed(seed2 + 1) % 2**31
+        seed4 = hash_seed(seed3 + 1) % 2**31
 
         # available sensors are ['Dexcom', 'GuardianRT', 'Navigator']
         # the only sensor with sample time 5 is GuardianRT
-        self.SENSOR_HARDWARE = 'GuardianRT'
+        self.SENSOR_HARDWARE = "GuardianRT"
 
         patient = T1DPatient.withName(self.patient_name, random_init_bg=random_init_bg, seed=seed2)
 
@@ -268,29 +295,30 @@ class SinglePatientEnv(gymnasium.Env):
         if self.start_time > 24 * 60 * 60:
             raise ValueError("start_time must be less than 24 hours")
         time_string = str(timedelta(seconds=self.start_time))
-        hour, minute, second = map(int, time_string.split(':'))
+        hour, minute, second = map(int, time_string.split(":"))
         start_time = datetime(2018, 1, 1, hour, minute, second)
         if self.random_meal:
             scenario = RandomScenario(start_time=start_time, seed=seed4)
         else:
-            scenario_info = [(7 - self.start_time / 60 / 60, 45), (12 - self.start_time / 60 / 60, 70),
-                             (15 - self.start_time / 60 / 60, 10), (18 - self.start_time / 60 / 60, 80)]  # (time, meal)
+            scenario_info = [
+                (7 - self.start_time / 60 / 60, 45),
+                (12 - self.start_time / 60 / 60, 70),
+                (15 - self.start_time / 60 / 60, 10),
+                (18 - self.start_time / 60 / 60, 80),
+            ]  # (time, meal)
             scenario = CustomScenario(start_time=start_time, scenario=scenario_info)
 
         pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
         env = _T1DSimEnv(patient, sensor, pump, scenario)
         return env, seed2, seed3, seed4
 
-    def render(self, mode='human', close=False):
+    def render(self, mode="human", close=False):
         self.env.render(close=close)
 
     def _get_state(self, CGM: float, bg: float, meal: float) -> dict:
         _, _, risk = risk_index([bg], 1)
 
-        state = {"Continuous Glucose Monitoring": CGM,
-                 "Blood Glucose": bg,
-                 "Risk": risk,
-                 "Meal": meal}
+        state = {"Continuous Glucose Monitoring": CGM, "Blood Glucose": bg, "Risk": risk, "Meal": meal}
         return state
 
     def _state2obs(self, state, random_obs: bool, enable_missing: bool):
@@ -316,8 +344,9 @@ class SinglePatientEnv(gymnasium.Env):
     @property
     def observation_space(self):
         if self._obs_space is None:
-            self._obs_space = spaces.Box(low=np.array([10, self.action_space.low[0]]),
-                                         high=np.array([600, self.action_space.high[0]]), dtype=np.float32)
+            self._obs_space = spaces.Box(
+                low=np.array([10, self.action_space.low[0]]), high=np.array([600, self.action_space.high[0]]), dtype=np.float32
+            )
         return self._obs_space
 
     @property
@@ -327,25 +356,54 @@ class SinglePatientEnv(gymnasium.Env):
 
 class RandomPatientEnv(gymnasium.Env):
 
-    metadata = {'render.modes': ['human']}
+    metadata = {"render.modes": ["human"]}
     # Accessing resources with files() in Python 3.9+
-    patient_list = ['adolescent#001', 'adolescent#002', 'adolescent#003', 'adolescent#004', 'adolescent#005',
-                    'adolescent#006', 'adolescent#007', 'adolescent#008', 'adolescent#009', 'adolescent#010',
-                    'adult#001', 'adult#002', 'adult#003', 'adult#004', 'adult#005',
-                    'adult#006', 'adult#007', 'adult#008', 'adult#009', 'adult#010',
-                    'child#001', 'child#002', 'child#003', 'child#004', 'child#005',
-                    'child#006', 'child#007', 'child#008', 'child#009', 'child#010']
-    INSULIN_PUMP_HARDWARE = 'Insulet'
+    patient_list = [
+        "adolescent#001",
+        "adolescent#002",
+        "adolescent#003",
+        "adolescent#004",
+        "adolescent#005",
+        "adolescent#006",
+        "adolescent#007",
+        "adolescent#008",
+        "adolescent#009",
+        "adolescent#010",
+        "adult#001",
+        "adult#002",
+        "adult#003",
+        "adult#004",
+        "adult#005",
+        "adult#006",
+        "adult#007",
+        "adult#008",
+        "adult#009",
+        "adult#010",
+        "child#001",
+        "child#002",
+        "child#003",
+        "child#004",
+        "child#005",
+        "child#006",
+        "child#007",
+        "child#008",
+        "child#009",
+        "child#010",
+    ]
+    INSULIN_PUMP_HARDWARE = "Insulet"
 
-    def __init__(self, candidates: list,
-                 max_t: int = 16 * 60,
-                 reward_fn=risk_reward_fn,
-                 random_init_bg: bool = False,
-                 random_obs: bool = False,
-                 random_meal: bool = False,
-                 missing_rate=0.0,
-                 sample_time=1,
-                 start_time=5 * 60, ):
+    def __init__(
+        self,
+        candidates: list,
+        max_t: int = 16 * 60,
+        reward_fn=risk_reward_fn,
+        random_init_bg: bool = False,
+        random_obs: bool = False,
+        random_meal: bool = False,
+        missing_rate=0.0,
+        sample_time=1,
+        start_time=5 * 60,
+    ):
         self.env = None
         self.reward_fn = reward_fn
         self.max_t = max_t
@@ -359,30 +417,33 @@ class RandomPatientEnv(gymnasium.Env):
         self.start_time = start_time
         self.last_obs = None
         # pump_upper_act = self.pump_params[self.pump_params["Name"] == self.INSULIN_PUMP_HARDWARE]["max_basal"].values
-        self.env_info = {'action_type': 'continuous', 'reward_range': (-np.inf, np.inf),
-                         "state_key": ["Continuous Glucose Monitoring", "Blood Glucose", "Risk"],
-                         "obs_key": ["Continuous Glucose Monitoring (mg/dL)"],
-                         "act_key": ["Insulin Dose (U/h)"],
-                         "metric_key": ["TIR", "Hypo", "Hyper", "CV"],
-                         }
+        self.env_info = {
+            "action_type": "continuous",
+            "reward_range": (-np.inf, np.inf),
+            "state_key": ["Continuous Glucose Monitoring", "Blood Glucose", "Risk"],
+            "obs_key": ["Continuous Glucose Monitoring (mg/dL)"],
+            "act_key": ["Insulin Dose (U/h)"],
+            "metric_key": ["TIR", "Hypo", "Hyper", "CV"],
+        }
         self._action_space = None  # Backing attribute for lazy loading
         self._obs_space = None  # Backing attribute for lazy loading
 
     def reset(self, seed: int = None, **kwargs):
         self.patient_name = self.np_random.choice(self.candidates)
-        self.env = SinglePatientEnv(patient_name=self.patient_name,
-                                    max_t=self.max_t, reward_fn=self.reward_fn,
-                                    random_init_bg=self.random_init_bg,
-                                    random_obs=self.random_obs,
-                                    random_meal=self.random_meal,
-                                    start_time=self.start_time,
-                                    missing_rate=self.missing_rate,
-                                    sample_time=T1DPatient.SAMPLE_TIME)
+        self.env = SinglePatientEnv(
+            patient_name=self.patient_name,
+            max_t=self.max_t,
+            reward_fn=self.reward_fn,
+            random_init_bg=self.random_init_bg,
+            random_obs=self.random_obs,
+            random_meal=self.random_meal,
+            start_time=self.start_time,
+            missing_rate=self.missing_rate,
+            sample_time=T1DPatient.SAMPLE_TIME,
+        )
         return self.env.reset(seed=seed, **kwargs)
 
-    def step(
-            self, action: ActType
-    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+    def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         return self.env.step(action)
 
     def seed(self, seed):
@@ -399,21 +460,16 @@ class RandomPatientEnv(gymnasium.Env):
     @property
     def observation_space(self):
         if self._obs_space is None:
-            self._obs_space = spaces.Box(low=np.array([54, self.action_space.low[0]]),
-                                         high=np.array([600, self.action_space.high[0]]), dtype=np.float32)
+            self._obs_space = spaces.Box(
+                low=np.array([54, self.action_space.low[0]]), high=np.array([600, self.action_space.high[0]]), dtype=np.float32
+            )
         return self._obs_space
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5,
-                                        **kwargs):
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
     env = SinglePatientEnv(
-        patient_name,
-        max_t=max_t,
-        sample_time=1,
-        start_time=5 * 60,
-        random_init_bg=True,
-        random_obs=True, random_meal=True,
-        missing_rate=0)
+        patient_name, max_t=max_t, sample_time=1, start_time=5 * 60, random_init_bg=True, random_obs=True, random_meal=True, missing_rate=0
+    )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env
@@ -421,9 +477,9 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
-    env = SinglePatientEnv('adult#001', 16 * 60, random_init_bg=True,
-                           random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
-                           missing_rate=0.0)
+    env = SinglePatientEnv(
+        "adult#001", 16 * 60, random_init_bg=True, random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window, missing_rate=0.0
+    )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env
@@ -431,16 +487,21 @@ def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, 
 
 
 def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
-    env = RandomPatientEnv(candidates=["adult#001",
-                                       "adult#002",
-                                       "adult#003",
-                                       "adult#004", ],
-                           max_t=16 * 60,
-                           sample_time=1,
-                           random_init_bg=True,
-                           start_time=5 * 60,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
+    env = RandomPatientEnv(
+        candidates=[
+            "adult#001",
+            "adult#002",
+            "adult#003",
+            "adult#004",
+        ],
+        max_t=16 * 60,
+        sample_time=1,
+        random_init_bg=True,
+        start_time=5 * 60,
+        random_obs=True,
+        random_meal=True,
+        missing_rate=0.0,
+    )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env
@@ -448,24 +509,29 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
 
 
 def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
-    env = RandomPatientEnv(candidates=["adult#001",
-                                       "adult#002",
-                                       "adult#003",
-                                       "adult#004",
-                                       "child#001",
-                                       "child#002",
-                                       "child#003",
-                                       "child#004",
-                                       "adolescent#001",
-                                       "adolescent#002",
-                                       "adolescent#003",
-                                       "adolescent#004"],
-                           max_t=16 * 60,
-                           sample_time=1,
-                           random_init_bg=True,
-                           start_time=5 * 60,
-                           random_obs=True, random_meal=True,
-                           missing_rate=0.)
+    env = RandomPatientEnv(
+        candidates=[
+            "adult#001",
+            "adult#002",
+            "adult#003",
+            "adult#004",
+            "child#001",
+            "child#002",
+            "child#003",
+            "child#004",
+            "adolescent#001",
+            "adolescent#002",
+            "adolescent#003",
+            "adolescent#004",
+        ],
+        max_t=16 * 60,
+        sample_time=1,
+        random_init_bg=True,
+        start_time=5 * 60,
+        random_obs=True,
+        random_meal=True,
+        missing_rate=0.0,
+    )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
         return wrapped_env

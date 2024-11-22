@@ -23,7 +23,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["llm_seed"],
-        "batch_size": 64,
+        "batch_size": 1,
         "obs_mode": common_hparams["obs_mode"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
@@ -35,7 +35,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "lr": common_hparams["lr"],  # learning rate
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_train"],
-        "eps_train_final": 0.001,
+        "eps_train_final": common_hparams["eps_train_final"],
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
         "is_double": False,

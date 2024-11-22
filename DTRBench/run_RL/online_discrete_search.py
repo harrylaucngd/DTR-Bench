@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument("--epoch", type=int, default=60)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
-    parser.add_argument("--buffer_size", type=int, default=1e6)
+    parser.add_argument("--buffer_size", type=int, default=1e5)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument(
         "--policy_name",
