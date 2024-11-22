@@ -56,4 +56,5 @@ DTRBench/run_RL/wandb
 sweep_log
 wandb/
 /DTRBench/runs/
+GlucoseLLM/model_hub/
 

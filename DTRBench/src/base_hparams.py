@@ -4,32 +4,31 @@
 # print(np.random.randint(0, 10000, 10))
 
 common_hparams = {
-    "seed": [2732, 9845, 3264, 4859],
-    "lr": [3e-3, 1e-3, 3e-4],
+    "seed": [2732, 9845, 3264, 4859, 9225, 7891, 4373, 5874, 6744, 3468],
+    "llm_seed": 2732,
+    "lr": [1e-3, 1e-4],
     "batch_size": 256,
-    "obs_mode": ["cat", "stack"],
-
+    "obs_mode": [
+        {"stack": {"stack_num": 48, "cat_num": 1}},
+        {"cat": {"stack_num": 1, "cat_num": 48}},
+    ],
     "batch_norm": False,
     "dropout": 0,
-    "target_update_freq": [50, 200],  #
+    "target_update_freq": 1000,  #
     "update_per_step": 1,  # off-policy only
     "update_actor_freq": 1,
-    "step_per_collect": [1, 100],  # off-policy only
-    "onpolicy_step_per_collect": 288,  # for on-policy only
+    "step_per_collect": 1,  # off-policy only
+    "onpolicy_step_per_collect": 192,  # for on-policy only
     "repeat_per_collect": 20,  # for on-policy only
     "n_step": 1,
-    "start_timesteps": 5000,
-    "gamma": 0.99,
+    "start_timesteps": 1e5,
+    "gamma": 0.999,
     "tau": 0.005,
     "exploration_noise": 0.1,
-
     # epsilon-greedy exploration
-    "eps_train": 0.1,
-    "eps_train_final": 0.1,
+    "eps_train": 0.6,
+    "eps_train_final": 0.05,
     "eps_test": 0.001,
-
-    # LLM generation length
-    "max_new_tokens": 512,
 }
 
 

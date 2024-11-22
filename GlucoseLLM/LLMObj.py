@@ -1,40 +1,60 @@
 import torch
 import wandb
-from pathlib import Path
-from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLMInference_Policy
+from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.model.net import LLMInference
-from GlucoseLLM.model.net import timeLLM
+from GlucoseLLM.models.llm_net import LLM, LLMPPO
+from GlucoseLLM.models.timeLLM import timeLLM
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
+from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
 from DTRBench.src.base_obj import RLObjective
-from DTRBench.utils.wandb_fn import WandbLogger
+from DTRBench.utils.wandb import WandbLogger
 from DTRBench.utils.misc import set_global_seed
+from tianshou.utils.net.common import ActorCritic
+from DTRBench.utils.network import define_continuous_critic
+from torch.distributions import Distribution, Independent, Normal
 
 
 class LLM_DQN_Objective(DQNObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
-    def define_policy(self,
-                      # general hp
-                      gamma, lr,
-                      # dqn hp
-                      n_step, target_update_freq, is_double,
-                      # llm prompt
-                      llm_mode, llm_modal, summary_prob, gradient_accumulation,
-                      *args, **kwargs
-                      ):
+    def define_policy(
+        self,
+        # general hp
+        gamma,
+        lr,
+        obs_mode,
+        # dqn hp
+        n_step,
+        target_update_freq,
+        is_double,
+        # llm prompt
+        llm_mode,
+        sum_prob,
+        *args,
+        **kwargs
+    ):
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        seq_len = cat_num * stack_num  # calculate sequence length
         # define model
-        net = timeLLM(llm=llm_mode["llm"], n_vars=self.state_shape, output_dim=self.action_shape,
-                      seq_len=12, d_model=16, max_new_tokens=512,
-                      d_ff=32, patch_len=6, stride=3, token_dim=llm_mode["token_dim"], n_heads=8,
-                      decoder_len=1,
-                      keep_old=True, dropout=0.,
-                      model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub",
-                      device=self.device).to(self.device)
-        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        net = timeLLM(
+            llm_name=llm_mode["llm"],
+            pred_len=self.action_shape,
+            seq_len=seq_len,
+            n_time=2,
+            token_dim=llm_mode["token_dim"],
+            patch_len=24,
+            stride=2,
+            d_model=2,
+            dropout=0,
+            n_heads=4,
+            d_ff=32,
+            dtype=torch.bfloat16,
+            max_new_tokens=256,
+        ).to(self.device)
 
+        optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = LLM_DQN_Policy(
             net,
@@ -45,33 +65,111 @@ class LLM_DQN_Objective(DQNObjective):
             is_double=is_double,
             action_space=self.action_space,
             observation_space=self.state_space,
-            # llm hparam
-            llm_modal=llm_modal,
-            summary_prob=summary_prob,
-            gradient_accumulation=gradient_accumulation
+            summary_prob=sum_prob,
         )
         return policy
 
 
 class LLM_PPO_Objective(PPOObjective):
-    pass
+    def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
+        super().__init__(env_name, env_args, hparam_space, device, **kwargs)
+
+    def define_policy(
+        self,
+        gamma,
+        lr,
+        gae_lambda,
+        vf_coef,
+        ent_coef,
+        eps_clip,
+        value_clip,
+        dual_clip,
+        advantage_normalization,
+        recompute_advantage,
+        n_step,
+        epoch,
+        batch_size,
+        linear,
+        llm_mode,
+        sum_prob,
+        **kwargs
+    ):
+        cat_num, stack_num = 48, 1
+        actor = define_llm_ppo(
+            self.state_shape,
+            self.action_shape,
+            unbounded=True,
+            device=self.device,
+            llm=llm_mode["llm"],
+            token_dim=llm_mode["token_dim"],
+            summary_prompt=sys_summary_prompt,
+            act_prompt=sys_act_prompt,
+        ).to(self.device)
+        critic = define_continuous_critic(
+            self.state_shape,
+            self.action_shape,
+            linear=linear,
+            use_rnn=stack_num > 1,
+            cat_num=cat_num,
+            use_action_net=False,
+            state_net_hidden_size=128,
+            device=self.device,
+        )
+        actor_critic = ActorCritic(actor, critic)
+        optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
+
+        # torch.nn.init.constant_(actor.sigma_param, -0.5)
+        # for m in actor_critic.modules():
+        #     if isinstance(m, torch.nn.Linear):
+        #         # orthogonal initialization
+        #         torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+        #         torch.nn.init.zeros_(m.bias)
+        # do last policy layer scaling, this will make initial actions have (close to)
+        # 0 mean and std, and will help boost performances,
+        # see https://arxiv.org/abs/2006.05990, Fig.24 for details
+        for m in actor.mu.modules():
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.zeros_(m.bias)
+                m.weight.data.copy_(0.01 * m.weight.data)
+
+        def dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
+            loc, scale = loc_scale
+            return Independent(Normal(loc, scale), 1)
+
+        policy: LLM_PPO_Policy = LLM_PPO_Policy(
+            actor=actor,
+            critic=critic,
+            optim=optim,
+            dist_fn=dist,
+            discount_factor=gamma,
+            gae_lambda=float(gae_lambda),
+            vf_coef=vf_coef,
+            ent_coef=ent_coef,
+            action_scaling=True,
+            action_bound_method="clip",
+            action_space=self.action_space,
+            eps_clip=eps_clip,
+            value_clip=value_clip,
+            dual_clip=dual_clip,
+            advantage_normalization=advantage_normalization,
+            recompute_advantage=recompute_advantage,
+            sum_prob=sum_prob,
+        )
+        return policy
 
 
-class LLM_Inference_Objective(RLObjective):
+class LLM_Objective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: LLMInference_HyperParams, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
-    def define_policy(self, llm_mode, num_try, need_summary, need_meta_info, **kwargs):
-        net = LLMInference(llm=llm_mode["llm"], context_window=llm_mode["context_window"],
-                           device=self.device,
-                           model_dir=Path(__file__).resolve().parent.absolute() / "model" / "model_hub").to(self.device)
-        return LLMInference_Policy(
+    def define_policy(self, llm_mode, **kwargs):
+        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"], device=self.device, system_prompt=universal_sys_prompt).to(
+            self.device
+        )
+        return LLM_Policy(
             net,
             action_space=self.action_space,
             observation_space=self.state_space,
-            num_try=num_try,
-            need_summary=need_summary,
-            need_meta_info=need_meta_info
         )
 
     def wandb_search(self):

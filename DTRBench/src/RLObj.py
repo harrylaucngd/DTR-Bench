@@ -17,32 +17,37 @@ from DTRBench.src.collector import GlucoseCollector as Collector
 from DTRBench.naive_baselines.naive_baselines import ConstantPolicy, RandomPolicy
 import torch.nn as nn
 
+
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
-    def define_policy(self,
-                      # general hp
-                      gamma,
-                      lr,
-                      obs_mode,
-                      linear,
-
-                      # dqn hp
-                      n_step,
-                      target_update_freq,
-                      is_double,
-                      use_dueling,
-                      *args,
-                      **kwargs
-                      ):
+    def define_policy(
+        self,
+        # general hp
+        gamma,
+        lr,
+        obs_mode,
+        linear,
+        # dqn hp
+        n_step,
+        target_update_freq,
+        is_double,
+        use_dueling,
+        *args,
+        **kwargs,
+    ):
         # define model
-        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
-        elif obs_mode == "stack": cat_num, use_rnn = 1, True
-        else: raise NotImplementedError("obs_mode not supported")
-
-        net = define_single_network(self.state_shape, self.action_shape, use_dueling=use_dueling,
-                                    use_rnn=use_rnn, device=self.device, linear=linear, cat_num=cat_num)
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        net = define_single_network(
+            self.state_shape,
+            self.action_shape,
+            use_dueling=use_dueling,
+            use_rnn=stack_num > 1,
+            device=self.device,
+            linear=linear,
+            cat_num=cat_num,
+        )
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
         policy = DQNPolicy(
@@ -54,28 +59,19 @@ class DQNObjective(RLObjective):
             is_double=is_double,  # we will have a separate runner for double dqn
             action_space=self.action_space,
             observation_space=self.state_space,
-            clip_loss_grad=True,
         )
         return policy
 
-    def run(self, policy,
-            eps_test,
-            eps_train,
-            eps_train_final,
-            step_per_collect,
-            update_per_step,
-            batch_size,
-            start_timesteps,
-            **kwargs
-            ):
+    def run(self, policy, eps_test, eps_train, eps_train_final, step_per_collect, update_per_step, batch_size, start_timesteps, **kwargs):
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
         def train_fn(epoch, env_step):
             # nature DQN setting, linear decay in the first 10k steps
             if env_step <= self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95:
-                eps = eps_train - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * \
-                      (eps_train - eps_train_final)
+                eps = eps_train - env_step / (self.meta_param["epoch"] * self.meta_param["step_per_epoch"] * 0.95) * (
+                    eps_train - eps_train_final
+                )
             else:
                 eps = eps_train_final
             policy.set_eps(eps)
@@ -93,20 +89,20 @@ class DQNObjective(RLObjective):
                 buffer_num=len(self.train_envs),
                 ignore_obs_next=False,
                 save_only_last_obs=False,
-                stack_num=1  # stack is implemented in the env
+                stack_num=1,  # stack is implemented in the env
             )
         else:
-            buffer = ReplayBuffer(self.meta_param["buffer_size"],
-                                  ignore_obs_next=False,
-                                  save_only_last_obs=False,
-                                  stack_num=1)
+            buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
+        if start_timesteps > 0:
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=5 if self.env_args["discrete"] else 0.1, action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
+            buffer.save_hdf5("warmup.hdf5")
+
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=True)
-
-        if start_timesteps > 0:
-            print(f"start to warmup with random policy for {start_timesteps} steps..")
-            train_collector.collect(n_step=start_timesteps, random=True)
 
         OffpolicyTrainer(
             policy,
@@ -136,32 +132,40 @@ class TD3Objective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
-    def define_policy(self, gamma,
-                      critic_lr,
-                      n_step,
-                      obs_mode,
-
-                      tau,
-                      update_actor_freq,
-                      policy_noise,
-                      noise_clip,
-                      exploration_noise,
-                      linear,
-                      **kwargs, ):
+    def define_policy(
+        self,
+        gamma,
+        critic_lr,
+        n_step,
+        obs_mode,
+        tau,
+        update_actor_freq,
+        policy_noise,
+        noise_clip,
+        exploration_noise,
+        linear,
+        **kwargs,
+    ):
         actor_lr = critic_lr * 0.1
-
-        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
-        elif obs_mode == "stack": cat_num, use_rnn = 1, True
-        else: raise NotImplementedError("obs_mode not supported")
-
+        cat_num, stack_num = (obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"])
         min_action, max_action = self.action_space.low[0], self.action_space.high[0]
-        net_a = define_single_network(self.state_shape, 128,
-                                      use_rnn=use_rnn, device=self.device, linear=linear, cat_num=cat_num,
-                                      use_dueling=False, )
-        actor = Actor(net_a, action_shape=self.action_shape, device=self.device,
-                      # last_layer_init=-10,
-                      final_activation=nn.Tanh(),
-                      preprocess_net_output_dim=128).to(self.device)
+        net_a = define_single_network(
+            self.state_shape,
+            128,
+            use_rnn=stack_num > 1,
+            device=self.device,
+            linear=linear,
+            cat_num=cat_num,
+            use_dueling=False,
+        )
+        actor = Actor(
+            net_a,
+            action_shape=self.action_shape,
+            device=self.device,
+            # last_layer_init=-10,
+            final_activation=nn.Tanh(),
+            preprocess_net_output_dim=128,
+        ).to(self.device)
 
         # # init actor with orthogonal initialization and zeros bias
         # for m in actor.modules():
@@ -171,13 +175,27 @@ class TD3Objective(RLObjective):
 
         actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
 
-        critic1 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
-                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
-                                           device=self.device)
+        critic1 = define_continuous_critic(
+            self.state_shape,
+            self.action_shape,
+            linear=linear,
+            use_rnn=stack_num > 1,
+            cat_num=cat_num,
+            state_net_hidden_size=127,
+            action_net_hidden_size=1,
+            device=self.device,
+        )
         critic1_optim = torch.optim.Adam(critic1.parameters(), lr=critic_lr)
-        critic2 = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
-                                           cat_num=cat_num, state_net_hidden_size=127, action_net_hidden_size=1,
-                                           device=self.device)
+        critic2 = define_continuous_critic(
+            self.state_shape,
+            self.action_shape,
+            linear=linear,
+            use_rnn=stack_num > 1,
+            cat_num=cat_num,
+            state_net_hidden_size=127,
+            action_net_hidden_size=1,
+            device=self.device,
+        )
         critic2_optim = torch.optim.Adam(critic2.parameters(), lr=critic_lr)
 
         exploration_noise *= max_action
@@ -201,35 +219,31 @@ class TD3Objective(RLObjective):
         )
         return policy
 
-    def run(self, policy,
-            step_per_collect,
-            update_per_step,
-            batch_size,
-            start_timesteps,
-
-            # exploration_noise,
-            # exploration_noise_final,
-            **kwargs):
+    def run(
+        self,
+        policy,
+        step_per_collect,
+        update_per_step,
+        batch_size,
+        start_timesteps,
+        # exploration_noise,
+        # exploration_noise_final,
+        **kwargs,
+    ):
 
         # collector
         if self.meta_param["training_num"] > 1:
             buffer = VectorReplayBuffer(
-                self.meta_param["buffer_size"],
-                buffer_num=len(self.train_envs),
-                ignore_obs_next=False,
-                save_only_last_obs=False,
-                stack_num=1
+                self.meta_param["buffer_size"], buffer_num=len(self.train_envs), ignore_obs_next=False, save_only_last_obs=False, stack_num=1
             )
         else:
-            buffer = ReplayBuffer(self.meta_param["buffer_size"],
-                                  ignore_obs_next=False,
-                                  save_only_last_obs=False,
-                                  stack_num=1)
+            buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
+            # todo: collect with random
             train_collector.collect(n_step=start_timesteps, random=True)
 
         # def train_fn(epoch, env_step):
@@ -275,18 +289,52 @@ class PPOObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device, **kwargs)
 
-    def define_policy(self, gamma, lr, gae_lambda, vf_coef, ent_coef, eps_clip, value_clip, dual_clip,
-                      advantage_normalization, recompute_advantage, n_step, epoch, batch_size, obs_mode, linear, **kwargs):
-        if obs_mode == "cat": cat_num, use_rnn = self.meta_param["obs_window"], False
-        elif obs_mode == "stack": cat_num, use_rnn = 1, True
-        else: raise NotImplementedError("obs_mode not supported")
-
-        net_a = define_single_network(self.state_shape, self.action_shape, use_dueling=False, num_layer=3, hidden_size=128,
-                                      use_rnn=use_rnn, device=self.device, cat_num=cat_num)
-        actor = ActorProb(net_a, self.action_shape, unbounded=True, device=self.device, ).to(self.device)
-        critic = define_continuous_critic(self.state_shape, self.action_shape, linear=linear, use_rnn=use_rnn,
-                                          cat_num=cat_num, use_action_net=False, state_net_hidden_size=128, 
-                                          device=self.device)
+    def define_policy(
+        self,
+        gamma,
+        lr,
+        gae_lambda,
+        vf_coef,
+        ent_coef,
+        eps_clip,
+        value_clip,
+        dual_clip,
+        advantage_normalization,
+        recompute_advantage,
+        n_step,
+        epoch,
+        batch_size,
+        obs_mode,
+        linear,
+        **kwargs,
+    ):
+        cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
+        net_a = define_single_network(
+            self.state_shape,
+            self.action_shape,
+            use_dueling=False,
+            num_layer=3,
+            hidden_size=128,
+            use_rnn=stack_num > 1,
+            device=self.device,
+            cat_num=cat_num,
+        )
+        actor = ActorProb(
+            net_a,
+            self.action_shape,
+            unbounded=True,
+            device=self.device,
+        ).to(self.device)
+        critic = define_continuous_critic(
+            self.state_shape,
+            self.action_shape,
+            linear=linear,
+            use_rnn=stack_num > 1,
+            cat_num=cat_num,
+            use_action_net=False,
+            state_net_hidden_size=128,
+            device=self.device,
+        )
         actor_critic = ActorCritic(actor, critic)
         optim = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
@@ -317,9 +365,8 @@ class PPOObjective(RLObjective):
             gae_lambda=float(gae_lambda),
             vf_coef=vf_coef,
             ent_coef=ent_coef,
-            max_grad_norm=1.,
             action_scaling=True,
-            action_bound_method='clip',
+            action_bound_method="clip",
             action_space=self.action_space,
             eps_clip=eps_clip,
             value_clip=value_clip,
@@ -329,32 +376,26 @@ class PPOObjective(RLObjective):
         )
         return policy
 
-    def run(self, policy, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
+    def run(self, policy, obs_mode, step_per_collect, repeat_per_collect, batch_size, start_timesteps, **kwargs):
         def save_best_fn(policy):
             torch.save(policy.state_dict(), os.path.join(self.log_path, "best_policy.pth"))
 
         # collector
         if self.meta_param["training_num"] > 1:
             buffer = VectorReplayBuffer(
-                self.meta_param["buffer_size"],
-                buffer_num=len(self.train_envs),
-                ignore_obs_next=False,
-                save_only_last_obs=False,
-                stack_num=1
+                self.meta_param["buffer_size"], buffer_num=len(self.train_envs), ignore_obs_next=False, save_only_last_obs=False, stack_num=1
             )
         else:
-            buffer = ReplayBuffer(self.meta_param["buffer_size"],
-                                  ignore_obs_next=False,
-                                  save_only_last_obs=False,
-                                  stack_num=1)
+            buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.test_envs, exploration_noise=True)
-
+        test_collector = Collector(policy, self.test_envs, exploration_noise=False)
         if start_timesteps > 0:
-            print(f"start to warmup with random policy for {start_timesteps} steps..")
-            train_collector.collect(n_step=start_timesteps, random=True)
+            print(f"warmup with random policy for {start_timesteps} steps..")
+            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1, action_space=self.action_space)
+            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+            warmup_collector.collect(n_step=start_timesteps)
 
         OnpolicyTrainer(
             policy,

@@ -1,5 +1,5 @@
-from typing import Any, Literal, cast, List, Literal
-from tianshou.data import Batch, ReplayBuffer, to_numpy, to_torch_as
+from typing import Any, Literal, cast
+
 import random
 import gymnasium as gym
 import numpy as np
@@ -13,40 +13,37 @@ from tianshou.data.types import (
     RolloutBatchProtocol,
     DistBatchProtocol,
 )
-from tianshou.policy.modelfree.dqn import DQNTrainingStats, TDQNTrainingStats
 from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
-from GlucoseLLM.model.net import timeLLM
-from GlucoseLLM.model.llm_net import LLMPPO
-from GlucoseLLM.prompts import (obs2text, SYSTEM_PROMPT, ACTOR_INSTRUCTION_PROMPT, SUMMARY_INSTRUCTION_PROMPT,
-                                LLM_INFERENCE_INSTRUCTION_PROMPT, get_Q_instruction, get_patient_info_prompt,
-                                LLM_INFERENCE_RETRY_PROMPT)
-from GlucoseLLM.prompt_utils import text2act, Conversation
+from datetime import timedelta
+from GlucoseLLM.models.timeLLM import timeLLM
+from GlucoseLLM.models.llm_net import LLMPPO
+from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT
+from GlucoseLLM.prompt import get_text_obs, text2act
 
 
 class LLM_DQN_Policy(DQNPolicy):
+    """
+    Implementation of LLM-DQN policy.
+    """
+
     def __init__(
-            self,
-            model: timeLLM,
-            optim: torch.optim.Optimizer,
-            discount_factor: float = 0.99,
-            estimation_step: int = 1,
-            target_update_freq: int = 0,
-            reward_normalization: bool = False,
-            is_double: bool = True,
-            clip_loss_grad: bool = False,
-            action_space: gym.spaces.Discrete | None = None,
-            observation_space: gym.Space | None = None,
-            lr_scheduler: TLearningRateScheduler | None = None,
-            llm_modal: Literal['concat', 'text_only', 'timellm'] = "timellm",
-            gradient_accumulation: int = 1,
-            summary_prob=0,
+        self,
+        model: timeLLM,
+        optim: torch.optim.Optimizer,
+        discount_factor: float = 0.99,
+        estimation_step: int = 1,
+        target_update_freq: int = 0,
+        reward_normalization: bool = False,
+        is_double: bool = True,
+        clip_loss_grad: bool = False,
+        action_space: gym.spaces.Discrete | None = None,
+        observation_space: gym.Space | None = None,
+        lr_scheduler: TLearningRateScheduler | None = None,
+        summary_prob: float = 0.0,
     ) -> None:
-        """
-        gradient_accumulation will divide the loss by the number of accumulation steps, and accumulate the gradient.
-        """
         BasePolicy.__init__(
             self,
             action_space=action_space,
@@ -58,13 +55,9 @@ class LLM_DQN_Policy(DQNPolicy):
         self.model = model
         self.optim = optim
         self.eps = 0.0
-        assert (
-                0.0 <= discount_factor <= 1.0
-        ), f"discount factor should be in [0, 1] but got: {discount_factor}"
+        assert 0.0 <= discount_factor <= 1.0, f"discount factor should be in [0, 1] but got: {discount_factor}"
         self.gamma = discount_factor
-        assert (
-                estimation_step > 0
-        ), f"estimation_step should be greater than 0 but got: {estimation_step}"
+        assert estimation_step > 0, f"estimation_step should be greater than 0 but got: {estimation_step}"
         self.n_step = estimation_step
         self._target = target_update_freq > 0
         self.freq = target_update_freq
@@ -72,24 +65,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.rew_norm = reward_normalization
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
-
-        # llm related parameters
-        if llm_modal not in ["concat", "text_only", "timellm"]:
-            raise ValueError("llm_modal not in ['concat', 'text_only', 'timellm']")
-        self.obs_mode = llm_modal
-        self.sum_prob = summary_prob
-        self.q_prompt = get_Q_instruction(self.action_space.n, 0.5)
-        self.max_action_num = self.action_space.n
-        self.gradient_accumulation = gradient_accumulation
-
-    def sync_weight(self) -> None:
-        """Synchronize the non-LLM weights for the target network."""
-        attributes = ["patch_embedding", "mapping_layer", "reprogramming_layer", "output_projection"]
-        for attr in attributes:
-            old_attr = f"{attr}_old"
-            old_attr_obj = getattr(self.model, old_attr)
-            attr_obj = getattr(self.model, attr)
-            old_attr_obj.load_state_dict(attr_obj.state_dict())
+        self.summary_prob = summary_prob
 
     def _target_q(self, buffer, indices) -> torch.Tensor:
         obs_next_batch = Batch(
@@ -99,7 +75,8 @@ class LLM_DQN_Policy(DQNPolicy):
         result = self(obs_next_batch)
         if self._target:
             # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
-            target_q = self(obs_next_batch, model="model_old").logits
+            self.model.active_branch = "model_old"
+            target_q = self(obs_next_batch, model="model", input="obs_next").logits
         else:
             target_q = result.logits
         if self.is_double:
@@ -107,132 +84,62 @@ class LLM_DQN_Policy(DQNPolicy):
         # Nature DQN, over estimate
         return target_q.max(dim=1)[0]
 
+    def sync_weight(self) -> None:
+        """Synchronize the non-LLM weights for the target network."""
+        attributes = ["output_projection"]
+        for attr in attributes:
+            old_attr = f"{attr}_old"
+            old_attr_obj = getattr(self.model, old_attr)
+            attr_obj = getattr(self.model, attr)
+            old_attr_obj.load_state_dict(attr_obj.state_dict())
+
     def forward(
-            self,
-            batch: ObsBatchProtocol,
-            state: dict | BatchProtocol | np.ndarray | None = None,
-            model: Literal["model", "model_old"] = "model",
-            **kwargs: Any,
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        model: Literal["model", "model_old"] = "model",
+        **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Compute action over the given batch data and summarize rules."""
+        model = getattr(self, model)
 
-        batch_size = len(batch)
-        need_summary = np.random.choice([True, False], p=[self.sum_prob, 1 - self.sum_prob], size=batch_size)
-        if self.sum_prob > 0 and need_summary.any():
-            summary = self.text_summarize(batch[need_summary])
-            summaries = [summary if need else None for need in need_summary]
-        else:
-            summaries = [None] * batch_size
-        # Q value prediction
+        # get summary
+        obs = batch.obs
+        batch_size = len(obs)
+        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=batch_size)
+        txt_obs = get_text_obs(batch)
+        summary_prompts = [
+            f"### Observation\n{txt_obs[i]}\n\n### Request\n{SUMMARY_PROMPT}\n\n### Answer\n" for i in range(batch_size) if need_summary[i]
+        ]
 
-        logits, _ = self.get_q(batch, summaries, model)
-        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
+        # Generate summaries only for the selected prompts
+        summaries = model.summarize(summary_prompts, system_prompt=SYS_PROMPT, inference_batch_size=1) if summary_prompts else []
+        summaries = iter(summaries)
+
+        # Formulate Q_prompts for each sample in the batch
+        Q_prompts = []
+        for i in range(batch_size):
+            messages = []
+            summary = f"### Summary of History\n{next(summaries)}\n\n" if need_summary[i] else ""
+            messages.append({"role": "system", "content": SYS_PROMPT})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"###Observations\n{txt_obs[i]}\n\n{summary}### Request\n{Q_PROMPT}\n\n###Answer\n",
+                }
+            )
+            messages = self.model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            Q_prompts.append(messages)
+
+        # Get Q-values
+        logits = self.model(obs, Q_prompts)
+        q = self.compute_q_value(logits, getattr(obs, "mask", None))
         if not hasattr(self, "max_action_num"):
             self.max_action_num = q.shape[1]
         act = to_numpy(q.max(dim=1)[1])
 
         result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
-
-    def get_q(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
-        """Compute Q value over the given batch data."""
-        if self.obs_mode == "timellm":
-            return self._get_q_timellm(batch, summaries, model)
-        elif self.obs_mode == "text_only":
-            return self._get_q_text_only(batch, summaries, model)
-        else:
-            return self.get_q_concat(batch, summaries, model)
-
-    def _get_q_timellm(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
-        """Compute Q value over the given batch data."""
-        prompt_list = []
-        ts = torch.from_numpy(batch.obs).bfloat16().to(self.model.device)
-        for i in range(len(batch)):
-            messages = Conversation()
-            messages.insert_component("system", SYSTEM_PROMPT, 0)
-            if summaries[i] is not None:
-                messages.insert_component("user", summaries[i] + self.q_prompt, -1)
-            else:
-                messages.insert_component("user", self.q_prompt, -1)
-            prompt_list.append(messages.get())
-        logits = self.model.forward(ts, prompt_list, model=model)
-        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
-        return q
-
-    def _get_q_text_only(self, batch: ObsBatchProtocol, summaries: List[List[str] | None] | List[None], model) -> torch.Tensor:
-        """Compute Q value over the given batch data."""
-        prompt_list = []
-        for i in range(len(batch)):
-            messages = Conversation()
-            messages.insert_component("system", SYSTEM_PROMPT, 0)
-
-            obs_prompt = obs2text(batch[i])
-            if summaries[i] is not None:
-                messages.insert_component("user", obs_prompt + summaries[i] + self.q_prompt, -1)
-            else:
-                messages.insert_component("user", obs_prompt + self.q_prompt, -1)
-            prompt_list.append(messages.get())
-        logits = self.model.forward(None, prompt_list, model=model)
-        q = self.compute_q_value(logits, getattr(batch.obs, "mask", None))
-        return q
-
-    def text_summarize(self, batch: Batch) -> List[str]:
-        """Summarize the rules based on the given observation."""
-        prompt_list = []
-        for i in range(len(batch)):
-            obs_prompt = obs2text(batch[i])
-            messages = Conversation()
-            messages.insert_component("system", SYSTEM_PROMPT, 0)
-            messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
-            prompt_list.append(messages.get())
-        summary = self.model.generate_text(None, prompt_list)
-        return summary
-
-    def learn(self, batch: RolloutBatchProtocol, *args: Any,
-              **kwargs: Any) -> TDQNTrainingStats:
-        if self._target and self._iter % self.freq == 0:
-            self.sync_weight()
-
-        # Calculate the chunk size
-        chunk_size = len(batch) // self.gradient_accumulation
-
-        # Initialize overall loss
-        total_loss = 0.0
-
-        for i in range(self.gradient_accumulation):
-            # Get the current chunk
-            start_idx = i * chunk_size
-            end_idx = (i + 1) * chunk_size if (i + 1) * chunk_size < len(batch) else len(batch)
-            chunk = batch[start_idx:end_idx]
-
-            weight = chunk.pop("weight", 1.0)
-            q = self(chunk).logits
-            q = q[np.arange(len(q)), chunk.act]
-            returns = to_torch_as(chunk.returns.flatten(), q)
-            td_error = returns - q
-
-            if self.clip_loss_grad:
-                y = q.reshape(-1, 1)
-                t = returns.reshape(-1, 1)
-                loss = torch.nn.functional.huber_loss(y, t, reduction="mean")
-            else:
-                loss = (td_error.pow(2) * weight).mean()
-
-            chunk.weight = td_error  # prio-buffer
-
-            # Accumulate loss and divide by accumulation_steps
-            total_loss += loss.item()
-            loss = loss / self.gradient_accumulation
-            loss.backward()
-
-            # Perform optimizer step after accumulating gradients over chunks
-            if (i + 1) % self.gradient_accumulation == 0 or (i + 1) == len(batch):
-                self.optim.step()
-                self.optim.zero_grad()
-
-        self._iter += 1
-
-        return DQNTrainingStats(loss=total_loss / self.gradient_accumulation)  # type: ignore[return-value]
 
 
 class LLM_PPO_Policy(PPOPolicy):
@@ -241,34 +148,33 @@ class LLM_PPO_Policy(PPOPolicy):
     """
 
     def __init__(
-            self,
-            *,
-            actor: LLMPPO,
-            critic: LLMPPO,
-            optim: torch.optim.Optimizer,
-            dist_fn: TDistributionFunction,
-            action_space: gym.Space,
-            eps_clip: float = 0.2,
-            dual_clip: float | None = None,
-            value_clip: bool = False,
-            advantage_normalization: bool = True,
-            recompute_advantage: bool = False,
-            vf_coef: float = 0.5,
-            ent_coef: float = 0.01,
-            max_grad_norm: float | None = None,
-            gae_lambda: float = 0.95,
-            max_batchsize: int = 256,
-            discount_factor: float = 0.99,
-            reward_normalization: bool = False,
-            deterministic_eval: bool = False,
-            observation_space: gym.Space | None = None,
-            action_scaling: bool = True,
-            action_bound_method: Literal["clip", "tanh"] | None = "clip",
-            lr_scheduler: TLearningRateScheduler | None = None,
+        self,
+        *,
+        actor: LLMPPO,
+        critic: torch.nn.Module,
+        optim: torch.optim.Optimizer,
+        dist_fn: TDistributionFunction,
+        action_space: gym.Space,
+        eps_clip: float = 0.2,
+        dual_clip: float | None = None,
+        value_clip: bool = False,
+        advantage_normalization: bool = True,
+        recompute_advantage: bool = False,
+        vf_coef: float = 0.5,
+        ent_coef: float = 0.01,
+        max_grad_norm: float | None = None,
+        gae_lambda: float = 0.95,
+        max_batchsize: int = 256,
+        discount_factor: float = 0.99,
+        reward_normalization: bool = False,
+        deterministic_eval: bool = False,
+        observation_space: gym.Space | None = None,
+        action_scaling: bool = True,
+        action_bound_method: Literal["clip", "tanh"] | None = "clip",
+        lr_scheduler: TLearningRateScheduler | None = None,
+        sum_prob=0,
     ) -> None:
-        assert (
-                dual_clip is None or dual_clip > 1.0
-        ), f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
+        assert dual_clip is None or dual_clip > 1.0, f"Dual-clip PPO parameter should greater than 1.0 but got {dual_clip}"
 
         super().__init__(
             actor=actor,
@@ -276,6 +182,11 @@ class LLM_PPO_Policy(PPOPolicy):
             optim=optim,
             dist_fn=dist_fn,
             action_space=action_space,
+            eps_clip=eps_clip,
+            dual_clip=dual_clip,
+            value_clip=value_clip,
+            advantage_normalization=advantage_normalization,
+            recompute_advantage=recompute_advantage,
             vf_coef=vf_coef,
             ent_coef=ent_coef,
             max_grad_norm=max_grad_norm,
@@ -289,18 +200,13 @@ class LLM_PPO_Policy(PPOPolicy):
             action_bound_method=action_bound_method,
             lr_scheduler=lr_scheduler,
         )
-        self.eps_clip = eps_clip
-        self.dual_clip = dual_clip
-        self.value_clip = value_clip
-        self.norm_adv = advantage_normalization
-        self.recompute_adv = recompute_advantage
-        self._actor_critic: ActorCritic
+        self.sum_prob = sum_prob
 
     def forward(
-            self,
-            batch: ObsBatchProtocol,
-            state: dict | BatchProtocol | np.ndarray | None = None,
-            **kwargs: Any,
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        **kwargs: Any,
     ) -> DistBatchProtocol:
         """Compute action over the given batch data by applying the actor.
 
@@ -313,9 +219,23 @@ class LLM_PPO_Policy(PPOPolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
-        # TODO: rename? It's not really logits and there are particular
-        #  assumptions about the order of the output and on distribution type
-        logits, hidden = self.actor(batch.obs, state=state, info=batch.info)
+        # rules summarization
+        obs = batch.obs
+        batch_size = len(obs)
+        need_summary = random.choices([True, False], weights=[self.sum_prob, 1 - self.sum_prob], k=batch_size)
+        conversations = text_summary_prompt(batch)
+        conversations_T = [conversations[i] for i in range(batch_size) if need_summary[i]]
+        summaries_T = self.actor.summarize(conversations_T, mode="str") if conversations_T != [] else []
+        summaries = ["" for _ in range(batch_size)]
+        true_index = 0
+        for i in range(batch_size):
+            if need_summary[i]:
+                summaries[i] = summaries_T[true_index]
+                true_index += 1
+
+        # assumptions about the order of the output and on distribution type
+        series, conversations = get_action_prompt(obs[:, :, 0], obs[:, :, 1], summaries)
+        logits = self.actor.act_pred(series, conversations, mode="act")
         if isinstance(logits, tuple):
             dist = self.dist_fn(*logits)
         else:
@@ -326,23 +246,21 @@ class LLM_PPO_Policy(PPOPolicy):
             act = dist.mode
         else:
             act = dist.sample()
-        result = Batch(logits=logits, act=act, state=hidden, dist=dist)
+        result = Batch(logits=logits, act=act, state=state, dist=dist)
         return cast(DistBatchProtocol, result)
 
 
-class LLMInference_Policy(BasePolicy):
+class LLM_Policy(BasePolicy):
     """
     Implementation of pure LLM policy.
     """
 
     def __init__(
-            self,
-            model: torch.nn.Module,
-            action_space: gym.Space,
-            observation_space: gym.Space | None = None,
-            need_summary: bool = False,
-            need_meta_info: bool = False,
-            num_try: int = 1,
+        self,
+        model: torch.nn.Module,
+        action_space: gym.Space,
+        observation_space: gym.Space | None = None,
+        summary_prob: float = 0.0,
     ) -> None:
         super().__init__(
             action_space=action_space,
@@ -351,59 +269,29 @@ class LLMInference_Policy(BasePolicy):
             action_bound_method=None,
         )
         self.model = model
-        self.need_summary = need_summary
-        self.need_meta_info = need_meta_info
-        self.num_try = num_try
-        if num_try < 1:
-            raise ValueError("num_try should be greater than 0")
-
-        self.meta_info_fn = get_patient_info_prompt if need_meta_info else lambda *args: ""
+        self.summary_prob = summary_prob
 
     def forward(
-            self,
-            batch: ObsBatchProtocol,
-            state: dict | BatchProtocol | np.ndarray | None = None,
-            model: Literal["model", "model_old"] = "model",
-            **kwargs: Any,
+        self,
+        batch: ObsBatchProtocol,
+        state: dict | BatchProtocol | np.ndarray | None = None,
+        model: Literal["model", "model_old"] = "model",
+        **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
         """Decide action over the given batch data."""
-        if batch.obs.shape[0] != 1:
-            raise ValueError("LLMInference_Policy only supports batch size of 1 at inference time.")
         model = getattr(self, model)
 
-        obs_prompt = obs2text(batch[0])
-        meta_prompt = self.meta_info_fn(batch[0].info["Age"],
-                                        batch[0].info["CR"],
-                                        batch[0].info["CF"],
-                                        batch[0].info["TDI"])
-        messages = Conversation()
-        messages.insert_component("system", SYSTEM_PROMPT + meta_prompt, 0)
-        if self.need_summary and (batch.obs[:, :, 0] == -1).mean() < 0.8:
-            messages.insert_component("user", obs_prompt + SUMMARY_INSTRUCTION_PROMPT, -1)
-            summary = model(messages.get())
-            messages.insert_component("assistant", summary, -1)
-            messages.insert_component("user", LLM_INFERENCE_INSTRUCTION_PROMPT, -1)
-            action_text = model(messages.get())
-        else:
-            messages.insert_component("user", obs_prompt + LLM_INFERENCE_INSTRUCTION_PROMPT, -1)
-            action_text = model(messages.get())
+        txt_obs = get_text_obs(batch)
+        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=1)
+        summary_prompts = [summary_prompts[i] for i in range(batch_size) if need_summary[i]]
 
-        use_random = True
-        for _ in range(self.num_try):
-            act = text2act(action_text, self.action_space)
-            if act is not None:
-                use_random = False
-                break
-            messages.insert_component("assistant", action_text, -1)
-            messages.insert_component("user", LLM_INFERENCE_RETRY_PROMPT, -1)
-            action_text = model(messages.get())
-
-        # use random action if no valid action is found
-        if use_random:
-            act = self.action_space.sample()
-
-        result = Batch(act=[act], state=state)
-        # print("policy act", act)
+        prompt = [
+            {"role": "system", "content": SYS_PROMPT},
+            {"role": "user", "content": f"###Observations\n{txt_obs}\n\n ###Request\n{Q_PROMPT}\n\n###Answer\n"},
+        ]
+        logits = model(prompt)
+        act = [text2act(logits)]
+        result = Batch(act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
