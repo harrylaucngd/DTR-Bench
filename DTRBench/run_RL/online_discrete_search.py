@@ -37,8 +37,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-debug")
-    parser.add_argument("--sweep_id", type=str, default="1did1f4s", help="sweep id for wandb," " only used in agent mode")
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-1122")
+    parser.add_argument("--sweep_id", type=str, default="57oihdr9", help="sweep id for wandb," " only used in agent mode")
     parser.add_argument(
         "--task",
         type=str,
@@ -57,8 +57,8 @@ def parse_args():
     parser.add_argument(
         "--policy_name",
         type=str,
-        default="LLM-DQN",  # Change this for different sweep!
-        choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "TD3"],
+        default="DQN",  # Change this for different sweep!
+        choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "PPO"],
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
 

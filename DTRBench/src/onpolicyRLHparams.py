@@ -13,6 +13,7 @@ class OnPolicyRLHyperParameterSpace(OffPolicyRLHyperParameterSpace):
         "buffer_size",  # size of replay buffer
         "num_actions",  # number of actions, only used for discrete action space
         "linear",  # whether to use linear approximation as network
+        "obs_window", # number of frames to concatenate or stack, depending on obs_mode
     ]
 
     # general hyperparameter search space
@@ -39,7 +40,8 @@ class PPOHyperParams(OnPolicyRLHyperParameterSpace):
     _policy_hparams = {"lr": common_hparams["lr"],  # learning rate
                        "n_step": common_hparams["n_step"],
                        "start_timesteps": common_hparams["start_timesteps"],
-                       "gae_lambda": 0.95,
+                       "gae_lambda": common_hparams["gamma"],
+                       "conditioned_sigma": [True, False],
                        "vf_coef": 0.5,
                        "ent_coef": 0.001,
                        "eps_clip": 0.1,

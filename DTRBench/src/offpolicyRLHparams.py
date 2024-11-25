@@ -26,6 +26,7 @@ class OffPolicyRLHyperParameterSpace:
         "update_per_step": common_hparams["update_per_step"],
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
+        "use_knowledge": common_hparams["use_knowledge"],
         "obs_mode": common_hparams["obs_mode"],
         "start_timesteps": common_hparams["start_timesteps"],
     }

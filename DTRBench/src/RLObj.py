@@ -16,7 +16,40 @@ from torch.distributions import Distribution, Independent, Normal
 from DTRBench.src.collector import GlucoseCollector as Collector
 from DTRBench.naive_baselines.naive_baselines import ConstantPolicy, RandomPolicy
 import torch.nn as nn
+import numpy as np
+from tianshou.policy import DQNPolicy
 
+class DQNPolicyWithKnowledge(DQNPolicy):
+    def exploration_noise(
+            self,
+            act,
+            batch,
+    ):
+        if isinstance(act, np.ndarray) and not np.isclose(self.eps, 0.0):
+            bsz = len(act)
+            rand_mask = np.random.rand(bsz) < self.eps
+            assert (
+                    self.max_action_num is not None
+            ), "Can't call this method before max_action_num was set in first forward"
+
+            # Define the probability distribution
+            p = [0] * self.max_action_num
+            p[0] = (1 / (self.max_action_num - 1) * 2 + 1) * self.max_action_num
+            total_sum = p[0] + (self.max_action_num - 1)  # Total sum for normalisation
+            p[0] /= total_sum  # Normalise probability for action 0
+            rest_probability = (1 - p[0]) / (self.max_action_num - 1)  # Split rest evenly
+            p[1:] = [rest_probability] * (self.max_action_num - 1)
+
+            # Sample actions based on the probability distribution
+            rand_act = np.random.choice(self.max_action_num, size=bsz, p=p)
+
+            if hasattr(batch.obs, "mask"):
+                q = np.random.rand(bsz, self.max_action_num)  # [0, 1]
+                q += batch.obs.mask
+                rand_act = q.argmax(axis=1)  # Fallback to max if masking is present
+
+            act[rand_mask] = rand_act[rand_mask]
+        return act
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -34,6 +67,7 @@ class DQNObjective(RLObjective):
         target_update_freq,
         is_double,
         use_dueling,
+        use_knowledge,
         *args,
         **kwargs,
     ):
@@ -50,7 +84,8 @@ class DQNObjective(RLObjective):
         )
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         # define policy
-        policy = DQNPolicy(
+        policy_cls = DQNPolicyWithKnowledge if use_knowledge else DQNPolicy
+        policy = policy_cls(
             model=net,
             optim=optim,
             discount_factor=gamma,
@@ -94,27 +129,30 @@ class DQNObjective(RLObjective):
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
         if start_timesteps > 0:
-            print(f"warmup with random policy for {start_timesteps} steps..")
-            warmup_policy = RandomPolicy(min_act=0, max_act=5 if self.env_args["discrete"] else 0.1, action_space=self.action_space)
-            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
-            warmup_collector.collect(n_step=start_timesteps)
-            buffer.save_hdf5("warmup.hdf5")
+            if os.path.exists(f"warmup_random_{start_timesteps}.hdf5"):
+                buffer = buffer.load_hdf5(f"warmup_random_{start_timesteps}.hdf5")
+            else:
+                print(f"warmup with random policy for {start_timesteps} steps..")
+                warmup_policy = ConstantPolicy(action_space=self.action_space, dose=0)
+                warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+                warmup_collector.collect(n_step=start_timesteps)
+                buffer.save_hdf5(f"warmup_random_{start_timesteps}.hdf5")
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        test_collector = Collector(policy, self.test_envs, exploration_noise=True)
+        # test_collector = Collector(policy, self.test_envs, exploration_noise=True)
 
         OffpolicyTrainer(
             policy,
             max_epoch=self.meta_param["epoch"],
             batch_size=batch_size,
             train_collector=train_collector,
-            test_collector=test_collector,
+            # test_collector=test_collector,
             step_per_epoch=self.meta_param["step_per_epoch"],
             step_per_collect=step_per_collect,
             episode_per_test=self.meta_param["test_num"],
             train_fn=train_fn,
-            test_fn=test_fn,
+            # test_fn=test_fn,
             stop_fn=self.early_stop_fn,
             save_best_fn=save_best_fn,
             logger=self.logger,
@@ -299,15 +337,18 @@ class PPOObjective(RLObjective):
         eps_clip,
         value_clip,
         dual_clip,
+        conditioned_sigma,
         advantage_normalization,
         recompute_advantage,
         n_step,
         epoch,
         batch_size,
         obs_mode,
+        use_knowledge,
         linear,
         **kwargs,
     ):
+        # todo use knowledge for PPO not done
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
         net_a = define_single_network(
             self.state_shape,
@@ -322,6 +363,7 @@ class PPOObjective(RLObjective):
         actor = ActorProb(
             net_a,
             self.action_shape,
+            conditioned_sigma=conditioned_sigma,
             unbounded=True,
             device=self.device,
         ).to(self.device)
@@ -388,14 +430,19 @@ class PPOObjective(RLObjective):
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
 
+
+        if start_timesteps > 0:
+            if start_timesteps == 100000:
+                buffer = buffer.load_hdf5("warmup_random_100000.hdf5")
+            else:
+                print(f"warmup with random policy for {start_timesteps} steps..")
+                warmup_policy = RandomPolicy(min_act=0, max_act=5 if self.env_args["discrete"] else 0.1, action_space=self.action_space)
+                warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
+                warmup_collector.collect(n_step=start_timesteps)
+                buffer.save_hdf5(f"warmup_random_{start_timesteps}.hdf5")
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
         test_collector = Collector(policy, self.test_envs, exploration_noise=False)
-        if start_timesteps > 0:
-            print(f"warmup with random policy for {start_timesteps} steps..")
-            warmup_policy = RandomPolicy(min_act=0, max_act=2 if self.env_args["discrete"] else 0.1, action_space=self.action_space)
-            warmup_collector = Collector(warmup_policy, self.train_envs, buffer, exploration_noise=True)
-            warmup_collector.collect(n_step=start_timesteps)
 
         OnpolicyTrainer(
             policy,
