@@ -4,6 +4,7 @@ from typing import Any, Optional
 import subprocess
 from tianshou.utils.logger.base import VALID_LOG_VALS_TYPE, BaseLogger
 import pandas as pd
+from tqdm import tqdm
 
 
 class WandbLogger(BaseLogger):
@@ -92,6 +93,40 @@ class WandbLogger(BaseLogger):
             print(f"Error logging conda environment to wandb: {e}")
 
 
+import pandas as pd
+import numpy as np
+from scipy.integrate import simps
+
+
+def calculate_metric(df):
+    # todo: chunk until the best test step
+    best_step = df.loc[df["history_test/returns_stat/mean"].idxmax(), "history_step"]
+
+    # Remove rows where 'history_step' is None
+    df = df.dropna(subset=["history_step"])
+
+    # Forward fill and backward fill missing values for 'history_train/returns_stat/mean'
+    df["history_train/returns_stat/mean"] = df["history_train/returns_stat/mean"].fillna(method="ffill").fillna(method="bfill")
+
+    # Group by 'history_step' and calculate the mean for duplicate 'history_step' values
+    df = df.groupby("history_step", as_index=False)["history_train/returns_stat/mean"].mean()
+
+    chunk_df = df[df["history_step"] <= best_step]
+    chunk_df = chunk_df.sort_values(by="history_step")
+
+    # Calculate the area under the curve (AUC) using Simpson's rule
+    x = chunk_df["history_step"].values
+    y = chunk_df["history_train/returns_stat/mean"].values
+    auc = simps(y, x)
+
+    return {
+        "train_auc": auc,
+        "best_test_step": best_step,
+        "history_step": df["history_step"].values,
+        "history_train/returns_stat/mean": df["history_train/returns_stat/mean"].values,
+    }
+
+
 def get_sweep(project_path, sweep_name):
     wandb.login()
     api = wandb.Api()
@@ -113,11 +148,32 @@ def get_sweep(project_path, sweep_name):
 
     sweep_data = []
     runs = api.runs(project_path, {"sweep": sweep_ids[0]})
-    for run in runs:
+    for run in tqdm(runs, desc="Pulling runs from wandb"):
         # Extract the desired data from each experiment
-        history = run.scan_history(keys=["train/returns_stat/mean"])
-        train_return = [h["train/returns_stat/mean"] for h in history]
-        sweep_data.append(dict(**run.summary, **run.config, **{"config_columns": list(run.config.keys())}))  # add experiment logdir to base obj
+        col_to_extract = [
+            "step",
+            "train/returns_stat/mean",
+            "train/returns_stat/std",
+            "test/returns_stat/mean",
+            "test/returns_stat/std",
+            "train/bg",
+            "train/drug_mean",
+        ]
+        history = run.scan_history()
+
+        data = {}
+        for col in col_to_extract:
+            data[f"history_{col}"] = [h[col] for h in history]
+            if not data[f"history_{col}"]:
+                raise ValueError(f"Empty data for {col}")
+        # process the data
+        data_df = pd.DataFrame(data)
+
+        history_metrics = calculate_metric(data_df)
+
+        sweep_data.append(
+            dict(**{"id": run.id}, **history_metrics, **run.summary, **data, **run.config, **{"config_columns": list(run.config.keys())})
+        )  # add experiment logdir to base obj
     # Create a DataFrame for the current sweep
     df = pd.DataFrame(sweep_data)
     return df
