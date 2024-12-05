@@ -13,12 +13,10 @@ class BaselineObj(RLObjective):
         super().__init__(None, env_args, hyperparam, device="cpu", **kwargs)
 
     def define_policy(self, policy_name, **kwargs):
-        return baselineLOOKUP[policy_name]["policy"](
-            action_space=self.env.action_space, **baselineLOOKUP[policy_name]["policy_args"]
-        )
+        return baselineLOOKUP[policy_name]["policy"](action_space=self.env.action_space, **baselineLOOKUP[policy_name]["policy_args"])
 
     def wandb_search(self):
-        self.logger = WandbLogger(train_interval=24 * 15)
+        self.logger = WandbLogger(train_interval=10, update_interval=100)
         self.env_name = wandb.config["env_name"]
         self.meta_param["training_num"] = 1
         self.meta_param["num_actions"] = None

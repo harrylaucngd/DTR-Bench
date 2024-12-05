@@ -173,7 +173,7 @@ class LLM_Objective(RLObjective):
         )
 
     def wandb_search(self):
-        self.logger = WandbLogger(train_interval=24 * 15)
+        self.logger = WandbLogger(train_interval=10, update_interval=100)
         self.meta_param["training_num"] = 1
         self.meta_param["num_actions"] = None
         hparams = wandb.config

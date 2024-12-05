@@ -37,7 +37,7 @@ class WandbLogger(BaseLogger):
     def write(self, step_type: str, step: int, data: dict[str, VALID_LOG_VALS_TYPE]) -> None:
         """Logs data to Weights & Biases."""
         log_data = data.copy()
-        log_data['step'] = step
+        log_data["step"] = step
         wandb.log(log_data)
 
     def save_data(
@@ -62,9 +62,9 @@ class WandbLogger(BaseLogger):
         try:
             run = wandb.Api().run(f"{wandb.run.entity}/{wandb.run.project}/{wandb.run.id}")
             summary = run.summary
-            epoch = summary.get('save/epoch', 0)
-            env_step = summary.get('save/env_step', 0)
-            gradient_step = summary.get('save/gradient_step', 0)
+            epoch = summary.get("save/epoch", 0)
+            env_step = summary.get("save/env_step", 0)
+            gradient_step = summary.get("save/gradient_step", 0)
             self.last_save_step = epoch
             self.last_log_train_step = env_step
             self.last_log_update_step = gradient_step
@@ -91,6 +91,7 @@ class WandbLogger(BaseLogger):
         except Exception as e:
             print(f"Error logging conda environment to wandb: {e}")
 
+
 def get_sweep(project_path, sweep_name):
     wandb.login()
     api = wandb.Api()
@@ -106,8 +107,7 @@ def get_sweep(project_path, sweep_name):
         sweep_ids.append(sweep_id)
 
     if len(sweep_ids) == 0:
-        raise ValueError(f"No sweep found for project {project_path} {sweep_name}, \n"
-                         f"all sweeps are {all_sweep_names}")
+        raise ValueError(f"No sweep found for project {project_path} {sweep_name}, \n" f"all sweeps are {all_sweep_names}")
     elif len(sweep_ids) > 1:
         raise ValueError(f"Multiple sweeps found for {sweep_name}. Pls check")
 
@@ -115,8 +115,9 @@ def get_sweep(project_path, sweep_name):
     runs = api.runs(project_path, {"sweep": sweep_ids[0]})
     for run in runs:
         # Extract the desired data from each experiment
-        sweep_data.append(dict(**run.summary, **run.config,
-                               **{"config_columns": list(run.config.keys())}))  # add experiment logdir to base obj
+        history = run.scan_history(keys=["train/returns_stat/mean"])
+        train_return = [h["train/returns_stat/mean"] for h in history]
+        sweep_data.append(dict(**run.summary, **run.config, **{"config_columns": list(run.config.keys())}))  # add experiment logdir to base obj
     # Create a DataFrame for the current sweep
     df = pd.DataFrame(sweep_data)
     return df
@@ -124,7 +125,7 @@ def get_sweep(project_path, sweep_name):
 
 def summary_one_algo(task_name, algo_name, metrics, project="LLM4RL", ignore=None):
     if ignore is None:
-        ignore = ["min", "max", "lens_stat", "collect_time", "n_collected_episodes", "collect_speed"]
+        ignore = ["min", "max", "lens_stat", "collect_time", "n_collected_episodes", "collect_speed", "timestamp"]
     raw_data_df = get_sweep(project, f"{task_name}-{algo_name}")
 
     hyperparam_cols = [col for col in raw_data_df["config_columns"][0] if col not in ["logdir", "seed"]]
@@ -143,7 +144,6 @@ def summary_one_algo(task_name, algo_name, metrics, project="LLM4RL", ignore=Non
         data_mean[col.replace("mean", "mean"), col.replace("mean", "std")] = data_mean[col], data_std[col]
         data_mean.drop(columns=col, inplace=True)
         data_std.drop(columns=col, inplace=True)
-
 
     assert data_mean.shape == data_std.shape
     assert len(data_mean) == len(raw_data_df) / raw_data_df["seed"].nunique()
@@ -176,10 +176,9 @@ def summarize_one_task(task_name, algos, metrics, mode="all"):
 
 
 if __name__ == "__main__":
-    # Example usage
-    # best_mean, best_std = summary_one_algo("Sepsis", "DQN", metrics=None, mode="all")
-    # print(best_mean)
-    # print(best_std)
-
-    best_mean, best_std = summary_one_algo("SimGlucoseEnv-adult1",
-                                           "DQN", metrics=["test/returns_stat/mean", "test/returns_stat/std"],)
+    best_mean, best_std = summary_one_algo(
+        "SimGlucoseEnv-adult1",
+        algo_name="DQN",
+        project="LLM4RL-1127",
+        metrics=["test/returns_stat/mean", "test/returns_stat/std"],
+    )

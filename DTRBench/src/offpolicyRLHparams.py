@@ -2,7 +2,6 @@ from DTRBench.src.base_hparams import common_hparams
 import numpy as np
 
 
-
 class OffPolicyRLHyperParameterSpace:
     _meta_hparams = [
         "algo_name",  # name of the algorithm
@@ -14,7 +13,7 @@ class OffPolicyRLHyperParameterSpace:
         "buffer_size",  # size of replay buffer
         "num_actions",  # number of actions, only used for discrete action space
         "linear",  # whether to use linear approximation as network
-        "obs_window", # number of frames to concatenate or stack, depending on obs_mode
+        "obs_window",  # number of frames to concatenate or stack, depending on obs_mode
     ]
 
     # general hyperparameter search space
@@ -31,22 +30,22 @@ class OffPolicyRLHyperParameterSpace:
         "start_timesteps": common_hparams["start_timesteps"],
     }
     # policy hyperparameter search space
-    _policy_hparams = {
-    }
+    _policy_hparams = {}
     _supported_algos = ()
 
-    def __init__(self,
-                 algo_name,  # name of the algorithm
-                 log_dir,  # directory to save logs
-                 training_num,  # number of training envs
-                 test_num,  # number of test envs
-                 epoch,
-                 step_per_epoch,  # number of training steps per epoch
-                 buffer_size,  # size of replay buffer
-                 obs_window,
-                 num_actions=None,  # number of actions, only used for discrete action space
-                 linear=False
-                 ):
+    def __init__(
+        self,
+        algo_name,  # name of the algorithm
+        log_dir,  # directory to save logs
+        training_num,  # number of training envs
+        test_num,  # number of test envs
+        epoch,
+        step_per_epoch,  # number of training steps per epoch
+        buffer_size,  # size of replay buffer
+        obs_window,
+        num_actions=None,  # number of actions, only used for discrete action space
+        linear=False,
+    ):
         if algo_name.lower() not in [i.lower() for i in self.__class__._supported_algos]:
             raise NotImplementedError(f"algo_name {algo_name} not supported, support {self.__class__._supported_algos}")
         self.algo_name = algo_name
@@ -83,6 +82,7 @@ class OffPolicyRLHyperParameterSpace:
 
     def get_search_space(self):
         search_space = {}
+        search_space.update({k: getattr(self, k) for k in self._meta_hparams})
         search_space.update(self._general_hparams)
         search_space.update(self._policy_hparams)
         space = {}
@@ -127,7 +127,11 @@ class OffPolicyRLHyperParameterSpace:
 
     def get_all_params(self):
         result = {}
-        dict_args = [self.get_general_params(), self.get_policy_params(), self.get_meta_params(), ]
+        dict_args = [
+            self.get_general_params(),
+            self.get_policy_params(),
+            self.get_meta_params(),
+        ]
         # if args in both general and meta, meta will overwrite general (seed)
         for dictionary in dict_args:
             result.update(dictionary)
@@ -137,7 +141,7 @@ class OffPolicyRLHyperParameterSpace:
         return self.__dict__()
 
     def __dict__(self):
-        return {k for k in dir(self) if not k.startswith('__') and not callable(getattr(self, k))}
+        return {k for k in dir(self) if not k.startswith("__") and not callable(getattr(self, k))}
 
     def __getitem__(self, item):
         return getattr(self, item)
@@ -150,13 +154,12 @@ class OffPolicyRLHyperParameterSpace:
 
     def __iter__(self):
         for key in dir(self):
-            if not key.startswith('__') and not callable(getattr(self, key)):
+            if not key.startswith("__") and not callable(getattr(self, key)):
                 yield key, getattr(self, key)
 
     def __str__(self):
         # This will combine the dict representation with the class's own attributes
-        class_attrs = {k: getattr(self, k) for k in dir(self) if
-                       not k.startswith('__') and not callable(getattr(self, k))}
+        class_attrs = {k: getattr(self, k) for k in dir(self) if not k.startswith("__") and not callable(getattr(self, k))}
         all_attrs = {**self, **class_attrs}
         return str(all_attrs)
 
