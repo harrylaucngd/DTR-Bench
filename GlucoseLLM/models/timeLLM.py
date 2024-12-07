@@ -217,6 +217,7 @@ class timeLLM(nn.Module):
         d_ff=-1,
         max_new_tokens=256,
         dtype=torch.bfloat16,
+        model_dir = "/mnt/bn/gilesluo000/pretrained_models"
     ):
         super(timeLLM, self).__init__()
         self.pred_len = pred_len  # Prediction length
@@ -267,7 +268,6 @@ class timeLLM(nn.Module):
 
         assert self.tokenizer.eos_token_id is not None, "Tokenizer must have an end-of-sequence token"
         assert self.tokenizer.pad_token_id is not None, "Tokenizer must have a padding token"
-        self.tokenizer.padding_side = "left"  # Padding is applied on the left side for pure text inference
 
         # Freeze LLM parameters
         for param in self.llm_model.parameters():

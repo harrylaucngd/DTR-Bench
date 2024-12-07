@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--policy_name",
         type=str,
-        default="DQN",  # Change this for different sweep!
+        default="LLM-DQN",  # Change this for different sweep!
         choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "PPO"],
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
