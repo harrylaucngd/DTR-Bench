@@ -95,8 +95,7 @@ class WandbLogger(BaseLogger):
 
 import pandas as pd
 import numpy as np
-from scipy.integrate import simps
-
+from scipy.integrate import simpson as simps
 
 def calculate_metric(df):
     # todo: chunk until the best test step

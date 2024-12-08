@@ -349,68 +349,50 @@ class SinglePatientEnv(gymnasium.Env):
 
 
 class RandomPatientEnv(gymnasium.Env):
-
+    """
+    This environment wraps around SinglePatientEnv and randomly selects a patient
+    from the provided list of candidates at the start of each episode.
+    It supports the exact same arguments as SinglePatientEnv, with the addition of `candidates`.
+    """
     metadata = {"render.modes": ["human"]}
-    # Accessing resources with files() in Python 3.9+
     patient_list = [
-        "adolescent#001",
-        "adolescent#002",
-        "adolescent#003",
-        "adolescent#004",
-        "adolescent#005",
-        "adolescent#006",
-        "adolescent#007",
-        "adolescent#008",
-        "adolescent#009",
-        "adolescent#010",
-        "adult#001",
-        "adult#002",
-        "adult#003",
-        "adult#004",
-        "adult#005",
-        "adult#006",
-        "adult#007",
-        "adult#008",
-        "adult#009",
-        "adult#010",
-        "child#001",
-        "child#002",
-        "child#003",
-        "child#004",
-        "child#005",
-        "child#006",
-        "child#007",
-        "child#008",
-        "child#009",
-        "child#010",
+        "adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004", "adolescent#005",
+        "adolescent#006", "adolescent#007", "adolescent#008", "adolescent#009", "adolescent#010",
+        "adult#001", "adult#002", "adult#003", "adult#004", "adult#005",
+        "adult#006", "adult#007", "adult#008", "adult#009", "adult#010",
+        "child#001", "child#002", "child#003", "child#004", "child#005",
+        "child#006", "child#007", "child#008", "child#009", "child#010",
     ]
+    all_patient_meta = pd.read_csv(str(resources.files("simglucose").joinpath("params/Quest.csv")))
     INSULIN_PUMP_HARDWARE = "Insulet"
-
     def __init__(
         self,
-        candidates: list,
+        candidates: list = None,  # The only additional argument compared to SinglePatientEnv
         max_t: int = 16 * 60,
+        obs_window: int = 48,
         reward_fn=risk_reward_fn,
         random_init_bg: bool = False,
         random_obs: bool = False,
         random_meal: bool = False,
         missing_rate=0.0,
         sample_time=1,
-        start_time=5 * 60,
+        start_time=0,
+        **kwargs
     ):
-        self.env = None
-        self.reward_fn = reward_fn
+        super().__init__()
+        self.candidates = candidates or self.patient_list  # If candidates are not specified, use the default list
         self.max_t = max_t
-        self.candidates = candidates
+        self.obs_window = obs_window
+        self.reward_fn = reward_fn
         self.random_init_bg = random_init_bg
         self.random_obs = random_obs
         self.random_meal = random_meal
         self.missing_rate = missing_rate
-        T1DPatient.SAMPLE_TIME = sample_time
         self.sample_time = sample_time
         self.start_time = start_time
-        self.last_obs = None
-        # pump_upper_act = self.pump_params[self.pump_params["Name"] == self.INSULIN_PUMP_HARDWARE]["max_basal"].values
+        self.env = None  # This will hold an instance of SinglePatientEnv
+        self.np_random = None
+
         self.env_info = {
             "action_type": "continuous",
             "reward_range": (-np.inf, np.inf),
@@ -421,9 +403,17 @@ class RandomPatientEnv(gymnasium.Env):
         }
         self._action_space = None  # Backing attribute for lazy loading
         self._obs_space = None  # Backing attribute for lazy loading
+        self.patient_meta_info = None
+
+    def seed(self, seed):
+        self.np_random, seed1 = seeding.np_random(seed=seed)
 
     def reset(self, seed: int = None, **kwargs):
+        """Randomly choose a new patient and reset the environment."""
+        # Randomly select a patient from the list of candidates
         self.patient_name = self.np_random.choice(self.candidates)
+
+        # Create a new instance of SinglePatientEnv with the chosen patient
         self.env = SinglePatientEnv(
             patient_name=self.patient_name,
             max_t=self.max_t,
@@ -431,17 +421,14 @@ class RandomPatientEnv(gymnasium.Env):
             random_init_bg=self.random_init_bg,
             random_obs=self.random_obs,
             random_meal=self.random_meal,
-            start_time=self.start_time,
             missing_rate=self.missing_rate,
-            sample_time=T1DPatient.SAMPLE_TIME,
+            sample_time=self.sample_time,
+            start_time=self.start_time,
         )
-        return self.env.reset(seed=seed, **kwargs)
 
-    def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
-        return self.env.step(action)
-
-    def seed(self, seed):
-        self.np_random, seed1 = seeding.np_random(seed=seed)
+        # Reset the SinglePatientEnv and return its observation and info
+        obs, info = self.env.reset(seed=seed, **kwargs)
+        return obs, info
 
     @property
     def action_space(self):
@@ -455,9 +442,16 @@ class RandomPatientEnv(gymnasium.Env):
     def observation_space(self):
         if self._obs_space is None:
             self._obs_space = spaces.Box(
-                low=np.array([54, self.action_space.low[0]]), high=np.array([600, self.action_space.high[0]]), dtype=np.float32
+                low=np.array([10, self.action_space.low[0]]), high=np.array([600, self.action_space.high[0]]), dtype=np.float32
             )
         return self._obs_space
+
+    @property
+    def max_basal(self):
+        return self.env.env.pump._params["max_basal"]
+
+    def step(self, action):
+        return self.env.step(action)
 
 
 def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
@@ -480,7 +474,7 @@ def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, 
     return env
 
 
-def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
+def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False,  obs_window=12, **kwargs):
     env = RandomPatientEnv(
         candidates=[
             "adult#001",
@@ -488,13 +482,9 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, **kwargs):
             "adult#003",
             "adult#004",
         ],
-        max_t=16 * 60,
-        sample_time=1,
-        random_init_bg=True,
-        start_time=5 * 60,
-        random_obs=True,
-        random_meal=True,
-        missing_rate=0.0,
+        max_t=16 * 60, random_init_bg=True, random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
+        missing_rate=0.0
+
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
