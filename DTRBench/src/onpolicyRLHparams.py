@@ -24,10 +24,9 @@ class OnPolicyRLHyperParameterSpace(OffPolicyRLHyperParameterSpace):
         "step_per_collect": common_hparams["onpolicy_step_per_collect"],
         # number of steps per collect. refer to tianshou's doc
         "repeat_per_collect": common_hparams["repeat_per_collect"],
-        # number of steps per collect. refer to tianshou's doc
-        # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
         "obs_mode": common_hparams["obs_mode"],
+        "use_knowledge": common_hparams["use_knowledge"],
     }
     # policy hyperparameter search space
     _policy_hparams = {

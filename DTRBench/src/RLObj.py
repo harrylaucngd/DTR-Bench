@@ -13,11 +13,14 @@ from DTRBench.utils.network import define_single_network, Critic, define_continu
 from tianshou.utils.net.continuous import ActorProb
 from tianshou.utils.net.common import ActorCritic
 from torch.distributions import Distribution, Independent, Normal
+from torch.distributions import Normal, TransformedDistribution, SigmoidTransform, Independent
 from DTRBench.src.collector import GlucoseCollector as Collector
 from DTRBench.naive_baselines.naive_baselines import ConstantPolicy, RandomPolicy
 import torch.nn as nn
 import numpy as np
 from tianshou.policy import DQNPolicy
+import torch.nn.functional as F
+
 
 class DQNPolicyWithKnowledge(DQNPolicy):
     def exploration_noise(
@@ -140,19 +143,19 @@ class DQNObjective(RLObjective):
 
         # collector
         train_collector = Collector(policy, self.train_envs, buffer, exploration_noise=True)
-        # test_collector = Collector(policy, self.test_envs, exploration_noise=True)
+        test_collector = Collector(policy, self.test_envs, exploration_noise=True)
 
         OffpolicyTrainer(
             policy,
             max_epoch=self.meta_param["epoch"],
             batch_size=batch_size,
             train_collector=train_collector,
-            # test_collector=test_collector,
+            test_collector=test_collector,
             step_per_epoch=self.meta_param["step_per_epoch"],
             step_per_collect=step_per_collect,
             episode_per_test=self.meta_param["test_num"],
             train_fn=train_fn,
-            # test_fn=test_fn,
+            test_fn=test_fn,
             stop_fn=self.early_stop_fn,
             save_best_fn=save_best_fn,
             logger=self.logger,
@@ -394,15 +397,22 @@ class PPOObjective(RLObjective):
                 torch.nn.init.zeros_(m.bias)
                 m.weight.data.copy_(0.01 * m.weight.data)
 
-        def dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
+        def normal_dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
             return Independent(Normal(loc, scale), 1)
+
+        def logit_normal_dist(loc: torch.Tensor, scale: torch.Tensor) -> torch.distributions.Distribution:
+            scale = F.softplus(scale) + 1e-5
+            base_dist = Normal(loc, scale)
+            transforms = [SigmoidTransform()]
+            logit_normal = TransformedDistribution(base_dist, transforms)
+            return Independent(logit_normal, 1)
 
         policy: PPOPolicy = PPOPolicy(
             actor=actor,
             critic=critic,
             optim=optim,
-            dist_fn=dist,
+            dist_fn=logit_normal_dist if use_knowledge else normal_dist,
             discount_factor=gamma,
             gae_lambda=float(gae_lambda),
             vf_coef=vf_coef,

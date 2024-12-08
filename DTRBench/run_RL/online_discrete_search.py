@@ -37,8 +37,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # training-aid hyperparameters
-    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-1122")
-    parser.add_argument("--sweep_id", type=str, default="57oihdr9", help="sweep id for wandb," " only used in agent mode")
+    parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-1127")
+    parser.add_argument("--sweep_id", type=str, default="tf1dagsn", help="sweep id for wandb," " only used in agent mode")
     parser.add_argument(
         "--task",
         type=str,
@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
     parser.add_argument("--training_num", type=int, default=1)
     parser.add_argument("--obs_window", type=int, default=48)
-    parser.add_argument("--test_num", type=int, default=10)
+    parser.add_argument("--test_num", type=int, default=20)
     parser.add_argument("--epoch", type=int, default=40)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--policy_name",
         type=str,
-        default="LLM-DQN",  # Change this for different sweep!
+        default="PPO",  # Change this for different sweep!
         choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "PPO"],
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
@@ -79,21 +79,22 @@ if __name__ == "__main__":
 
     env_name = args.task
     log_dir = os.path.join(args.log_dir, env_name + "-" + args.policy_name)
+
     hparam_space = hparam_class(
-        args.policy_name,
-        log_dir,
-        args.training_num,  # number of training envs
-        args.test_num,  # number of test envs
-        args.epoch,
-        args.step_per_epoch,  # number of training steps per epoch
-        args.buffer_size,
-        args.num_actions,
+        algo_name=args.policy_name,
+        log_dir=log_dir,
+        training_num=args.training_num,  # number of training envs
+        test_num=args.test_num,  # number of test envs
+        epoch=args.epoch,
+        step_per_epoch=args.step_per_epoch,  # number of training steps per epoch
+        buffer_size=args.buffer_size,
         linear=args.linear,
+        num_actions=args.num_actions,  # number of actions, only used for discrete action space
+        obs_window=args.obs_window,
     )
     env_args = {
         "discrete": policy_type == "discrete",
         "n_act": args.num_actions,
-        "obs_window": args.obs_window,
     }
     search_space = hparam_space.get_search_space()
 
