@@ -18,8 +18,8 @@ from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 from datetime import timedelta
-from GlucoseLLM.models.timeLLM import timeLLM
-from GlucoseLLM.models.llm_net import LLMPPO, LLM
+from GlucoseLLM.models.timeLLM import timeLLM, LLMInference
+from GlucoseLLM.models.llm_net import LLMPPO
 from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT, ACT_PROMPT
 from GlucoseLLM.prompt import get_text_obs, text2act
 
@@ -257,7 +257,7 @@ class LLM_Policy(BasePolicy):
 
     def __init__(
         self,
-        model: LLM,
+        model: LLMInference,
         action_space: gym.Space,
         observation_space: gym.Space | None = None,
         summary_prob: float = 0.0,

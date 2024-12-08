@@ -23,7 +23,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["llm_seed"],
-        "batch_size": 2,
+        "batch_size": 64,
         "obs_mode": common_hparams["obs_mode"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
         "update_per_step": common_hparams["update_per_step"],
@@ -46,7 +46,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
             {"llm": "Qwen2.5-1.5B-Instruct", "token_dim": 1536},
         ],
         # prompt hparam
-        "sum_prob": 1.0,
+        "sum_prob": 0.0,
     }
 
 

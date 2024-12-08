@@ -1,3 +1,4 @@
+import os
 import os.path
 from math import sqrt
 from typing import Union, List, Optional
@@ -5,6 +6,8 @@ import torch
 import torch.nn as nn
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from GlucoseLLM.prompt import SYS_PROMPT
 
 transformers.logging.set_verbosity_error()
 
@@ -338,7 +341,7 @@ class timeLLM(nn.Module):
         ]  # Shape: [batch_size, prompt_len + L, d_llm]
 
         dec_out = dec_out[:, -1, : self.d_ff]  # Shape: [batch_size, d_ff] Only take the last token, https://arxiv.org/pdf/2403.17031
-        dec_out = self.output_projection(dec_out)
+        dec_out = self.output_projection(dec_out).float()
         return dec_out
 
     def forward_text(self, prompts: List[str]):
@@ -370,8 +373,42 @@ class timeLLM(nn.Module):
         return generated_texts
 
 
-#     final debug forward pass
-#     check buffer, if all these can be saved in buffer, find the version where the buffer is fine
-#     debug DQN line by line
-#     train
 #     decision alignment + reprogramming alignment in learn backward, controlled by a epsilon-alike hyperparameter
+class LLMInference(torch.nn.Module):
+    """
+    LLM inference only
+    """
+
+    def __init__(
+        self,
+        llm="Qwen2.5-1.5B-Instruct",
+        context_window=32768,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        dtype=torch.bfloat16,
+        model_dir="/mnt/bn/gilesluo000/pretrained_models",
+    ):
+        super().__init__()
+        self.llm = llm
+        self.max_length = context_window
+        self.device = device
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
+        model_path = os.path.join(model_dir, llm)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, use_fast=True)
+        self.model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype=dtype).to(self.device)
+
+    def forward(self, input_text: str, system_prompt=SYS_PROMPT) -> str:
+        messages = [{"role": "system", "content": system_prompt}] if system_prompt is not None else []
+        messages.append({"role": "user", "content": input_text})
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False)
+
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Clip by prompt
+        if generated_text.startswith(prompt):
+            generated_text = generated_text[len(prompt) :].strip()  # Remove the prompt from the generated text
+
+        return generated_text

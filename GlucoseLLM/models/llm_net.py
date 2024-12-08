@@ -1,15 +1,12 @@
 import argparse
 import warnings
-from typing import Any, Dict, Sequence, Tuple, Type, Union, List
-
+from typing import Any, Dict, Sequence, Tuple, Type, Union
 import numpy as np
 import torch
 from tianshou.utils.net.common import MLP
 from torch import nn
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from GlucoseLLM.models.timeLLM import timeLLM
-from GlucoseLLM.prompt import Q_PROMPT, SYS_PROMPT, SUMMARY_PROMPT, ACT_PROMPT
+from GlucoseLLM.models.timeLLM import timeLLM, LLMInference
 
 ModuleType = Type[nn.Module]
 ArgsType = Union[Tuple[Any, ...], Dict[Any, Any], Sequence[Tuple[Any, ...]], Sequence[Dict[Any, Any]]]
@@ -178,46 +175,4 @@ def define_llm_ppo(
         summary_prompt=summary_prompt,
         act_prompt=act_prompt,
     ).to(device)
-    return net
-
-
-class LLM(torch.nn.Module):
-    """
-    LLM inference only
-    """
-
-    def __init__(self, llm="Qwen2.5-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
-        super().__init__()
-        self.llm = llm
-        self.max_length = context_window
-        self.device = device
-
-        self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
-
-    def forward(self, input_text: str, system_prompt=SYS_PROMPT) -> str:
-        messages = [{"role": "system", "content": system_prompt}] if system_prompt is not None else []
-        messages.append({"role": "user", "content": input_text})
-        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False)
-
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Clip by prompt
-        if generated_text.startswith(prompt):
-            generated_text = generated_text[len(prompt) :].strip()  # Remove the prompt from the generated text
-
-        return generated_text
-
-
-def define_llm(
-    llm="Qwen2-1.5B-Instruct",
-    context_window=32768,
-    device="cuda" if torch.cuda.is_available() else "cpu",
-    system_prompt=False,
-):
-    net = LLM(llm=llm, context_window=context_window, device=device, system_prompt=system_prompt).to(device)
     return net

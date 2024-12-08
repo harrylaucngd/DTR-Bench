@@ -1,9 +1,10 @@
+import os
 import torch
 import wandb
 from GlucoseLLM.LLM_policy import LLM_DQN_Policy, LLM_PPO_Policy, LLM_Policy
 from GlucoseLLM.LLM_hparams import LLMInference_HyperParams
-from GlucoseLLM.models.llm_net import LLM, LLMPPO
-from GlucoseLLM.models.timeLLM import timeLLM
+from GlucoseLLM.models.llm_net import LLMPPO
+from GlucoseLLM.models.timeLLM import timeLLM, LLMInference
 from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 from DTRBench.src.onpolicyRLHparams import OnPolicyRLHyperParameterSpace
 from DTRBench.src.RLObj import DQNObjective, PPOObjective
@@ -33,7 +34,7 @@ class LLM_DQN_Objective(DQNObjective):
         llm_mode,
         sum_prob,
         *args,
-        **kwargs
+        **kwargs,
     ):
         cat_num, stack_num = obs_mode[list(obs_mode.keys())[0]]["cat_num"], obs_mode[list(obs_mode.keys())[0]]["stack_num"]
         seq_len = cat_num * stack_num  # calculate sequence length
@@ -91,7 +92,7 @@ class LLM_PPO_Objective(PPOObjective):
         linear,
         llm_mode,
         sum_prob,
-        **kwargs
+        **kwargs,
     ):
         cat_num, stack_num = 48, 1
         actor = define_llm_ppo(
@@ -157,14 +158,12 @@ class LLM_PPO_Objective(PPOObjective):
         return policy
 
 
-class LLM_Objective(RLObjective):
+class LLMInferenceObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: LLMInference_HyperParams, device, **kwargs):
         super().__init__(env_name, env_args, hparam_space, device=device, **kwargs)
 
     def define_policy(self, llm_mode, **kwargs):
-        net = LLM(llm=llm_mode["llm"], context_window=llm_mode["context_window"], device=self.device, system_prompt=universal_sys_prompt).to(
-            self.device
-        )
+        net = LLMInference(llm=llm_mode["llm"], context_window=llm_mode["context_window"], device=self.device).to(self.device)
         return LLM_Policy(
             net,
             action_space=self.action_space,
@@ -186,3 +185,23 @@ class LLM_Objective(RLObjective):
 
         # test on all envs
         self.test_all_patients(self.policy, None, int(hparams["seed"]), self.logger, n_episode=20)
+
+    def search_once(self, hparams: dict):
+        # Define paths for logging
+        hp_name = "-".join([f"{v}" for k, v in hparams.items() if k not in ["wandb_project_name", "log_dir"]])
+        wandb.init(project=hparams["wandb_project_name"], config=hparams)
+        self.log_path = os.path.join(self.meta_param["log_dir"], f"search_once/{hp_name}")
+        os.makedirs(self.log_path, exist_ok=True)
+        self.logger = WandbLogger(train_interval=10, update_interval=100)
+
+        # Prepare the environment using the given hyperparameters
+        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
+        set_global_seed(int(hparams["seed"]))
+
+        # Define and train the policy
+        print("Prepare policy")
+        policy = self.define_policy(**{**hparams, **self.meta_param})
+        print("Start testing")
+
+        # Test the policy
+        self.test_all_patients(policy, None, int(hparams["seed"]), self.logger, n_episode=20)
