@@ -47,7 +47,7 @@ def risk_reward_fn(bg_current, bg_next, terminated, truncated, insulin):
 
     X_MAX, X_MIN = 0, -100
     r = -risk_index([bg_next], 1)[-1]
-    rew = ((r - X_MIN) / (X_MAX - X_MIN))
+    rew = (r - X_MIN) / (X_MAX - X_MIN)
     if bg_next < 40 and rew < 0:
         risk_reward = rew * 2
     else:
@@ -354,17 +354,43 @@ class RandomPatientEnv(gymnasium.Env):
     from the provided list of candidates at the start of each episode.
     It supports the exact same arguments as SinglePatientEnv, with the addition of `candidates`.
     """
+
     metadata = {"render.modes": ["human"]}
     patient_list = [
-        "adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004", "adolescent#005",
-        "adolescent#006", "adolescent#007", "adolescent#008", "adolescent#009", "adolescent#010",
-        "adult#001", "adult#002", "adult#003", "adult#004", "adult#005",
-        "adult#006", "adult#007", "adult#008", "adult#009", "adult#010",
-        "child#001", "child#002", "child#003", "child#004", "child#005",
-        "child#006", "child#007", "child#008", "child#009", "child#010",
+        "adolescent#001",
+        "adolescent#002",
+        "adolescent#003",
+        "adolescent#004",
+        "adolescent#005",
+        "adolescent#006",
+        "adolescent#007",
+        "adolescent#008",
+        "adolescent#009",
+        "adolescent#010",
+        "adult#001",
+        "adult#002",
+        "adult#003",
+        "adult#004",
+        "adult#005",
+        "adult#006",
+        "adult#007",
+        "adult#008",
+        "adult#009",
+        "adult#010",
+        "child#001",
+        "child#002",
+        "child#003",
+        "child#004",
+        "child#005",
+        "child#006",
+        "child#007",
+        "child#008",
+        "child#009",
+        "child#010",
     ]
     all_patient_meta = pd.read_csv(str(resources.files("simglucose").joinpath("params/Quest.csv")))
     INSULIN_PUMP_HARDWARE = "Insulet"
+
     def __init__(
         self,
         candidates: list = None,  # The only additional argument compared to SinglePatientEnv
@@ -377,7 +403,7 @@ class RandomPatientEnv(gymnasium.Env):
         missing_rate=0.0,
         sample_time=1,
         start_time=0,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.candidates = candidates or self.patient_list  # If candidates are not specified, use the default list
@@ -466,7 +492,14 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = SinglePatientEnv(
-        "adult#001", 16 * 60, random_init_bg=True, random_obs=True, random_meal=False, start_time=5 * 60 * 60, obs_window=obs_window, missing_rate=0.0
+        "adult#001",
+        16 * 60,
+        random_init_bg=True,
+        random_obs=True,
+        random_meal=False,
+        start_time=5 * 60 * 60,
+        obs_window=obs_window,
+        missing_rate=0.0,
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -474,7 +507,7 @@ def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, 
     return env
 
 
-def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False,  obs_window=12, **kwargs):
+def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = RandomPatientEnv(
         candidates=[
             "adult#001",
@@ -482,9 +515,13 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False,  obs_window=12,
             "adult#003",
             "adult#004",
         ],
-        max_t=16 * 60, random_init_bg=True, random_obs=True, random_meal=False, start_time=5 * 60 * 60, obs_window=obs_window,
-        missing_rate=0.0
-
+        max_t=16 * 60,
+        random_init_bg=True,
+        random_obs=True,
+        random_meal=False,
+        start_time=5 * 60 * 60,
+        obs_window=obs_window,
+        missing_rate=0.0,
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
