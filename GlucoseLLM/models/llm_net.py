@@ -70,7 +70,7 @@ class LLMPPO(timeLLM):
     def forward_act(self, series, prompts):
         # Inference the whole network
         dec_out = self.forecast(series, prompts)
-        return dec_out[:, -self.pred_len :, :].squeeze(-1), []
+        return dec_out[:, -self.action_size :, :].squeeze(-1), []
 
     def forward_text(self, prompts, max_length=256):
         inputs = self.tokenizer(prompts, return_tensors="pt").to(self.llm_model.device)

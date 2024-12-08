@@ -205,9 +205,8 @@ class timeLLM(nn.Module):
     def __init__(
         self,
         llm_name,
-        pred_len,
+        action_size,
         seq_len,
-        n_time,
         token_dim,
         patch_len,
         stride,
@@ -217,10 +216,10 @@ class timeLLM(nn.Module):
         d_ff=-1,
         max_new_tokens=256,
         dtype=torch.bfloat16,
-        model_dir = "/mnt/bn/gilesluo000/pretrained_models"
+        model_dir="/mnt/bn/gilesluo000/pretrained_models",
     ):
         super(timeLLM, self).__init__()
-        self.pred_len = pred_len  # Prediction length
+        self.action_size = action_size  # Prediction length
         self.seq_len = seq_len  # Input sequence length
         self.d_ff = d_ff
         self.token_dim = token_dim  # Embedding dimension of the LLM
@@ -231,7 +230,7 @@ class timeLLM(nn.Module):
         self.max_new_tokens = max_new_tokens
 
         # Load or download the pre-trained LLM
-        # model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
@@ -292,32 +291,18 @@ class timeLLM(nn.Module):
         self.reprogramming_layer = ReprogrammingLayer(d_model, n_heads, self.d_ff, self.token_dim, dtype=self.dtype)
 
         # Output projection
-        self.output_projection = nn.Linear(self.d_ff, self.pred_len, dtype=self.dtype)
+        self.output_projection = nn.Linear(self.d_ff, self.action_size, dtype=self.dtype)
         nn.init.kaiming_normal_(self.output_projection.weight, mode="fan_in", nonlinearity="relu")  # qwen uses SwiGLU, which is similar to ReLU
 
         # define a old output projection for target network
-        self.output_projection_old = nn.Linear(self.d_ff, self.pred_len, dtype=self.dtype)
+        self.output_projection_old = nn.Linear(self.d_ff, self.action_size, dtype=self.dtype)
         nn.init.kaiming_normal_(self.output_projection_old.weight, mode="fan_in", nonlinearity="relu")
 
         self.active_branch = "model"
         self.to(dtype=self.dtype)
 
     def forward(self, x_enc, prompts: Union[str, List[str]]):
-        """
-        Forward pass for the model.
-
-        Args:
-            x_enc (Tensor): Time series input, shape [batch_size, seq_len, n_vars]
-            prompts (Union[str, List[str]]): Textual prompts
-
-        Returns:
-            Tensor: Forecasted output, shape [batch_size, pred_len, n_vars]
-        """
         x_enc = torch.from_numpy(x_enc).to(dtype=self.dtype).to(self.embeddings.device)
-        dec_out = self.forecast(x_enc, prompts)
-        return dec_out[:, -self.pred_len :, :]
-
-    def forecast(self, x_enc, prompts: Union[str, List[str]]):
         ## Prepare text
         encoding = self.tokenizer(
             prompts,
@@ -352,7 +337,6 @@ class timeLLM(nn.Module):
             -1
         ]  # Shape: [batch_size, prompt_len + L, d_llm]
 
-        dec_out = dec_out[:, prompt_len:, :]  # Shape: [batch_size, L, d_llm]
         dec_out = dec_out[:, -1, : self.d_ff]  # Shape: [batch_size, d_ff] Only take the last token, https://arxiv.org/pdf/2403.17031
         dec_out = self.output_projection(dec_out)
         return dec_out

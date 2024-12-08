@@ -289,6 +289,8 @@ class LLM_Policy(BasePolicy):
             {"role": "system", "content": SYS_PROMPT},
             {"role": "user", "content": f"###Observations\n{txt_obs}\n\n ###Request\n{Q_PROMPT}\n\n###Answer\n"},
         ]
+        # todo: add summary prompts
+        # todo: log generated answer
         logits = model(prompt)
         act = [text2act(logits)]
         result = Batch(act=act, state=state)

@@ -40,9 +40,8 @@ class LLM_DQN_Objective(DQNObjective):
         # define model
         net = timeLLM(
             llm_name=llm_mode["llm"],
-            pred_len=self.action_shape,
+            action_size=self.action_shape,
             seq_len=seq_len,
-            n_time=2,
             token_dim=llm_mode["token_dim"],
             patch_len=24,
             stride=2,
