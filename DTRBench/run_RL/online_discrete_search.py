@@ -38,11 +38,11 @@ def parse_args():
 
     # training-aid hyperparameters
     parser.add_argument("--wandb_project_name", type=str, default="LLM4RL-1127")
-    parser.add_argument("--sweep_id", type=str, default="tf1dagsn", help="sweep id for wandb," " only used in agent mode")
+    parser.add_argument("--sweep_id", type=str, default="mq3r8shk", help="sweep id for wandb," " only used in agent mode")
     parser.add_argument(
         "--task",
         type=str,
-        default="SimGlucoseEnv-adult1",
+        default="SimGlucoseEnv-adult4",
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument("--epoch", type=int, default=40)
     parser.add_argument("--num_actions", type=int, default=11)
     parser.add_argument("--step_per_epoch", type=int, default=10 * 12 * 16)
-    parser.add_argument("--buffer_size", type=int, default=1e5)
+    parser.add_argument("--buffer_size", type=int, default=1e6)
     parser.add_argument("--linear", type=to_bool, default=False)
     parser.add_argument(
         "--policy_name",
@@ -63,7 +63,7 @@ def parse_args():
     )
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single"])
+    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single"])
     args = parser.parse_known_args()[0]
     return args
 
