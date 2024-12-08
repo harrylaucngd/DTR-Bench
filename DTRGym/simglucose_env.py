@@ -466,7 +466,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = SinglePatientEnv(
-        "adult#001", 16 * 60, random_init_bg=True, random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window, missing_rate=0.0
+        "adult#001", 16 * 60, random_init_bg=True, random_obs=True, random_meal=False, start_time=5 * 60 * 60, obs_window=obs_window, missing_rate=0.0
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -482,7 +482,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False,  obs_window=12,
             "adult#003",
             "adult#004",
         ],
-        max_t=16 * 60, random_init_bg=True, random_obs=True, random_meal=True, start_time=5 * 60, obs_window=obs_window,
+        max_t=16 * 60, random_init_bg=True, random_obs=True, random_meal=False, start_time=5 * 60 * 60, obs_window=obs_window,
         missing_rate=0.0
 
     )

@@ -12,24 +12,17 @@ SYS_PROMPT = (
     "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will "
     "be penalized for blood glucose <70 or >140, and high insulin doses. Notably, low blood glucose "
     "levels are much more dangerous. You should take caution to avoid overdosing insulin, thus "
-    "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units, ranging from 0 to 2.5."
+    "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units, ranging from 0 to 0.5 unit/min."
 )
 
 Q_PROMPT = (
     "Please predict the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
-    "the following insulin dosage bins for the current 5 minute interval: ['0', '0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1', "
-    "'1-1.25', '1.25-1.5', '1.5-1.75', '1.75-2', '2-2.25', '2.25-2.5']."
+    "the following insulin dosage bins for the current 5 minute interval: bins = ['0', '0-0.05', '0.05-0.1', '0.1-0.15', '0.15-0.2', '0.2-0.25', '0.25-0.3', '0.3-0.35', '0.35-0.4', '0.4-0.45', '0.45-0.5']."
 )  # expertised system prompt for series information description and Q value prediction
 
-Q_RANKING_PROMPT = (
-    "Please rank the insulin dosage bins ['0', '0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1', "
-    "'1-1.25', '1.25-1.5', '1.5-1.75', '1.75-2', '2-2.25', '2.25-2.5'] in the descending order of your preference to maintain a patient's blood glucose levels within 70-140 mg/dL. "
-)
+Q_RANKING_PROMPT = "Please rank the insulin dosage bins ['0', '0-0.05', '0.05-0.1', '0.1-0.15', '0.15-0.2', '0.2-0.25', '0.25-0.3', '0.3-0.35', '0.35-0.4', '0.4-0.45', '0.45-0.5'] in the descending order of your preference to maintain a patient's blood glucose levels within 70-140 mg/dL. "
 
-ACT_PROMPT = """What is the optimal insulin dosage for the current 5 minute interval to maintain a patient's blood glucose levels within 70-140 mg/dL? Let's think about your decision step by step briefly, and finally, generate a value between 0 and 2.5 with the following format:
-```answer
-# optimal dosage here. Numerical value only, without any other characters.
-```"""
+ACT_PROMPT = """What is the optimal insulin dosage for the current 5 minute interval to maintain a patient's blood glucose levels within 70-140 mg/dL? Choose a value between 0 and 0.5 unit/min. Output a numerical value without unit or anything else."""
 
 
 SUMMARY_PROMPT = (
@@ -83,12 +76,7 @@ def get_patient_info_text(batch):
 
 def text2act(logits, action_space):
     try:
-        matches = re.findall(r"```answer\s*(.*?)\s*```", logits, re.DOTALL)
-        if len(matches) == 1:
-            return np.clip(float(matches[0]), 0, 2.5)
-        elif len(matches) == 0:
-            return np.clip(float(logits), 0, 2.5)
-        else:
-            return np.clip(float(np.random.choice(matches)), 0, 2.5)
+        action = np.clip(float(logits), action_space.low[0], action_space.high[0])
     except (ValueError, IndexError):
-        return action_space.sample()
+        action = action_space.sample()
+    return action

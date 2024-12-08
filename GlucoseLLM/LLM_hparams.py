@@ -94,6 +94,7 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "llm_mode": [
+            {"llm": "Qwen2.5-0.5B-Instruct", "context_window": 32768},
             {"llm": "Qwen2.5-1.5B-Instruct", "context_window": 32768},
             # todo: llama3 7b
             # qwen 7b

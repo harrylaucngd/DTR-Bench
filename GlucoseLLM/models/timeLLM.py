@@ -404,11 +404,5 @@ class LLMInference(torch.nn.Module):
 
         with torch.no_grad():
             outputs = self.model.generate(inputs.input_ids, max_length=self.max_length, do_sample=False)
-
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Clip by prompt
-        if generated_text.startswith(prompt):
-            generated_text = generated_text[len(prompt) :].strip()  # Remove the prompt from the generated text
-
+        generated_text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[-1] :], skip_special_tokens=True)
         return generated_text

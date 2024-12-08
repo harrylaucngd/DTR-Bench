@@ -283,13 +283,11 @@ class LLM_Policy(BasePolicy):
         # get summary
         obs = batch.obs
         batch_size = len(obs)
-        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=batch_size)
         txt_obs = get_text_obs(batch)
 
         final_answers = []
         for i in range(batch_size):
             need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=1)
-            cur_obs = txt_obs[i]
             if need_summary[0]:
                 summary_prompt = f"### Observation\n{txt_obs[i]}\n\n### Request\n{SUMMARY_PROMPT}\n\n### Answer\n"
                 summary = self.model(summary_prompt, system_prompt=SYS_PROMPT)
@@ -299,10 +297,12 @@ class LLM_Policy(BasePolicy):
 
             act_prompt = f"###Observations\n{txt_obs[i]}\n\n{summary}### Request\n{ACT_PROMPT}\n\n###Answer\n"
             ans = self.model(act_prompt, system_prompt=SYS_PROMPT)
-            thinking, act = text2act(ans, self.action_space)
-        logits = model(prompt)
-        act = [text2act(logits)]
-        result = Batch(act=act, state=state)
+            act = text2act(ans, self.action_space)
+            final_answers.append(act)
+        result = Batch(
+            act=final_answers,
+            state=state,
+        )
         return cast(ModelOutputBatchProtocol, result)
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
