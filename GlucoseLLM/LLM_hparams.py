@@ -42,8 +42,8 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "use_dueling": False,
         # llm hparam
         "llm_mode": [
-            {"llm": "Qwen2-0.5B-Instruct", "token_dim": 896},
-            {"llm": "Qwen2-1.5B-Instruct", "token_dim": 1536},
+            {"llm": "Qwen2.5-0.5B-Instruct", "token_dim": 896},
+            {"llm": "Qwen2.5-1.5B-Instruct", "token_dim": 1536},
         ],
         # prompt hparam
         "sum_prob": 1.0,
@@ -94,9 +94,11 @@ class LLMInference_HyperParams(OffPolicyRLHyperParameterSpace):
     # policy hyperparameter search space
     _policy_hparams = {
         "llm_mode": [
-            {"llm": "Qwen2-1.5B-Instruct", "context_window": 32768},
-            {"llm": "internlm2_5-7b-chat", "context_window": 32768},
-            {"llm": "Phi-3-small-128k-instruct", "context_window": 131072},
-            {"llm": "Yi-1.5-9B-Chat", "context_window": 4096},
+            {"llm": "Qwen2.5-1.5B-Instruct", "context_window": 32768},
+            # todo: llama3 7b
+            # qwen 7b 
+            # {"llm": "internlm2_5-7b-chat", "context_window": 32768},
+            # {"llm": "Phi-3-small-128k-instruct", "context_window": 131072},
+            # {"llm": "Yi-1.5-9B-Chat", "context_window": 4096},
         ],
     }

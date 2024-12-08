@@ -13,8 +13,8 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
-    "Qwen2-1.5B-Instruct": "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen2-0.5B-Instruct": "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen2.5-1.5B-Instruct": "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen2.5-0.5B-Instruct": "Qwen/Qwen2.5-0.5B-Instruct",
 }
 
 
@@ -217,7 +217,7 @@ class timeLLM(nn.Module):
         d_ff=-1,
         max_new_tokens=256,
         dtype=torch.bfloat16,
-        model_dir = "/mnt/bn/gilesluo000/"
+        model_dir = "/mnt/bn/gilesluo000/pretrained_models"
     ):
         super(timeLLM, self).__init__()
         self.pred_len = pred_len  # Prediction length
@@ -231,13 +231,14 @@ class timeLLM(nn.Module):
         self.max_new_tokens = max_new_tokens
 
         # Load or download the pre-trained LLM
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
+        # model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(
                 f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True, torch_dtype=self.dtype, output_hidden_states=True
             )
-        except EnvironmentError:
+        except EnvironmentError as e:
+            print(e)
             print(f"Local model files not found at {model_dir}. Attempting to download...")
             self.llm_model = AutoModelForCausalLM.from_pretrained(
                 f"{model_hf[llm_name]}", trust_remote_code=True, local_files_only=False, torch_dtype=self.dtype, output_hidden_states=True
