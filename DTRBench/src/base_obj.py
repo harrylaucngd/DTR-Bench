@@ -87,9 +87,27 @@ class RLObjective:
             result_dict = self.logger.prepare_dict_for_logging(asdict(result), f"final_test/{patient_name}")
             logger.write("this arg doesn't matter", 0, result_dict)
 
-    def search_once(self, hparams: dict, metric="best_reward"):
-        # todo: this is wrong
-        raise NotImplementedError
+    def search_once(self, hparams: dict):
+        # Define paths for logging
+        hp_name = "-".join([f"{v}" for k, v in hparams.items() if k not in ["wandb_project_name", "log_dir"]])
+        wandb.init(project=hparams["wandb_project_name"],
+                   config=hparams)
+        log_path = os.path.join(self.meta_param["log_dir"], f"search_once/{hp_name}")
+        os.makedirs(log_path, exist_ok=True)
+        self.logger = WandbLogger(train_interval=10, update_interval=100)
+
+        # Prepare the environment using the given hyperparameters
+        self.prepare_env(int(hparams["seed"]), self.env_name, **self.env_args)
+        set_global_seed(int(hparams["seed"]))
+
+        # Define and train the policy
+        print("Prepare policy")
+        policy = self.define_policy(**{**hparams, **self.meta_param})
+        print("Start training")
+        best_policy, test_fn = self.run(policy, **{**hparams, **self.meta_param})
+
+        # Test the policy
+        self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
     def early_stop_fn(self, mean_rewards):
         # todo: early stopping is not working for now, because stop_fn is called at each training step

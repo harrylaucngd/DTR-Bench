@@ -3,12 +3,12 @@ export PYTHONPATH='./'
 
 # Activate conda
 source /mnt/bn/gilesluo000/miniconda3/etc/profile.d/conda.sh
-conda activate tianshou
+conda activate tianshou1
 
 
-PROJECT_name=wandb_project_name
+PROJECT_name=Qwen0.5B-RL-1127
 task="SimGlucoseEnv-adult1"
-role="sweep"
+role="run_single"
 policy_name="LLM-DQN"
 sweep_id=blabla
 

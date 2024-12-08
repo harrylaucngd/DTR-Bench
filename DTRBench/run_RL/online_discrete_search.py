@@ -11,7 +11,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-wandb.require("core")
+# wandb.require("core")
 
 
 def call_agent():
@@ -63,7 +63,7 @@ def parse_args():
     )
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single"])
+    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single", "run_all"])
     args = parser.parse_known_args()[0]
     return args
 
@@ -116,6 +116,11 @@ if __name__ == "__main__":
             obj = obj_class(env_name, env_args, hparam_space, device=args.device)
             config_dict = hparam_space.sample(mode="random")
             obj.search_once({**config_dict, **{"wandb_project_name": args.wandb_project_name}})
+        elif args.role == "run_all":
+            obj = obj_class(env_name, env_args, hparam_space, device=args.device)
+            config_dict = hparam_space.sample(mode="all")
+            for hp in config_dict:
+                obj.search_once({**hp, **{"wandb_project_name": args.wandb_project_name}})
         else:
             print("role must be one of [sweep, agent, run_single], get {}".format(args.role))
             raise NotImplementedError

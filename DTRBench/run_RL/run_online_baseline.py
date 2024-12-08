@@ -7,7 +7,7 @@ from DTRBench.naive_baselines.baselineObj import BaselineObj
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-wandb.require("core")
+# wandb.require("core")
 
 
 def parse_args():

@@ -1,5 +1,6 @@
 from DTRBench.src.base_hparams import common_hparams
 import numpy as np
+import itertools
 
 
 class OffPolicyRLHyperParameterSpace:
@@ -103,18 +104,37 @@ class OffPolicyRLHyperParameterSpace:
     def sample(self, mode="first"):
         if mode == "first":
             sample_fn = lambda x: x[0]
+        elif mode == "all":
+            def sample_fn(values_key_pair_list):
+                # Each element of the pair list is (key, [values])
+                keys = [k for k, _ in values_key_pair_list]
+                values_product = itertools.product(*[v for _, v in values_key_pair_list])
+                return [dict(zip(keys, values_combination)) for values_combination in values_product]
         else:
             sample_fn = lambda x: np.random.choice(x)
+
         search_space = self.get_search_space()
-        result = {}
-        for k, v in search_space.items():
-            if "values" in v:
-                result[k] = sample_fn(v["values"])
-            elif "value" in v:
-                result[k] = v["value"]
-            else:
-                raise NotImplementedError
-        return result
+
+        if mode == "all":
+            # Extract keys and value lists where key has "values"
+            values_key_pair_list = [(k, v["values"]) for k, v in search_space.items() if "values" in v]
+            # Get all combinations via the product
+            combinations = sample_fn(values_key_pair_list)
+            # Fill the static "value" fields of hyperparameters with the same values in each combination
+            fixed_values = {k: v["value"] for k, v in search_space.items() if "value" in v}
+            for c in combinations:
+                c.update(fixed_values)
+            return combinations
+        else:
+            result = {}
+            for k, v in search_space.items():
+                if "values" in v:
+                    result[k] = sample_fn(v["values"])
+                elif "value" in v:
+                    result[k] = v["value"]
+                else:
+                    raise NotImplementedError
+            return result
 
     def get_meta_params(self):
         return {k: getattr(self, k) for k in self._meta_hparams}

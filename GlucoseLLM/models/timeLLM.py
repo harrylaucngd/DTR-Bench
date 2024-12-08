@@ -13,8 +13,8 @@ model_hf = {
     "internlm2_5-7b-chat": "internlm/internlm2_5-7b-chat",
     "Phi-3-small-128k-instruct": "microsoft/Phi-3-small-128k-instruct",
     "Yi-1.5-9B-Chat": "01-ai/Yi-1.5-9B-Chat",
-    "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
-    "Qwen2-0.5B-Instruct": "Qwen/Qwen2-0.5B-Instruct",
+    "Qwen2-1.5B-Instruct": "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen2-0.5B-Instruct": "Qwen/Qwen2.5-0.5B-Instruct",
 }
 
 
@@ -217,7 +217,7 @@ class timeLLM(nn.Module):
         d_ff=-1,
         max_new_tokens=256,
         dtype=torch.bfloat16,
-        model_dir = "/mnt/bn/gilesluo000/pretrained_models"
+        model_dir = "/mnt/bn/gilesluo000/"
     ):
         super(timeLLM, self).__init__()
         self.pred_len = pred_len  # Prediction length
@@ -238,7 +238,7 @@ class timeLLM(nn.Module):
                 f"{model_dir}/{llm_name}", trust_remote_code=True, local_files_only=True, torch_dtype=self.dtype, output_hidden_states=True
             )
         except EnvironmentError:
-            print("Local model files not found. Attempting to download...")
+            print(f"Local model files not found at {model_dir}. Attempting to download...")
             self.llm_model = AutoModelForCausalLM.from_pretrained(
                 f"{model_hf[llm_name]}", trust_remote_code=True, local_files_only=False, torch_dtype=self.dtype, output_hidden_states=True
             )
