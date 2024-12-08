@@ -13,7 +13,7 @@ from DTRBench.src.offpolicyRLHparams import OffPolicyRLHyperParameterSpace
 
 
 class RLObjective:
-    def __init__(self, env_name, env_args:dict, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
+    def __init__(self, env_name, env_args: dict, hyperparam: OffPolicyRLHyperParameterSpace, device, **kwargs):
         # define high level parameters
         self.env_name = env_name
         self.env_args = env_args
@@ -29,8 +29,7 @@ class RLObjective:
 
     def prepare_env(self, seed, env_name, **env_kwargs):
         # prepare env
-        self.env, self.train_envs, self.test_envs = make_env(env_name, int(seed),
-                                                             self.meta_param["training_num"], 1, **env_kwargs)
+        self.env, self.train_envs, self.test_envs = make_env(env_name, int(seed), self.meta_param["training_num"], 1, **env_kwargs)
         state_shape = self.env.observation_space.shape or self.env.observation_space.n
         self.state_space = self.env.observation_space
         action_shape = self.env.action_space.shape or self.env.action_space.n
@@ -53,9 +52,13 @@ class RLObjective:
         self.logger = WandbLogger(train_interval=10, update_interval=100)
         hparams = wandb.config
         # get names
-        hp_name = "-".join([f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
-                            for k, v in hparams.items() if
-                            k not in self.meta_param.keys() or k != "wandb_project_name"])
+        hp_name = "-".join(
+            [
+                f"{v}" if not isinstance(v, dict) else f"{list(v.keys())[0]}"
+                for k, v in hparams.items()
+                if k not in self.meta_param.keys() or k != "wandb_project_name"
+            ]
+        )
         self.log_path = os.path.join(self.meta_param["log_dir"], f"{hp_name}")
 
         print(f"logging to {self.log_path}")
@@ -77,10 +80,24 @@ class RLObjective:
         self.test_all_patients(best_policy, test_fn, int(hparams["seed"]), self.logger, n_episode=20)
 
     def test_all_patients(self, policy, test_fn, seed, logger, n_episode=20):
-        for patient_name in tqdm(["adolescent#001", "adolescent#002", "adolescent#003", "adolescent#004",
-                                  "adult#001", "adult#002", "adult#003", "adult#004",
-                                  "child#001", "child#002", "child#003", "child#004", "child#005"],
-                                 desc="final_testing"):
+        for patient_name in tqdm(
+            [
+                "adolescent#001",
+                "adolescent#002",
+                "adolescent#003",
+                "adolescent#004",
+                "adult#001",
+                "adult#002",
+                "adult#003",
+                "adult#004",
+                "child#001",
+                "child#002",
+                "child#003",
+                "child#004",
+                "child#005",
+            ],
+            desc="final_testing",
+        ):
             self.prepare_env(seed, "SimGlucoseEnv-single-patient", patient_name=patient_name, **self.env_args)
             test_collectors = Collector(policy, self.test_envs, exploration_noise=True)
             result = test_episode(policy, test_collectors, n_episode=n_episode, test_fn=test_fn, epoch=0)
@@ -90,10 +107,9 @@ class RLObjective:
     def search_once(self, hparams: dict):
         # Define paths for logging
         hp_name = "-".join([f"{v}" for k, v in hparams.items() if k not in ["wandb_project_name", "log_dir"]])
-        wandb.init(project=hparams["wandb_project_name"],
-                   config=hparams)
-        log_path = os.path.join(self.meta_param["log_dir"], f"search_once/{hp_name}")
-        os.makedirs(log_path, exist_ok=True)
+        wandb.init(project=hparams["wandb_project_name"], config=hparams)
+        self.log_path = os.path.join(self.meta_param["log_dir"], f"search_once/{hp_name}")
+        os.makedirs(self.log_path, exist_ok=True)
         self.logger = WandbLogger(train_interval=10, update_interval=100)
 
         # Prepare the environment using the given hyperparameters

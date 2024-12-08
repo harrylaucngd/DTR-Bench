@@ -19,8 +19,8 @@ from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 from datetime import timedelta
 from GlucoseLLM.models.timeLLM import timeLLM
-from GlucoseLLM.models.llm_net import LLMPPO
-from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT
+from GlucoseLLM.models.llm_net import LLMPPO, LLM
+from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT, ACT_PROMPT
 from GlucoseLLM.prompt import get_text_obs, text2act
 
 
@@ -257,7 +257,7 @@ class LLM_Policy(BasePolicy):
 
     def __init__(
         self,
-        model: torch.nn.Module,
+        model: LLM,
         action_space: gym.Space,
         observation_space: gym.Space | None = None,
         summary_prob: float = 0.0,
@@ -278,19 +278,28 @@ class LLM_Policy(BasePolicy):
         model: Literal["model", "model_old"] = "model",
         **kwargs: Any,
     ) -> ModelOutputBatchProtocol:
-        """Decide action over the given batch data."""
         model = getattr(self, model)
 
+        # get summary
+        obs = batch.obs
+        batch_size = len(obs)
+        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=batch_size)
         txt_obs = get_text_obs(batch)
-        need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=1)
-        summary_prompts = [summary_prompts[i] for i in range(batch_size) if need_summary[i]]
 
-        prompt = [
-            {"role": "system", "content": SYS_PROMPT},
-            {"role": "user", "content": f"###Observations\n{txt_obs}\n\n ###Request\n{Q_PROMPT}\n\n###Answer\n"},
-        ]
-        # todo: add summary prompts
-        # todo: log generated answer
+        final_answers = []
+        for i in range(batch_size):
+            need_summary = random.choices([True, False], weights=[self.summary_prob, 1 - self.summary_prob], k=1)
+            cur_obs = txt_obs[i]
+            if need_summary[0]:
+                summary_prompt = f"### Observation\n{txt_obs[i]}\n\n### Request\n{SUMMARY_PROMPT}\n\n### Answer\n"
+                summary = self.model(summary_prompt, system_prompt=SYS_PROMPT)
+                summary = f"### Summary of History\n{summary}\n\n"
+            else:
+                summary = ""
+
+            act_prompt = f"###Observations\n{txt_obs[i]}\n\n{summary}### Request\n{ACT_PROMPT}\n\n###Answer\n"
+            ans = self.model(act_prompt, system_prompt=SYS_PROMPT)
+            thinking, act = text2act(ans, self.action_space)
         logits = model(prompt)
         act = [text2act(logits)]
         result = Batch(act=act, state=state)
@@ -298,3 +307,5 @@ class LLM_Policy(BasePolicy):
 
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TTrainingStats:
         raise NotImplementedError("LLM_Policy does not support learning.")
+
+    # todo: log generated answer

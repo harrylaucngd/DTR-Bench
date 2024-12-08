@@ -186,18 +186,17 @@ class LLM(torch.nn.Module):
     LLM inference only
     """
 
-    def __init__(self, llm="Qwen2-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, llm="Qwen2.5-1.5B-Instruct", context_window=32768, device="cuda" if torch.cuda.is_available() else "cpu"):
         super().__init__()
         self.llm = llm
         self.max_length = context_window
         self.device = device
-        self.system_prompt = SYS_PROMPT
 
         self.tokenizer = AutoTokenizer.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True)
         self.model = AutoModelForCausalLM.from_pretrained(f"model_hub/{self.llm}", trust_remote_code=True).to(self.device)
 
-    def forward(self, input_text):
-        messages = [{"role": "system", "content": self.system_prompt}] if self.system_prompt else []
+    def forward(self, input_text: str, system_prompt=SYS_PROMPT) -> str:
+        messages = [{"role": "system", "content": system_prompt}] if system_prompt is not None else []
         messages.append({"role": "user", "content": input_text})
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)

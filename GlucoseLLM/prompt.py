@@ -26,12 +26,15 @@ Q_RANKING_PROMPT = (
     "'1-1.25', '1.25-1.5', '1.5-1.75', '1.75-2', '2-2.25', '2.25-2.5'] in the descending order of your preference to maintain a patient's blood glucose levels within 70-140 mg/dL. "
 )
 
-ACT_PROMPT = "What is the optimal insulin dosage for the current 5 minute interval to maintain a patient's blood glucose levels within 70-140 mg/dL? Generate a value between 0 and 2.5 without anything else."  # expertised system prompt for series information description and action prediction
+ACT_PROMPT = """What is the optimal insulin dosage for the current 5 minute interval to maintain a patient's blood glucose levels within 70-140 mg/dL? Let's think about your decision step by step briefly, and finally, generate a value between 0 and 2.5 with the following format:
+```answer
+# optimal dosage here. Numerical value only, without any other characters.
+```"""
 
 
 SUMMARY_PROMPT = (
     "Please summarize history glucose record and drug usage. Your answer should base on facts and be concise. "
-    "Extract as much information as possible while keeping the answer brief."
+    "Extract as much information as possible while keeping the answer brief. Let's think step by step."
 )  # expertised system prompt of background knowledge for regulation summary
 
 
@@ -79,11 +82,13 @@ def get_patient_info_text(batch):
 
 
 def text2act(logits, action_space):
-    numbers = re.findall(r"-?\d+\.?\d*", logits)  # todo: make sure it select the correct number with 0.
-    numbers = [float(num) for num in numbers]
-
-    if len(numbers) == 0:
+    try:
+        matches = re.findall(r"```answer\s*(.*?)\s*```", logits, re.DOTALL)
+        if len(matches) == 1:
+            return np.clip(float(matches[0]), 0, 2.5)
+        elif len(matches) == 0:
+            return np.clip(float(logits), 0, 2.5)
+        else:
+            return np.clip(float(np.random.choice(matches)), 0, 2.5)
+    except (ValueError, IndexError):
         return action_space.sample()
-
-    # always select the first number
-    return np.clip(numbers[0], 0, 0.5)
