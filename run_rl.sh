@@ -11,5 +11,6 @@ task="SimGlucoseEnv-adult1"
 role="run_single"
 policy_name="LLM-DQN"
 sweep_id=blabla
+epoch=10
 
-python ./DTRBench/run_RL/online_discrete_search.py --wandb_project_name $PROJECT_name --task $task --role $role --policy_name $policy_name --sweep_id $sweep_id
+python ./DTRBench/run_RL/online_discrete_search.py --wandb_project_name $PROJECT_name --task $task --role $role --policy_name $policy_name --sweep_id $sweep_id --epoch $epoch

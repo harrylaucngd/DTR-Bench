@@ -23,10 +23,10 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
     _general_hparams = {
         # general parameters
         "seed": common_hparams["llm_seed"],
-        "batch_size": 64,
+        "batch_size": 8,
         "obs_mode": common_hparams["obs_mode"],
         "step_per_collect": common_hparams["step_per_collect"],  # number of steps per collect. refer to tianshou's doc
-        "update_per_step": common_hparams["update_per_step"],
+        "update_per_step": 4,
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
         "start_timesteps": common_hparams["start_timesteps"],

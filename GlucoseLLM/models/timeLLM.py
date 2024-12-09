@@ -233,7 +233,7 @@ class timeLLM(nn.Module):
         self.max_new_tokens = max_new_tokens
 
         # Load or download the pre-trained LLM
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
+        # model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained_models")
         os.makedirs(model_dir, exist_ok=True)
         try:
             self.llm_model = AutoModelForCausalLM.from_pretrained(

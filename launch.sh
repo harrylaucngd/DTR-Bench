@@ -1,6 +1,7 @@
 export HTTP_PROXY=http://sys-proxy-rd-relay.byted.org:8118
 export http_proxy=http://sys-proxy-rd-relay.byted.org:8118
 export https_proxy=http://sys-proxy-rd-relay.byted.org:8118
+cd /opt/tiger
 git clone https://github.com/harrylaucngd/DTR-Bench.git
 cd DTR-Bench
 git checkout LLM
