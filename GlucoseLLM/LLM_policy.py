@@ -23,6 +23,7 @@ from GlucoseLLM.models.timeLLM import timeLLM, LLMInference
 from GlucoseLLM.models.llm_net import LLMPPO
 from GlucoseLLM.prompt import SYS_PROMPT, SUMMARY_PROMPT, Q_PROMPT, ACT_PROMPT
 from GlucoseLLM.prompt import get_text_obs, text2act
+from tianshou.policy.modelfree.dqn import DQNTrainingStats
 
 
 class LLM_DQN_Policy(DQNPolicy):
