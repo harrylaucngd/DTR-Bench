@@ -34,6 +34,7 @@ class LLM_DQN_Objective(DQNObjective):
         # llm prompt
         llm_mode,
         sum_prob,
+        gradient_accumulation_steps,
         *args,
         **kwargs,
     ):
@@ -74,6 +75,7 @@ class LLM_DQN_Objective(DQNObjective):
             observation_space=self.state_space,
             summary_prob=sum_prob,
             lr_scheduler=scheduler,
+            gradient_accumulation_steps=gradient_accumulation_steps,
         )
         return policy
 

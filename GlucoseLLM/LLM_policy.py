@@ -44,6 +44,7 @@ class LLM_DQN_Policy(DQNPolicy):
         observation_space: gym.Space | None = None,
         lr_scheduler: TLearningRateScheduler | None = None,
         summary_prob: float = 0.0,
+        gradient_accumulation_steps: int = 1,
     ) -> None:
         BasePolicy.__init__(
             self,
@@ -67,6 +68,7 @@ class LLM_DQN_Policy(DQNPolicy):
         self.is_double = is_double
         self.clip_loss_grad = clip_loss_grad
         self.summary_prob = summary_prob
+        self.accumulation_steps = gradient_accumulation_steps
 
     def _target_q(self, buffer, indices) -> torch.Tensor:
         obs_next_batch = Batch(
@@ -145,7 +147,10 @@ class LLM_DQN_Policy(DQNPolicy):
     def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
         if self._target and self._iter % self.freq == 0:
             self.sync_weight()
-        self.optim.zero_grad()
+
+        if self._iter % self.accumulation_steps == 0:
+            self.optim.zero_grad()
+
         weight = batch.pop("weight", 1.0)
         q = self(batch).logits
         q = q[np.arange(len(q)), batch.act]
@@ -161,8 +166,11 @@ class LLM_DQN_Policy(DQNPolicy):
 
         batch.weight = td_error  # prio-buffer
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)  # Gradient clipping added here
-        self.optim.step()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1)  # Gradient clipping added here
+
+        if (self._iter + 1) % self.accumulation_steps == 0:
+            self.optim.step()
+
         self._iter += 1
 
         return DQNTrainingStats(loss=loss.item())  # type: ignore[return-value]

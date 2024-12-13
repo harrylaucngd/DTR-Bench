@@ -30,6 +30,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         # number of frames to concatenate, cannot be used with stack_num or rnn, must be specified in the child class
         "gamma": common_hparams["gamma"],
         "start_timesteps": common_hparams["start_timesteps"],
+        "gradient_accumulation_steps": 2,
     }
     _policy_hparams = {
         "lr": [1e-6, 1e-5, 1e-4],  # learning rate
