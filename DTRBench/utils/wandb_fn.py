@@ -97,6 +97,7 @@ import pandas as pd
 import numpy as np
 from scipy.integrate import simpson as simps
 
+
 def calculate_metric(df):
     # todo: chunk until the best test step
     best_step = df.loc[df["history_test/returns_stat/mean"].idxmax(), "history_step"]
@@ -149,74 +150,121 @@ def get_sweep(project_path, sweep_name):
     runs = api.runs(project_path, {"sweep": sweep_ids[0]})
     for run in tqdm(runs, desc="Pulling runs from wandb"):
         # Extract the desired data from each experiment
-        col_to_extract = [
-            "step",
-            "train/returns_stat/mean",
-            "train/returns_stat/std",
-            "test/returns_stat/mean",
-            "test/returns_stat/std",
-            "train/bg",
-            "train/drug_mean",
-        ]
-        history = run.scan_history()
+        # col_to_extract = [
+        #     "step",
+        #     "train/returns_stat/mean",
+        #     "train/returns_stat/std",
+        #     "test/returns_stat/mean",
+        #     "test/returns_stat/std",
+        #     "train/bg",
+        #     "train/drug_mean",
+        # ]
+        # history = run.scan_history()
+        #
+        # data = {}
+        # for col in col_to_extract:
+        #     data[f"history_{col}"] = [h[col] for h in history]
+        #     if not data[f"history_{col}"]:
+        #         raise ValueError(f"Empty data for {col}")
+        # # process the data
+        # data_df = pd.DataFrame(data)
 
-        data = {}
-        for col in col_to_extract:
-            data[f"history_{col}"] = [h[col] for h in history]
-            if not data[f"history_{col}"]:
-                raise ValueError(f"Empty data for {col}")
-        # process the data
-        data_df = pd.DataFrame(data)
-
-        history_metrics = calculate_metric(data_df)
+        # history_metrics = calculate_metric(data_df)
 
         sweep_data.append(
-            dict(**{"id": run.id}, **history_metrics, **run.summary, **data, **run.config, **{"config_columns": list(run.config.keys())})
+            dict(**{"id": run.id}, **run.summary, **run.config, **{"config_columns": list(run.config.keys())})
         )  # add experiment logdir to base obj
     # Create a DataFrame for the current sweep
     df = pd.DataFrame(sweep_data)
     return df
 
 
+def recalculate_mean_and_std(group):
+    """Recalculates the seed-averaged mean and std for a group of data."""
+    recalculated = {}
+    for col in group.columns:
+        if "mean" in col or "std" in col:
+            if "mean" in col:
+                means = group[col].values
+                overall_mean = np.mean(means)
+                recalculated[col] = overall_mean
+            if "std" in col:
+
+                # Get corresponding 'mean' column for this 'std'
+                corresponding_mean_col = col.replace("std", "mean")
+                if corresponding_mean_col in group.columns:
+                    means = group[corresponding_mean_col].values
+                else:
+                    means = np.zeros_like(group[col].values)  # Default to zero if no mean column exists
+
+                stds = group[col].values
+                n = len(means)
+                pooled_variance = np.sum((stds**2) + (means - np.mean(means)) ** 2) / n
+                overall_std = np.sqrt(pooled_variance)
+                recalculated[col] = overall_std
+
+    return pd.Series(recalculated)
+
+
 def summary_one_algo(task_name, algo_name, metrics, project="LLM4RL", ignore=None):
     if ignore is None:
-        ignore = ["min", "max", "lens_stat", "collect_time", "n_collected_episodes", "collect_speed", "timestamp"]
+        ignore = [
+            "min",
+            "max",
+            "lens_stat",
+            "collect_time",
+            "n_collected_episodes",
+            "collect_speed",
+            "timestamp",
+            "n_collected_steps",
+            "_runtime",
+            "_step",
+        ]
     raw_data_df = get_sweep(project, f"{task_name}-{algo_name}")
-
+    raw_data_df["obs_mode"] = raw_data_df["obs_mode"].apply(lambda x: list(x.keys())[0])
+    if "is_double" in raw_data_df.columns:
+        raw_data_df = raw_data_df[raw_data_df["is_double"] == False]
     hyperparam_cols = [col for col in raw_data_df["config_columns"][0] if col not in ["logdir", "seed"]]
     raw_data_df["hyperparam"] = raw_data_df.apply(lambda x: "-".join([str(x[col]) for col in hyperparam_cols]), axis=1)
 
-    final_test_cols = [col for col in raw_data_df.columns if "final_test/" in col]
+    final_test_cols = [col for col in raw_data_df.columns if "final_test/" in col or "test/returns_stat" in col]
     final_test_cols = [col for col in final_test_cols if not any([ig in col for ig in ignore])]
     data_df = raw_data_df[final_test_cols]
-    data_df = pd.concat([data_df, raw_data_df[["hyperparam"]]], axis=1)
+    data_df = pd.concat([data_df, raw_data_df[["hyperparam", "use_knowledge", "obs_mode"]]], axis=1)
 
-    data_mean, data_std = data_df.groupby("hyperparam").mean(), data_df.groupby("hyperparam").std()
+    # Group by hyperparam and recalculate the mean and std properly
+    recalculated_df = data_df.groupby("hyperparam").apply(recalculate_mean_and_std).reset_index()
 
-    # process returns_stat differently
-    return_prefix = [col for col in data_mean.columns if "returns_stat/mean" in col and "returns_stat/std" in col]
-    for col in return_prefix:
-        data_mean[col.replace("mean", "mean"), col.replace("mean", "std")] = data_mean[col], data_std[col]
-        data_mean.drop(columns=col, inplace=True)
-        data_std.drop(columns=col, inplace=True)
+    # Ensure alignment with the original data size
+    assert len(recalculated_df) == len(raw_data_df) / raw_data_df["seed"].nunique()
 
-    assert data_mean.shape == data_std.shape
-    assert len(data_mean) == len(raw_data_df) / raw_data_df["seed"].nunique()
-    data_mean = data_mean.round(2)
-    data_mean["policy_name"] = algo_name
-    data_std = data_std.round(2)
-    data_std["policy_name"] = algo_name
+    recalculated_df = recalculated_df.round(2)
+    recalculated_df["policy_name"] = algo_name
 
-    # select best hyperparam for each metric, based on the best mean
-    best_mean, best_std = [], []
+    # Calculate subgroup results for use_knowledge and obs_mode
+    subgroup_results = {}
+    for use_knowledge_value in raw_data_df["use_knowledge"].unique():
+        for obs_mode_value in raw_data_df["obs_mode"].unique():
+            subgroup_key = f"use_knowledge_{use_knowledge_value}_obs_mode_{obs_mode_value}"
+            subgroup_df = raw_data_df[(raw_data_df["use_knowledge"] == use_knowledge_value) & (raw_data_df["obs_mode"] == obs_mode_value)]
+            if not subgroup_df.empty:
+                subgroup_recalculated = subgroup_df.groupby("hyperparam").apply(recalculate_mean_and_std).reset_index()
+                subgroup_results[subgroup_key] = subgroup_recalculated.round(2)
+    # Select best hyperparam for each metric, based on the highest test mean
+    best_rows = []
+    best_row = recalculated_df.loc[recalculated_df[metrics].idxmax()]
+    best_row["subgroup"] = "all"
+    best_rows.append(best_row)
 
-    for metric in metrics:
-        best_mean.append(data_mean.loc[data_mean[metric].idxmax(), metric])
-        best_std.append(data_std.loc[data_mean[metric].idxmax(), metric])
-    best_mean = pd.DataFrame([best_mean], columns=metrics, index=[algo_name])
-    best_std = pd.DataFrame([best_std], columns=metrics, index=[algo_name])
+    # Select best for each subgroup
+    for key, subgroup_df in subgroup_results.items():
+        best_row = subgroup_df.loc[subgroup_df[metrics].idxmax()]
+        best_row["subgroup"] = key
+        best_rows.append(best_row)
 
-    return best_mean, best_std
+    best_rows_df = pd.DataFrame(best_rows)
+
+    return best_rows_df
 
 
 def summarize_one_task(task_name, algos, metrics, mode="all"):
@@ -231,9 +279,11 @@ def summarize_one_task(task_name, algos, metrics, mode="all"):
 
 
 if __name__ == "__main__":
-    best_mean, best_std = summary_one_algo(
+    subgroup_results = summary_one_algo(
         "SimGlucoseEnv-adult1",
         algo_name="DQN",
-        project="LLM4RL-1127",
-        metrics=["test/returns_stat/mean", "test/returns_stat/std"],
+        project="LLM4RL-1208",
+        metrics="test/returns_stat/mean",
     )
+    for key, subgroup_df in subgroup_results.items():
+        subgroup_df.to_csv(f"{key}.csv", index=False)

@@ -24,16 +24,14 @@ import torch.nn.functional as F
 
 class DQNPolicyWithKnowledge(DQNPolicy):
     def exploration_noise(
-            self,
-            act,
-            batch,
+        self,
+        act,
+        batch,
     ):
         if isinstance(act, np.ndarray) and not np.isclose(self.eps, 0.0):
             bsz = len(act)
             rand_mask = np.random.rand(bsz) < self.eps
-            assert (
-                    self.max_action_num is not None
-            ), "Can't call this method before max_action_num was set in first forward"
+            assert self.max_action_num is not None, "Can't call this method before max_action_num was set in first forward"
 
             # Define the probability distribution
             p = [0] * self.max_action_num
@@ -53,6 +51,7 @@ class DQNPolicyWithKnowledge(DQNPolicy):
 
             act[rand_mask] = rand_act[rand_mask]
         return act
+
 
 class DQNObjective(RLObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -93,6 +92,7 @@ class DQNObjective(RLObjective):
             optim=optim,
             discount_factor=gamma,
             estimation_step=n_step,
+            clip_loss_grad=True,
             target_update_freq=target_update_freq,
             is_double=is_double,  # we will have a separate runner for double dqn
             action_space=self.action_space,
@@ -400,6 +400,7 @@ class PPOObjective(RLObjective):
         def normal_dist(*loc_scale: tuple[torch.Tensor, torch.Tensor]) -> Distribution:
             loc, scale = loc_scale
             return Independent(Normal(loc, scale), 1)
+
         #
         # def logit_normal_dist(loc: torch.Tensor, scale: torch.Tensor) -> torch.distributions.Distribution:
         #     scale = F.softplus(scale) + 1e-5
@@ -439,7 +440,6 @@ class PPOObjective(RLObjective):
             )
         else:
             buffer = ReplayBuffer(self.meta_param["buffer_size"], ignore_obs_next=False, save_only_last_obs=False, stack_num=1)
-
 
         if start_timesteps > 0:
             if start_timesteps == 100000:

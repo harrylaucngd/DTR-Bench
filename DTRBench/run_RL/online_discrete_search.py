@@ -30,9 +30,6 @@ def call_agent():
     return
 
 
-# todo: timeLLM forward fixed
-# todo: fixed LLMDQN
-# todo: fixed LLMPPO
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -42,7 +39,7 @@ def parse_args():
     parser.add_argument(
         "--task",
         type=str,
-        default="SimGlucoseEnv-adult4",
+        default="SimGlucoseEnv-adult1",
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
     parser.add_argument("--log_dir", type=str, default="sweep_log/")
@@ -57,13 +54,13 @@ def parse_args():
     parser.add_argument(
         "--policy_name",
         type=str,
-        default="PPO",  # Change this for different sweep!
+        default="LLM",  # Change this for different sweep!
         choices=["LLM-DQN", "LLM-PPO", "LLM", "DQN", "PPO"],
         help="remember to change this for different tasks! " "Wandb sweep won't work correctly if this is not changed!",
     )
 
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--role", type=str, default="agent", choices=["sweep", "agent", "run_single", "run_all"])
+    parser.add_argument("--role", type=str, default="sweep", choices=["sweep", "agent", "run_single", "run_all"])
     args = parser.parse_known_args()[0]
     return args
 

@@ -4,7 +4,7 @@ import random
 import gymnasium as gym
 import numpy as np
 import torch
-
+from tianshou.data import to_torch_as
 from tianshou.data import Batch, to_numpy
 from tianshou.data.batch import BatchProtocol
 from tianshou.data.types import (
@@ -15,6 +15,7 @@ from tianshou.data.types import (
 )
 from tianshou.policy import BasePolicy, DQNPolicy, PPOPolicy
 from tianshou.policy.base import TLearningRateScheduler, TTrainingStats
+from tianshou.policy.modelfree.dqn import TDQNTrainingStats
 from tianshou.policy.modelfree.pg import TDistributionFunction
 from tianshou.utils.net.common import ActorCritic
 from datetime import timedelta
@@ -140,6 +141,31 @@ class LLM_DQN_Policy(DQNPolicy):
 
         result = Batch(logits=logits, act=act, state=state)
         return cast(ModelOutputBatchProtocol, result)
+
+    def learn(self, batch: RolloutBatchProtocol, *args: Any, **kwargs: Any) -> TDQNTrainingStats:
+        if self._target and self._iter % self.freq == 0:
+            self.sync_weight()
+        self.optim.zero_grad()
+        weight = batch.pop("weight", 1.0)
+        q = self(batch).logits
+        q = q[np.arange(len(q)), batch.act]
+        returns = to_torch_as(batch.returns.flatten(), q)
+        td_error = returns - q
+
+        if self.clip_loss_grad:
+            y = q.reshape(-1, 1)
+            t = returns.reshape(-1, 1)
+            loss = torch.nn.functional.huber_loss(y, t, reduction="mean")
+        else:
+            loss = (td_error.pow(2) * weight).mean()
+
+        batch.weight = td_error  # prio-buffer
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)  # Gradient clipping added here
+        self.optim.step()
+        self._iter += 1
+
+        return DQNTrainingStats(loss=loss.item())  # type: ignore[return-value]
 
 
 class LLM_PPO_Policy(PPOPolicy):

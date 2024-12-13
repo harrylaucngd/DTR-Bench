@@ -105,11 +105,13 @@ class OffPolicyRLHyperParameterSpace:
         if mode == "first":
             sample_fn = lambda x: x[0]
         elif mode == "all":
+
             def sample_fn(values_key_pair_list):
                 # Each element of the pair list is (key, [values])
                 keys = [k for k, _ in values_key_pair_list]
                 values_product = itertools.product(*[v for _, v in values_key_pair_list])
                 return [dict(zip(keys, values_combination)) for values_combination in values_product]
+
         else:
             sample_fn = lambda x: np.random.choice(x)
 
@@ -190,7 +192,7 @@ class DQNHyperParams(OffPolicyRLHyperParameterSpace):
         "lr": common_hparams["lr"],  # learning rate
         "n_step": common_hparams["n_step"],
         "target_update_freq": common_hparams["target_update_freq"],
-        "is_double": [False, True],
+        "is_double": False,
         "use_dueling": False,
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_train"],

@@ -14,6 +14,7 @@ from DTRBench.utils.misc import set_global_seed
 from tianshou.utils.net.common import ActorCritic
 from DTRBench.utils.network import define_continuous_critic
 from torch.distributions import Distribution, Independent, Normal
+from transformers import AdamW, get_scheduler
 
 
 class LLM_DQN_Objective(DQNObjective):
@@ -45,20 +46,26 @@ class LLM_DQN_Objective(DQNObjective):
             seq_len=seq_len,
             token_dim=llm_mode["token_dim"],
             patch_len=24,
-            stride=2,
+            stride=6,
             d_model=2,
             dropout=0,
             n_heads=4,
-            d_ff=32,
+            d_ff=64,
             dtype=torch.bfloat16,
             max_new_tokens=256,
         ).to(self.device)
 
-        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        trainable_params = [p for p in net.parameters() if p.requires_grad]
+        optimizer = AdamW(trainable_params, lr=lr, weight_decay=0.01, betas=(0.9, 0.999), eps=1e-8)
+
+        num_training_steps = self.meta_param["step_per_epoch"] * self.meta_param["epoch"]  # Total training steps
+        num_warmup_steps = 0.05 * num_training_steps  # 5% of steps for warmup
+        scheduler = get_scheduler("cosine", optimizer=optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
+
         # define policy
         policy = LLM_DQN_Policy(
             net,
-            optim,
+            optimizer,
             gamma,
             n_step,
             target_update_freq=target_update_freq,
@@ -66,6 +73,7 @@ class LLM_DQN_Objective(DQNObjective):
             action_space=self.action_space,
             observation_space=self.state_space,
             summary_prob=sum_prob,
+            lr_scheduler=scheduler,
         )
         return policy
 
