@@ -338,9 +338,18 @@ class SinglePatientEnv(gymnasium.Env):
     @property
     def observation_space(self):
         if self._obs_space is None:
-            self._obs_space = spaces.Box(
-                low=np.array([10, self.action_space.low[0]]), high=np.array([600, self.action_space.high[0]]), dtype=np.float32
-            )
+            # Define bounds for each variable
+            var1_low = 10
+            var1_high = 600
+            var2_low = self.action_space.low[0]
+            var2_high = self.action_space.high[0]
+            
+            # Create low and high arrays with shape [48, 2]
+            low = np.tile(np.array([var1_low, var2_low]), (self.obs_window, 1))  # Shape: (48, 2)
+            high = np.tile(np.array([var1_high, var2_high]), (self.obs_window, 1))  # Shape: (48, 2)
+            
+            # Define the observation space
+            self._obs_space = spaces.Box(low=low, high=high, dtype=np.float32)
         return self._obs_space
 
     @property

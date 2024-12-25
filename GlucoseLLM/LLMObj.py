@@ -15,7 +15,7 @@ from tianshou.utils.net.common import ActorCritic
 from DTRBench.utils.network import define_continuous_critic
 from torch.distributions import Distribution, Independent, Normal
 from transformers import AdamW, get_scheduler
-
+from torch import nn
 
 class LLM_DQN_Objective(DQNObjective):
     def __init__(self, env_name, env_args, hparam_space: OffPolicyRLHyperParameterSpace, device, **kwargs):
@@ -46,13 +46,13 @@ class LLM_DQN_Objective(DQNObjective):
             action_size=self.action_shape,
             seq_len=seq_len,
             token_dim=llm_mode["token_dim"],
-            patch_len=24,
-            stride=6,
+            patch_len=48,
+            stride=12,
             d_model=2,
             dropout=0,
-            n_heads=4,
-            d_ff=64,
-            dtype=torch.bfloat16,
+            n_heads=2,
+            d_ff=32,
+            dtype=torch.float32,
             max_new_tokens=256,
         ).to(self.device)
 

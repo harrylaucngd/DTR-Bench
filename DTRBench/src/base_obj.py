@@ -35,9 +35,7 @@ class RLObjective:
         action_shape = self.env.action_space.shape or self.env.action_space.n
         self.action_space = self.env.action_space
         if isinstance(state_shape, (tuple, list)):
-            if len(state_shape) > 1:
-                raise NotImplementedError("state shape > 1 not supported yet")
-            self.state_shape = state_shape[0]
+            self.state_shape = state_shape[-1]
         else:
             self.state_shape = int(state_shape)
         if isinstance(action_shape, (tuple, list)):

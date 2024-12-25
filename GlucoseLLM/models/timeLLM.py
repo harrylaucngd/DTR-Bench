@@ -304,6 +304,7 @@ class timeLLM(nn.Module):
         self.active_branch = "model"
         self.to(dtype=self.dtype)
 
+
     def forward(self, x_enc, prompts: Union[str, List[str]]):
         x_enc = torch.from_numpy(x_enc).to(dtype=self.dtype).to(self.embeddings.device)
         ## Prepare text

@@ -33,7 +33,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "gradient_accumulation_steps": 2,
     }
     _policy_hparams = {
-        "lr": [1e-6, 1e-5, 1e-4],  # learning rate
+        "lr": [1e-4, 1e-3],  # learning rate
         "eps_test": common_hparams["eps_test"],
         "eps_train": common_hparams["eps_train"],
         "eps_train_final": common_hparams["eps_train_final"],
