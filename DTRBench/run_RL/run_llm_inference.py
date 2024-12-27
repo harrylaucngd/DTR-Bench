@@ -6,6 +6,7 @@ import ipdb
 import wandb
 from tqdm.asyncio import tqdm_asyncio  # For asyncio-compatible progress bar
 import pandas as pd
+import os
 # Importing existing modules
 from GlucoseLLM.LLMInference.client import VLLMClient, start_vllm_server, wait_for_server, shutdown_server, signal_handler
 from GlucoseLLM.LLMInference.policy import BaseTextPolicy
@@ -18,7 +19,7 @@ DEFAULT_MODEL_PATH = "/mnt/bn/gilesluo000/pretrained_models/Qwen2.5-Coder-7B-Ins
 DEFAULT_PORT = 8001
 DEFAULT_VLLM_SERVER_TIMEOUT = 360  # seconds
 DEFAULT_SEEDS = [1, 100, 1000, 10000]
-DEFAULT_REPEATS = 1
+DEFAULT_REPEATS = 5
 DEFAULT_CONCURRENCY = 32
 DEFAULT_PROJECT = "llm_inference_rl"  # Replace with your default project name
 DEFAULT_RUN_NAME = "TestRun"  # Replace with your default run name
@@ -139,7 +140,8 @@ async def run_tests(
     for coro in tqdm_asyncio.as_completed(tasks, desc="Testing", total=len(tasks)):
         result = await coro
         results.append(result)
-    ipdb.set_trace()
+    
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     # Save the results to a file
     pd.DataFrame(results).to_json(output_file, orient="records", lines=True)
 
@@ -150,23 +152,23 @@ def main():
     # Initialize WandB
     wandb_run = wandb.init(project=args.project, name=args.run_name, config=vars(args))
 
-    # server_command = SERVER_COMMAND_TEMPLATE.format(
-    #     conda_sh_path=DEFAULT_CONDA_SH_PATH,
-    #     conda_env=DEFAULT_CONDA_ENV,
-    #     vllm_rpc_timeout=100000000,
-    #     cuda_visible_devices="4,5,6,7",
-    #     model_path=args.model_path,
-    #     port=args.port,
-    # )
-    # server_process = start_vllm_server(server_command)
-    #
-    # # Register the signal handler for graceful shutdown
-    # signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, server_process))
-    # signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, server_process))
+    server_command = SERVER_COMMAND_TEMPLATE.format(
+        conda_sh_path=DEFAULT_CONDA_SH_PATH,
+        conda_env=DEFAULT_CONDA_ENV,
+        vllm_rpc_timeout=100000000,
+        cuda_visible_devices=args.cuda_visible_devices,
+        model_path=args.model_path,
+        port=args.port,
+    )
+    server_process = start_vllm_server(server_command)
+    
+    # Register the signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, server_process))
+    signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, server_process))
 
 
     # Wait for the server to be ready
-    # wait_for_server(args.port, timeout=args.timeout)
+    wait_for_server(args.port, timeout=args.timeout)
 
     # Run the tests within the asyncio event loop
     asyncio.run(
