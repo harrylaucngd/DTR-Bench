@@ -122,6 +122,11 @@ def start_vllm_server(command: str) -> subprocess.Popen:
     process = subprocess.Popen(
         ["bash", "-c", command],
         preexec_fn=os.setsid,  # To allow killing the entire process group
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        bufsize=1,
+        text=True,
     )
     return process
 

@@ -22,7 +22,7 @@ for model_name in "${model_names[@]}"; do
     # Run the Python script with the specified parameters and redirect output to the file
     python ./DTRBench/run_RL/run_llm_inference.py \
       --max_concurrency 64 \
-      --model_name "$model_path" \
+      --model_path "$model_path" \
       --temperature "$temperature" \
       --output_file "$output_file"
   done
