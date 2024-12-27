@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional, Union
 import gymnasium
 from GlucoseLLM.LLMInference.client import VLLMClient, ChatGPTClient
 from GlucoseLLM.prompt import SYS_PROMPT, get_text_obs, ACT_PROMPT, text2act
+import ipdb
+from tianshou.data import Batch
 
 
 class BaseTextPolicy:
@@ -11,13 +13,11 @@ class BaseTextPolicy:
         self.client = client
         self.action_space = action_space
 
-    async def forward(self, obs) -> str:
-        """Generates an action based on the observation using the LLM client."""
-        # Convert the observation into a message format expected by the client
-        if len(obs) != 1:
-            raise ValueError("Only one observation should be supported.")
+    async def forward(self, batch: Batch) -> str:
 
-        obs = get_text_obs(obs)
+        if len(batch.obs) != 1:
+            raise ValueError("Batch size must be 1 for this policy.")
+        obs = get_text_obs(batch)
 
         message = [
             {"role": "system", "content": SYS_PROMPT},
@@ -28,9 +28,8 @@ class BaseTextPolicy:
         ]
         # Call the client's send_request method to get the response
         response = await self.client.send_request(message=message)
-
         act = text2act(response, self.action_space)
-        return act
+        return Batch(act=act, obs=obs[0], response=response)
 
     async def __call__(self, *args, **kwargs):
         return await self.forward(*args, **kwargs)

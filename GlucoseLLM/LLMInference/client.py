@@ -1,4 +1,11 @@
+import os
+import signal
+import subprocess
+import sys
+import time
 from typing import Optional, List
+import ipdb
+import requests
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 import ipdb
 from pydantic import BaseModel, Field
@@ -36,11 +43,7 @@ class VLLMClient:
         guided_json: BaseModel = None,
         stop=None,
     ) -> str:
-        json_str = json.dumps(message)
-        json.loads(json_str)  # This will raise an error if JSON is invalid
-
         guided_json_ = guided_json.model_json_schema() if guided_json is not None else None
-
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=message,
@@ -112,3 +115,53 @@ class ChatGPTClient:
                 top_p=self.top_p,
             )
             return completion.choices[0].message.content.strip()
+
+
+def start_vllm_server(command: str) -> subprocess.Popen:
+    print("Starting vllm server...")
+    process = subprocess.Popen(
+        ["bash", "-c", command],
+        preexec_fn=os.setsid,  # To allow killing the entire process group
+    )
+    return process
+
+
+def wait_for_server(port: int, timeout: int = 120):
+    print("Waiting for vllm server to become ready...")
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout:
+            raise TimeoutError("vllm server did not start within the specified timeout.")
+        try:
+            response = requests.get(f"http://localhost:{port}/health")
+            if response.status_code == 200:
+                print("vllm server is up and running.")
+                break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)  # Wait before retrying
+
+
+def shutdown_server(process: subprocess.Popen):
+    """
+    Gracefully shuts down the vllm server subprocess.
+
+    Args:
+        process (subprocess.Popen): The subprocess running the server.
+    """
+    print("Shutting down vllm server...")
+    try:
+        if os.name == "nt":
+            process.terminate()
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        process.wait(timeout=30)
+        print("vllm server has been terminated.")
+    except Exception as e:
+        print(f"Error shutting down the server: {e}")
+
+
+def signal_handler(sig, frame, server_process: subprocess.Popen):
+    print("Interrupt received. Shutting down the server...")
+    shutdown_server(server_process)
+    sys.exit(0)
