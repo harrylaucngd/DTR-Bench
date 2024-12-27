@@ -331,7 +331,7 @@ class SinglePatientEnv(gymnasium.Env):
     def action_space(self):
         if self._action_space is None:  # Check if it is already calculated
             pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
-            ub = pump._params["max_basal"] / 60
+            ub = pump._params["max_basal"] / 60 / 5  # 30 U/h -> 0.1 U/min
             self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
         return self._action_space
 
@@ -343,11 +343,11 @@ class SinglePatientEnv(gymnasium.Env):
             var1_high = 600
             var2_low = self.action_space.low[0]
             var2_high = self.action_space.high[0]
-            
+
             # Create low and high arrays with shape [48, 2]
             low = np.tile(np.array([var1_low, var2_low]), (self.obs_window, 1))  # Shape: (48, 2)
             high = np.tile(np.array([var1_high, var2_high]), (self.obs_window, 1))  # Shape: (48, 2)
-            
+
             # Define the observation space
             self._obs_space = spaces.Box(low=low, high=high, dtype=np.float32)
         return self._obs_space
@@ -489,9 +489,9 @@ class RandomPatientEnv(gymnasium.Env):
         return self.env.step(action)
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
     env = SinglePatientEnv(
-        patient_name, max_t=max_t, sample_time=1, start_time=5 * 60, random_init_bg=True, random_obs=True, random_meal=True, missing_rate=0
+        patient_name, max_t=max_t, sample_time=1, start_time=5 * 60 * 60, random_init_bg=True, random_obs=True, random_meal=True, missing_rate=0
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)
@@ -502,7 +502,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = SinglePatientEnv(
         "adult#001",
-        16 * 60,
+        max_t=16 * 60 * 60,
         random_init_bg=True,
         random_obs=True,
         random_meal=False,
@@ -524,7 +524,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, obs_window=12, 
             "adult#003",
             "adult#004",
         ],
-        max_t=16 * 60,
+        max_t=16 * 60 * 60,
         random_init_bg=True,
         random_obs=True,
         random_meal=False,
@@ -554,10 +554,10 @@ def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
             "adolescent#003",
             "adolescent#004",
         ],
-        max_t=16 * 60,
+        max_t=16 * 60 * 60,
         sample_time=1,
         random_init_bg=True,
-        start_time=5 * 60,
+        start_time=5 * 60 * 60,
         random_obs=True,
         random_meal=True,
         missing_rate=0.0,

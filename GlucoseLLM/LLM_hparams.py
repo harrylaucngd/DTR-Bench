@@ -42,10 +42,7 @@ class LLM_DQN_HyperParams(offpolicyRLHparams.DQNHyperParams):
         "is_double": False,
         "use_dueling": False,
         # llm hparam
-        "llm_mode": [
-            {"llm": "Qwen2.5-0.5B-Instruct", "token_dim": 896},
-            {"llm": "Qwen2.5-1.5B-Instruct", "token_dim": 1536},
-        ],
+        "llm_mode": {"llm": "Qwen2.5-1.5B-Instruct", "token_dim": 1536},
         # prompt hparam
         "sum_prob": [0.0, 0.2],
     }

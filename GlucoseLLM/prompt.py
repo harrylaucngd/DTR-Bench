@@ -3,32 +3,37 @@ from typing import List, Tuple, Union, Optional
 import numpy as np
 import torch
 from datetime import timedelta
+import re
 
 
-SYS_PROMPT = (
-    "You are a clinical specialist working with Type-1 Diabetic patients. Your primary goal is to "
-    "maintain a patient's blood glucose levels (the observation, received every 5 minutes) within "
-    "70-140 mg/dL through the administration of insulin (the action). Insulin will reduce blood "
-    "glucose levels, while food intake, which is hidden, will increase blood glucose levels. You will "
-    "be penalized for blood glucose <70 or >140, and high insulin doses. Notably, low blood glucose "
-    "levels are much more dangerous. You should take caution to avoid overdosing insulin, thus "
-    "to avoid hypoglycemia. The insulin is given per 5 minutes and given in units, ranging from 0 to 0.5 unit/min."
-)
+SYS_PROMPT = """
+You are a clinical specialist managing Type-1 Diabetic patients. Your goal is to regulate a patient's blood glucose levels (observed every 5 minutes) within the safe range of 70-140 mg/dL through appropriate insulin administration. 
 
-Q_PROMPT = (
-    "Please predict the expected discounted reward (i.e., Q(s, a)) for each insulin bins in the order of "
-    "the following insulin dosage bins for the current 5 minute interval: bins = ['0', '0-0.05', '0.05-0.1', '0.1-0.15', '0.15-0.2', '0.2-0.25', '0.25-0.3', '0.3-0.35', '0.35-0.4', '0.4-0.45', '0.45-0.5']."
-)  # expertised system prompt for series information description and Q value prediction
+- **Insulin Action**: Insulin lowers blood glucose, and your decisions will specify the insulin dose (in units per 5 minutes, ranging from 0 to 0.1 units/min, equivalent to a maximum of 6 units/hour).
+- **Hidden Variable**: Food intake, which increases blood glucose levels, is not directly observable.
+- **Penalties**: 
+  - Blood glucose levels outside the 70-140 mg/dL range will incur penalties.
+  - High insulin doses should be used with extra caution.
+  - Low glucose levels (<70 mg/dL) are much more dangerous and should be completely avoided. When glucose levels fall below 70 mg/dL, stop using insulin immediately until its glucose level rises above 70 mg/dL.
+- **Caution**: Avoid overdosing insulin to prevent hypoglycemia. Excessively high doses of insulin can rapidly lower blood glucose to dangerous levels. Prioritise patient safety by maintaining glucose levels within the target range. If in doubt, it is safer to administer a lower or zero insulin dose.
 
-Q_RANKING_PROMPT = "Please rank the insulin dosage bins ['0', '0-0.05', '0.05-0.1', '0.1-0.15', '0.15-0.2', '0.2-0.25', '0.25-0.3', '0.3-0.35', '0.35-0.4', '0.4-0.45', '0.45-0.5'] in the descending order of your preference to maintain a patient's blood glucose levels within 70-140 mg/dL. "
+Your objective is to determine the optimal insulin dose every 5 minutes based on the current glucose level, balancing penalties and risks.
+"""
 
-ACT_PROMPT = """What is the optimal insulin dosage for the current 5 minute interval to maintain a patient's blood glucose levels within 70-140 mg/dL? Choose a value between 0 and 0.5 unit/min. Output a numerical value without unit or anything else."""
+Q_PROMPT = """
+Please predict the expected discounted reward (i.e., Q(s, a)) for each insulin actions in the order of 
+the following dosage for the current 5 minute interval: ['0', '0.01', '0.02', '0.03', '0.04', '0.05', '0.06', '0.07', '0.08', '0.09', '0.1'].
+"""
 
 
-SUMMARY_PROMPT = (
-    "Please summarize history glucose record and drug usage. Your answer should base on facts and be concise. "
-    "Extract as much information as possible while keeping the answer brief. Let's think step by step."
-)  # expertised system prompt of background knowledge for regulation summary
+Q_RANKING_PROMPT = "Please rank the insulin dosage bins ['0', '0.01', '0.02', '0.03', '0.04', '0.05', '0.06', '0.07', '0.08', '0.09', '0.1'] in the descending order of your preference to maintain a patient's blood glucose levels within 70-140 mg/dL. "
+
+ACT_PROMPT = """Determine the optimal insulin dosage for the current 5-minute interval to maintain a patient's blood glucose levels within the safe range of 70-140 mg/dL. First, provide a short analysis. Then, choose a dosage value between 0 and 0.1 enclosed in square brackets. For example, if you choose 0 units/min, enter [0].
+"""
+
+
+SUMMARY_PROMPT = """Please summarize history glucose record and drug usage. Your answer should base on facts and be concise.
+Extract as much information as possible while keeping the answer brief. Let's think step by step."""
 
 
 def get_text_obs(batch) -> List[str]:
@@ -56,7 +61,7 @@ def get_text_obs(batch) -> List[str]:
         description = []
         for j in range(length):
             if glucose[j] == -1:
-                initial_sign = " (initial measurement)"
+                # initial_sign = " (initial measurement)"
                 continue
             if j == 0:
                 description.append(f"{adjust_time(time, -(length-1)*minutes)}{initial_sign}, Insulin dose: {insulin[0] * minutes}.")
@@ -74,9 +79,26 @@ def get_patient_info_text(batch):
     return ""
 
 
-def text2act(logits, action_space):
+import re
+import numpy as np
+
+
+def text2act(logits: str, action_space):
     try:
-        action = np.clip(float(logits), action_space.low[0], action_space.high[0])
+        matches = re.findall(r"\[(.*?)\]", logits)
+
+        if len(matches) == 1:
+            # If exactly one match is found, try to convert it to a float
+            action = float(matches[0])
+        elif len(matches) == 0:
+            # If no matches, assume the entire logits is a number
+            action = float(logits)
+        else:
+            # If more than one match, return a sample
+            return action_space.sample()
+
+        action = np.clip(action, action_space.low[0], action_space.high[0])
     except (ValueError, IndexError):
-        action = action_space.sample()
+        return action_space.sample()
+
     return action
