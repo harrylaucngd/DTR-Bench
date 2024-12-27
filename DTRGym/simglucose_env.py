@@ -489,9 +489,9 @@ class RandomPatientEnv(gymnasium.Env):
         return self.env.step(action)
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16, discrete: bool = False, n_act: int = 5, **kwargs):
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60 * 60 , discrete: bool = False, n_act: int = 5, **kwargs):
     env = SinglePatientEnv(
-        patient_name, max_t=max_t, sample_time=1, start_time=5, random_init_bg=True, random_obs=True, random_meal=True, missing_rate=0
+        patient_name, max_t=max_t, sample_time=1, start_time=5 * 60 * 60, random_init_bg=True, random_obs=True, random_meal=True, missing_rate=0
     )
     if discrete:
         wrapped_env = DiscreteActionWrapper(env, n_act)

@@ -12,14 +12,11 @@ async def run_episode(policy: BaseTextPolicy, env: gym.Env) -> float:
     while True:
         act_batch = await policy(Batch.stack([Batch(obs=observation, info=info)]))
         action = act_batch.act
-        print("action: ", action)
-        pritn("act_batch", act_batch)
         next_observation, reward, terminated, truncated, info = env.step(action)
         info["reward"] = reward
-        info["drug"] = action 
-        info["obs"] = observation
-        info["next_obs"] = next_observation
-        info["action"] = action
+        info["drug"] = str(float(action)) 
+        info["obs"] = act_batch.obs
+        info["response"] = act_batch.response
         records.append(info)
         if terminated or truncated:
             break

@@ -18,8 +18,8 @@ DEFAULT_MODEL_PATH = "/mnt/bn/gilesluo000/pretrained_models/Qwen2.5-Coder-7B-Ins
 DEFAULT_PORT = 8001
 DEFAULT_VLLM_SERVER_TIMEOUT = 360  # seconds
 DEFAULT_SEEDS = [1, 100, 1000, 10000]
-DEFAULT_REPEATS = 5
-DEFAULT_CONCURRENCY = 16
+DEFAULT_REPEATS = 1
+DEFAULT_CONCURRENCY = 32
 DEFAULT_PROJECT = "llm_inference_rl"  # Replace with your default project name
 DEFAULT_RUN_NAME = "TestRun"  # Replace with your default run name
 
@@ -112,7 +112,7 @@ async def run_tests(
 
     semaphore = asyncio.Semaphore(max_concurrency)
 
-    async def run_single_test(patient_name: str, seed: int) -> float:
+    async def run_single_test(patient_name: str, seed: int, i) -> float:
         episode_dict = {}
         async with semaphore:
             env = make_env(task="SimGlucoseEnv-single-patient", seed=seed, patient_name=patient_name)
@@ -123,23 +123,25 @@ async def run_tests(
         episode_dict["return"] = sum([step_dict["reward"] for step_dict in result_dict])
         episode_dict["len"] = len(result_dict)
         episode_dict["trajectory"] = result_dict
-        return result_dict
+        episode_dict["model_name"] = model_name
+        episode_dict["temperature"] = temperature
+        episode_dict["max_tokens"] = max_tokens
+        episode_dict["i"] = i
+        return episode_dict
 
     # Create tasks for all combinations of patient names and seeds
     for patient_name in patient_list:
         for seed in seeds:
-            for _ in range(num_repeats):
-                tasks.append(run_single_test(patient_name, seed))
+            for i in range(num_repeats):
+                tasks.append(run_single_test(patient_name, seed, i))
 
     # Use tqdm to display progress
     for coro in tqdm_asyncio.as_completed(tasks, desc="Testing", total=len(tasks)):
         result = await coro
         results.append(result)
-
+    ipdb.set_trace()
     # Save the results to a file
-    with open(output_file, "w") as f:
-        import json
-        json.dump(results, f)
+    pd.DataFrame(results).to_json(output_file, orient="records", lines=True)
 
 
 def main():
