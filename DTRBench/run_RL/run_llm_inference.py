@@ -152,23 +152,23 @@ def main():
     # Initialize WandB
     wandb_run = wandb.init(project=args.project, name=args.run_name, config=vars(args))
 
-    server_command = SERVER_COMMAND_TEMPLATE.format(
-        conda_sh_path=DEFAULT_CONDA_SH_PATH,
-        conda_env=DEFAULT_CONDA_ENV,
-        vllm_rpc_timeout=100000000,
-        cuda_visible_devices=args.cuda_visible_devices,
-        model_path=args.model_path,
-        port=args.port,
-    )
-    server_process = start_vllm_server(server_command)
+    # server_command = SERVER_COMMAND_TEMPLATE.format(
+    #     conda_sh_path=DEFAULT_CONDA_SH_PATH,
+    #     conda_env=DEFAULT_CONDA_ENV,
+    #     vllm_rpc_timeout=100000000,
+    #     cuda_visible_devices=args.cuda_visible_devices,
+    #     model_path=args.model_path,
+    #     port=args.port,
+    # )
+    # server_process = start_vllm_server(server_command)
     
-    # Register the signal handler for graceful shutdown
-    signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, server_process))
-    signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, server_process))
+    # # Register the signal handler for graceful shutdown
+    # signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, server_process))
+    # signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, server_process))
 
 
-    # Wait for the server to be ready
-    wait_for_server(args.port, timeout=args.timeout)
+    # # Wait for the server to be ready
+    # wait_for_server(args.port, timeout=args.timeout)
 
     # Run the tests within the asyncio event loop
     asyncio.run(
