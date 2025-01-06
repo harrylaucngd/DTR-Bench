@@ -132,7 +132,7 @@ class SinglePatientEnv(gymnasium.Env):
     def __init__(
         self,
         patient_name: str,
-        max_t: int = 16 * 60 * 60,
+        max_minutes: int = 16 * 60,
         obs_window: int = 48,
         reward_fn=risk_reward_fn,
         random_init_bg: bool = False,
@@ -140,19 +140,19 @@ class SinglePatientEnv(gymnasium.Env):
         random_meal: bool = False,
         missing_rate=0.0,
         sample_time=1,
-        start_time=0 * 60 * 60,
+        start_minutes=0 * 60,
         **kwargs,
     ):
         self.env = None
         self.reward_fn = reward_fn
-        self.max_t = max_t
+        self.max_t = max_minutes
         self.patient_name = patient_name
         self.random_init_bg = random_init_bg
         self.random_obs = random_obs
         self.random_meal = random_meal
         self.missing_rate = missing_rate
         self.sample_time = sample_time
-        self.start_time = start_time
+        self.start_time = start_minutes
         self.last_obs = None
 
         self.obs_window = obs_window
@@ -215,22 +215,25 @@ class SinglePatientEnv(gymnasium.Env):
             return None, None, self.terminated, self.truncated, {}
         if action < self.action_space.low or action > self.action_space.high:
             raise ValueError(f"action should be in [{self.action_space.low}, {self.action_space.high}]")
-        self.t += self.env.sample_time * self.sample_time
         self.step_counter += 1
         # This gym only controls basal insulin
         act = Action(basal=action, bolus=0)  # basal and bolus are treated as the same in this env
         total_info = []
         for _ in range(self.sample_time):
+            self.t += self.env.sample_time
             obs_sg, _, _, info_sg = self.env.step(act)
             info_sg.pop("patient_state")
             info_sg["obs"] = obs_sg
             total_info.append(info_sg)
 
             if self.t >= self.max_t:
+                print("This episode is truncated at time: ", self.t, "step: ", self.step_counter)
                 self.terminated = False
                 self.truncated = True
+                break
 
             if not (10 < info_sg["bg"] < 500):
+                print("BG value out of range: ", info_sg["bg"], "step: ", self.step_counter)
                 self.terminated = True
                 self.truncated = False
                 break
@@ -278,9 +281,9 @@ class SinglePatientEnv(gymnasium.Env):
         patient = T1DPatient.withName(self.patient_name, random_init_bg=random_init_bg, seed=seed2)
 
         sensor = CGMSensor.withName(self.SENSOR_HARDWARE, seed=seed3)
-        if self.start_time > 24 * 60 * 60:
+        if self.start_time > 24 * 60:
             raise ValueError("start_time must be less than 24 hours")
-        time_string = str(timedelta(seconds=self.start_time))
+        time_string = str(timedelta(minutes=self.start_time))
         hour, minute, second = map(int, time_string.split(":"))
         start_time = datetime(2018, 1, 1, hour, minute, second)
         if self.random_meal:
@@ -395,7 +398,7 @@ class RandomPatientEnv(gymnasium.Env):
     def __init__(
         self,
         candidates: list = None,  # The only additional argument compared to SinglePatientEnv
-        max_t: int = 16 * 60 * 60,
+        max_minutes: int = 16 * 60,
         obs_window: int = 48,
         reward_fn=risk_reward_fn,
         random_init_bg: bool = False,
@@ -403,12 +406,12 @@ class RandomPatientEnv(gymnasium.Env):
         random_meal: bool = False,
         missing_rate=0.0,
         sample_time=1,
-        start_time=0,
+        start_minutes=0 * 60,
         **kwargs,
     ):
         super().__init__()
         self.candidates = candidates or self.patient_list  # If candidates are not specified, use the default list
-        self.max_t = max_t
+        self.max_t = max_minutes
         self.obs_window = obs_window
         self.reward_fn = reward_fn
         self.random_init_bg = random_init_bg
@@ -416,7 +419,7 @@ class RandomPatientEnv(gymnasium.Env):
         self.random_meal = random_meal
         self.missing_rate = missing_rate
         self.sample_time = sample_time
-        self.start_time = start_time
+        self.start_time = start_minutes
         self.env = None  # This will hold an instance of SinglePatientEnv
         self.np_random = None
 
@@ -443,14 +446,14 @@ class RandomPatientEnv(gymnasium.Env):
         # Create a new instance of SinglePatientEnv with the chosen patient
         self.env = SinglePatientEnv(
             patient_name=self.patient_name,
-            max_t=self.max_t,
+            max_minutes=self.max_t,
             reward_fn=self.reward_fn,
             random_init_bg=self.random_init_bg,
             random_obs=self.random_obs,
             random_meal=self.random_meal,
             missing_rate=self.missing_rate,
             sample_time=self.sample_time,
-            start_time=self.start_time,
+            start_minutes=self.start_time,
         )
 
         # Reset the SinglePatientEnv and return its observation and info
@@ -489,12 +492,12 @@ class RandomPatientEnv(gymnasium.Env):
         return self.env.step(action)
 
 
-def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
+def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60, discrete: bool = False, n_act: int = 5, **kwargs):
     env = SinglePatientEnv(
         patient_name,
-        max_t=max_t,
+        max_minutes=max_t,
         sample_time=30,
-        start_time=5 * 60 * 60,
+        start_minutes=5 * 60,
         random_init_bg=True,
         random_obs=True,
         random_meal=True,
@@ -509,12 +512,12 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60 
 def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, **kwargs):
     env = SinglePatientEnv(
         "adult#001",
-        max_t=16 * 60 * 60,
+        max_minutes=16 * 60,
         sample_time=30,
         random_init_bg=True,
         random_obs=True,
         random_meal=False,
-        start_time=5 * 60 * 60,
+        start_minutes=5 * 60,
         obs_window=obs_window,
         missing_rate=0.0,
     )
@@ -532,12 +535,12 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, obs_window=12, 
             "adult#003",
             "adult#004",
         ],
-        max_t=16 * 60 * 60,
+        max_minutes=16 * 60,
         random_init_bg=True,
         sample_time=30,
         random_obs=True,
         random_meal=False,
-        start_time=5 * 60 * 60,
+        start_minutes=5 * 60,
         obs_window=obs_window,
         missing_rate=0.0,
     )
@@ -563,10 +566,10 @@ def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
             "adolescent#003",
             "adolescent#004",
         ],
-        max_t=16 * 60 * 60,
+        max_minutes=16 * 60,
         sample_time=30,
         random_init_bg=True,
-        start_time=5 * 60 * 60,
+        start_minutes=5 * 60,
         random_obs=True,
         random_meal=True,
         missing_rate=0.0,
