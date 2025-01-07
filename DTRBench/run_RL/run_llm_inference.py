@@ -9,7 +9,7 @@ import pandas as pd
 import os
 # Importing existing modules
 from GlucoseLLM.LLMInference.client import VLLMClient, start_vllm_server, wait_for_server, shutdown_server, signal_handler
-from GlucoseLLM.LLMInference.policy import BaseTextPolicy
+from GlucoseLLM.LLMInference import POLICIES
 from GlucoseLLM.LLMInference.env import make_env, run_episode
 
 # Configuration Defaults (Hardcoded)
@@ -62,12 +62,13 @@ def parse_arguments():
         default=DEFAULT_VLLM_SERVER_TIMEOUT,
         help=f"Timeout for server to start in seconds (default: {DEFAULT_VLLM_SERVER_TIMEOUT})",
     )
-
+    parser.add_argument("--policy_name", type=str, default="base", choices=list(POLICIES.keys()))
     return parser.parse_args()
 
 
 async def run_tests(
     model_name,
+    policy_name,
     temperature,
     max_tokens,
     seeds: List[int],
@@ -90,7 +91,8 @@ async def run_tests(
     )
 
     # Initialize the Policy
-    policy = BaseTextPolicy(client=client)
+    policy_class = POLICIES[policy_name]
+    policy = policy_class(client=client)
 
     print("Running parallel tests...")
 
@@ -128,6 +130,7 @@ async def run_tests(
         episode_dict["temperature"] = temperature
         episode_dict["max_tokens"] = max_tokens
         episode_dict["i"] = i
+        wandb_run.log({f"{patient_name}_{seed}_{i}": episode_dict["return"]})
         return episode_dict
 
     # Create tasks for all combinations of patient names and seeds
@@ -174,6 +177,7 @@ def main():
     asyncio.run(
         run_tests(
             model_name=args.model_path,
+            policy_name=args.policy_name,
             temperature=args.temperature,
             max_tokens=args.max_tokens,
             seeds=args.seeds,
@@ -188,3 +192,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# todo: check rounding issue
+# todo: add invalid action check

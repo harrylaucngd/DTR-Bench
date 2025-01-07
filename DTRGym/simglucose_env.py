@@ -20,7 +20,8 @@ from gymnasium import spaces
 from datetime import datetime, timedelta
 from DTRGym.utils import DiscreteActionWrapper
 import hashlib
-
+MAX_DOSAGE_U_per_hour = 9
+SAMPLE_TIME = 30
 
 def hash_seed(seed):
     if isinstance(seed, str):
@@ -325,8 +326,8 @@ class SinglePatientEnv(gymnasium.Env):
     @property
     def action_space(self):
         if self._action_space is None:  # Check if it is already calculated
-            pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
-            ub = pump._params["max_basal"] / 60 / 10  # 3 U/h -> 0.05 U/min, we manually set 0.05 U/min as the maximum
+            # pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
+            ub = MAX_DOSAGE_U_per_hour / 60  # U/h -> U/min
             self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
         return self._action_space
 
@@ -462,8 +463,8 @@ class RandomPatientEnv(gymnasium.Env):
 
     def action_space(self):
         if self._action_space is None:  # Check if it is already calculated
-            pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
-            ub = pump._params["max_basal"] / 60 / 50  # 0.6 U/h -> 0.01 U/min, we manually set 0.01 U/min as the maximum
+            # pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
+            ub = MAX_DOSAGE_U_per_hour / 60  # U/h -> U/min
             self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
         return self._action_space
 
@@ -496,7 +497,7 @@ def create_SimGlucoseEnv_single_patient(patient_name: str, max_t: int = 16 * 60,
     env = SinglePatientEnv(
         patient_name,
         max_minutes=max_t,
-        sample_time=30,
+        sample_time=SAMPLE_TIME,
         start_minutes=5 * 60,
         random_init_bg=True,
         random_obs=True,
@@ -513,7 +514,7 @@ def create_SimGlucoseEnv_adult1(n_act: int = 11, discrete=False, obs_window=12, 
     env = SinglePatientEnv(
         "adult#001",
         max_minutes=16 * 60,
-        sample_time=30,
+        sample_time=SAMPLE_TIME,
         random_init_bg=True,
         random_obs=True,
         random_meal=False,
@@ -537,7 +538,7 @@ def create_SimGlucoseEnv_adult4(n_act: int = 11, discrete=False, obs_window=12, 
         ],
         max_minutes=16 * 60,
         random_init_bg=True,
-        sample_time=30,
+        sample_time=SAMPLE_TIME,
         random_obs=True,
         random_meal=False,
         start_minutes=5 * 60,
@@ -567,7 +568,7 @@ def create_SimGlucoseEnv_all4(n_act: int = 11, discrete=False, **kwargs):
             "adolescent#004",
         ],
         max_minutes=16 * 60,
-        sample_time=30,
+        sample_time=SAMPLE_TIME,
         random_init_bg=True,
         start_minutes=5 * 60,
         random_obs=True,
