@@ -15,13 +15,13 @@ from simglucose.analysis.risk import risk_index
 import numpy as np
 import gymnasium
 from gymnasium.utils import seeding
-
+import ipdb
 from gymnasium import spaces
 from datetime import datetime, timedelta
 from DTRGym.utils import DiscreteActionWrapper
 import hashlib
 MAX_DOSAGE_U_per_hour = 9
-SAMPLE_TIME = 30
+SAMPLE_TIME = 15
 
 def hash_seed(seed):
     if isinstance(seed, str):
@@ -216,9 +216,10 @@ class SinglePatientEnv(gymnasium.Env):
             return None, None, self.terminated, self.truncated, {}
         if action < self.action_space.low or action > self.action_space.high:
             raise ValueError(f"action should be in [{self.action_space.low}, {self.action_space.high}]")
+
         self.step_counter += 1
         # This gym only controls basal insulin
-        act = Action(basal=action, bolus=0)  # basal and bolus are treated as the same in this env
+        act = Action(basal=action / 60, bolus=0)  # basal and bolus are treated as the same in this env.  U/h -> U/min
         total_info = []
         for _ in range(self.sample_time):
             self.t += self.env.sample_time
@@ -233,7 +234,7 @@ class SinglePatientEnv(gymnasium.Env):
                 self.truncated = True
                 break
 
-            if not (10 < info_sg["bg"] < 500):
+            if not (40 < info_sg["bg"] < 500):
                 print("BG value out of range: ", info_sg["bg"], "step: ", self.step_counter)
                 self.terminated = True
                 self.truncated = False
@@ -327,7 +328,7 @@ class SinglePatientEnv(gymnasium.Env):
     def action_space(self):
         if self._action_space is None:  # Check if it is already calculated
             # pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
-            ub = MAX_DOSAGE_U_per_hour / 60  # U/h -> U/min
+            ub = MAX_DOSAGE_U_per_hour
             self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
         return self._action_space
 
@@ -464,7 +465,7 @@ class RandomPatientEnv(gymnasium.Env):
     def action_space(self):
         if self._action_space is None:  # Check if it is already calculated
             # pump = InsulinPump.withName(self.INSULIN_PUMP_HARDWARE)
-            ub = MAX_DOSAGE_U_per_hour / 60  # U/h -> U/min
+            ub = MAX_DOSAGE_U_per_hour
             self._action_space = spaces.Box(low=0, high=ub, shape=(1,))
         return self._action_space
 

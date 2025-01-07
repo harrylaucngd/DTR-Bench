@@ -11,7 +11,7 @@ export no_proxy=localhost
 # List of model names, temperatures, and policy names
 model_names=("/mnt/bn/gilesluo000/pretrained_models/Qwen2.5-0.5B-Instruct")
 temperatures=(0 0.7 1.0)
-policy_names=("hidden-sys" "full-sys" "base" "cot")
+policy_names=("cot" "hidden-sys" "full-sys" "base" "majority-voting")
 
 # Loop over all models, temperatures, and policy names
 for temperature in "${temperatures[@]}"; do
@@ -41,11 +41,12 @@ for temperature in "${temperatures[@]}"; do
 
         # Run your Python script
         python ./DTRBench/run_RL/run_llm_inference.py \
-          --max_concurrency 64 \
+          --max_concurrency 1 \
           --model_path "$model_path" \
           --temperature "$temperature" \
           --output_file "$output_file" \
           --port "$port" \
+          --max_tokens 1024 \
           --policy_name "$policy_name"
       )
         hdfs dfs -put -f "$output_file" hdfs://haruna/home/byte_aml_rl/user/zhiyao/llm4rl_inference/

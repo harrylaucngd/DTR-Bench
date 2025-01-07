@@ -17,6 +17,7 @@ async def run_episode(policy: BaseTextPolicy, env: gym.Env) -> float:
         info["drug"] = str(float(action)) 
         info["obs"] = act_batch.obs
         info["response"] = act_batch.response
+        info["valid_action"] = act_batch.valid_action.tolist()
         records.append(info)
         if terminated or truncated:
             break
